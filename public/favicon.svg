@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34">
+  <rect width="34" height="34" rx="10" fill="#79ca0b"/>
+  <g fill="#18250f" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-weight="800">
+    <text x="17" y="26" text-anchor="middle" font-size="31">u</text>
+    <text x="32" y="16" text-anchor="end" font-size="19">↗</text>
+  </g>
+</svg>

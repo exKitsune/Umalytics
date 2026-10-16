@@ -1,0 +1,19 @@
+Reference data
+
+courses.json: Moomoolator / TheCing/uma-tools, revision
+5ce95905fef753a33f7519b5559a86e92f5d56cc, umalator-global/course_data.json.
+Source: https://github.com/TheCing/uma-tools/tree/5ce95905fef753a33f7519b5559a86e92f5d56cc
+The upstream license is GPL-3.0-or-later; its complete text is in
+UMA-TOOLS-LICENSE.txt. Preserve that license and upstream attribution when
+redistributing this dataset. Contributors include TheCing, kachi, Jecht,
+alpha123 and pecan. simulator-skill-ids.json contains IDs from the same snapshot.
+
+metadata.json and course-geometry.json contain selected UM:PD reference facts
+and numeric course paths. No complete game databases, bundles or account data
+are included. Game materials remain with their original rights holders.
+The application license does not grant rights to those materials.
+
+Missing names and skill definitions use GameTora's public reference catalogs.
+Global definitions take priority over JP fallbacks. GameTora and its
+contributors are credited for community names and translations. Source URLs,
+revisions and hashes are recorded in the JSON provenance fields.

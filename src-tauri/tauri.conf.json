@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Umalytics",
+  "version": "0.2.0",
+  "identifier": "local.umatrace.desktop",
+  "build": {
+    "frontendDist": "http://127.0.0.1:4317"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self' http://127.0.0.1:4317; connect-src 'self' http://127.0.0.1:4317; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}

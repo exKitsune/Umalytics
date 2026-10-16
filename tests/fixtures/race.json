@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "title": "Synthetic system test",
+  "synthetic": true,
+  "distance": 2400,
+  "courseId": 10606,
+  "category": "practice",
+  "capturedAt": "2026-10-14T00:00:00Z",
+  "runners": [
+    {"id":"fixture-1","gate":1,"name":"Special Week","charaId":1001,"cardId":100101,"trainer":"PRIVATE_FIXTURE","strategy":"Pace Chaser","finishOrder":1,"finishTime":120,"finishTimeRaw":120,"stats":{"speed":1100,"stamina":950,"power":800,"guts":400,"wisdom":500},"skills":[{"id":100011,"level":4}],"aptitudes":{"turf":7,"middle":8,"pace":7},"strategyCode":2,"mood":5,"starCount":3},
+    {"id":"fixture-2","gate":2,"name":"Silence Suzuka","charaId":1002,"cardId":100201,"trainer":"PRIVATE_FIXTURE","strategy":"Front Runner","finishOrder":2,"finishTime":121,"finishTimeRaw":121}
+  ],
+  "frames": [
+    {"time":0,"runners":[{"runnerId":"fixture-1","distance":0,"speed":3,"hp":1000,"lane":0.2},{"runnerId":"fixture-2","distance":0,"speed":3,"hp":1100,"lane":0.4}]},
+    {"time":60,"runners":[{"runnerId":"fixture-1","distance":1200,"speed":21,"hp":600,"lane":0.3},{"runnerId":"fixture-2","distance":1190,"speed":20.5,"hp":550,"lane":0.4}]},
+    {"time":120,"runners":[{"runnerId":"fixture-1","distance":2400,"speed":22,"hp":100,"lane":0.3},{"runnerId":"fixture-2","distance":2378,"speed":21.8,"hp":90,"lane":0.4}]}
+  ],
+  "events": [{"time":60,"type":3,"runnerId":"fixture-1","skillId":100011,"label":"Shooting Star","params":[0,100011]}],
+  "warnings": ["Synthetic fixture. No captured user data."]
+}

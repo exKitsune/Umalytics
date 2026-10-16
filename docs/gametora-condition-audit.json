@@ -1,0 +1,547 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "name": "GameTora skill condition viewer",
+    "url": "https://gametora.com/\u0075mamusume/skill-condition-viewer",
+    "reviewedOn": "2026-10-14"
+  },
+  "scope": "All condition and precondition keys in the bundled Steam Global skill metadata. Rules were compared with the loaded condition explanations; exact replay observability is assessed separately.",
+  "referenceSections": 145,
+  "reviewedGlobalKeys": 100,
+  "unmatchedGlobalKeys": [],
+  "keys": [
+    {
+      "key": "accumulatetime",
+      "reviewed": true,
+      "sectionSha256": "b125deac9ee5099d432240e99ece9626148ff0ffdd16daba56b3baf4a254bbaa"
+    },
+    {
+      "key": "activate_count_all",
+      "reviewed": true,
+      "sectionSha256": "ec5e7ba33ec952184cd38f1011ec35a6ef98497643a7058b9ded906b28ca4dda"
+    },
+    {
+      "key": "activate_count_end_after",
+      "reviewed": true,
+      "sectionSha256": "ee3f7cf08a2115322828c0b79264ace9e8969fa28fdb20f7767b3a96bc6c0e44"
+    },
+    {
+      "key": "activate_count_heal",
+      "reviewed": true,
+      "sectionSha256": "0f6e0c2963e63c4db4ad378aad0075c926b82beca48beb8df3fca6737bd0f19b"
+    },
+    {
+      "key": "activate_count_later_half",
+      "reviewed": true,
+      "sectionSha256": "bebf6c9f9da49a25c28f25a2007cbdb4ce70564ab9ed500e1cb29b1cd0f129b0"
+    },
+    {
+      "key": "activate_count_middle",
+      "reviewed": true,
+      "sectionSha256": "fde0ea3861ee022bfb700324f35d315e19799c1cd4c214bb3961a21846dd6629"
+    },
+    {
+      "key": "activate_count_start",
+      "reviewed": true,
+      "sectionSha256": "3304f387430b615033fb5a69c94e2c55a2c617fc30124394c17e4d3c2472c10b"
+    },
+    {
+      "key": "all_corner_random",
+      "reviewed": true,
+      "sectionSha256": "a5ef8742119cfd908ea7ebe2d7b82cf28ef9ccca819a748f6500c51697d600ac",
+      "reviewNote": "There are four random corner-point draws; a short cooldown can allow repeated activations. Candidate regions do not reveal the actual draws."
+    },
+    {
+      "key": "always",
+      "reviewed": true,
+      "sectionSha256": "520a13ca22d6a0685b1e90ab818c8713cb58a5b581592686f53b9501d0487d1d"
+    },
+    {
+      "key": "base_power",
+      "reviewed": true,
+      "sectionSha256": "cdaa3e7b9a07006ab278f7a81fb2e315dccb7d61de29814cc2786ff3c7f5d7eb"
+    },
+    {
+      "key": "bashin_diff_behind",
+      "reviewed": true,
+      "sectionSha256": "f9544a6f412caa9b58f6f894716ac88f50a35c1e692809287a13150a89f4b117"
+    },
+    {
+      "key": "bashin_diff_infront",
+      "reviewed": true,
+      "sectionSha256": "f6d36924aa4654bc975a03a87aa86233f299d6c8fb64def1ed0242e4c765f94f"
+    },
+    {
+      "key": "behind_near_lane_time",
+      "reviewed": true,
+      "sectionSha256": "dd32b64c1fa912d9e7ea0697d07e506eb49e84fdbb08b0f47342a871b00d76d9",
+      "reviewNote": "Any qualifying runner can sustain proximity: at most 2.5 m longitudinally and one horse lane laterally. A change in this runner’s rank resets the timer; replacing the nearby runner does not."
+    },
+    {
+      "key": "behind_near_lane_time_set1",
+      "reviewed": true,
+      "sectionSha256": "4761098f28f4a9ed5860ab426815d1c6b243b3997c12b1f277ee04c43d124060",
+      "reviewNote": "Use the separate wider rear-proximity thresholds: 5 m and 2.7 horse lanes, with the same rank-reset rule."
+    },
+    {
+      "key": "blocked_front",
+      "reviewed": true,
+      "sectionSha256": "22d07ed3f1de306fc63a02f3fac3c4036041a29fbd36ff2c0417cfe436490074"
+    },
+    {
+      "key": "blocked_front_continuetime",
+      "reviewed": true,
+      "sectionSha256": "ecc167163d5df86601977ea215f63e6d5c99899e4e576c9dc2ef14ea83f8eb95"
+    },
+    {
+      "key": "blocked_side_continuetime",
+      "reviewed": true,
+      "sectionSha256": "fcf3572b5d52d9bbae8e83dc0e8ad0d237f8e512d4b15a08664b96a11042150c"
+    },
+    {
+      "key": "change_order_onetime",
+      "reviewed": true,
+      "sectionSha256": "75e5abd074f55a60f77d676b81762506196b1e838b4c5d1bf482ed49813377bf"
+    },
+    {
+      "key": "change_order_up_end_after",
+      "reviewed": true,
+      "sectionSha256": "89a7e09f23a9e32986f9b0815ba7d8ada3008c27b615772eec1b5cb6279293c0"
+    },
+    {
+      "key": "change_order_up_finalcorner_after",
+      "reviewed": true,
+      "sectionSha256": "d02024403938cc6aacb08236f027263972cfd160672bfef7b11ced022e554c2a"
+    },
+    {
+      "key": "compete_fight_count",
+      "reviewed": true,
+      "sectionSha256": "c04efcd17fdfb62322cb3512f94d48600b3bc5efb55060e2f03b615c66eaa1c5",
+      "reviewNote": "The current Global tests only require at least one final-straight duel. A recorded start supports that; resume counting does not establish larger exact counts."
+    },
+    {
+      "key": "corner",
+      "reviewed": true,
+      "sectionSha256": "6ac8c63e5210032d6a08e16237831b3e1ce3a65a6d90bef91d8827325b3edd86"
+    },
+    {
+      "key": "corner_random",
+      "reviewed": true,
+      "sectionSha256": "9815d490c9c15cfa536f47e0d633b0e814045ec507da2d5729e427e423f83367",
+      "reviewNote": "Use the named track corner on its last pass, not simply the first corner encountered in the race."
+    },
+    {
+      "key": "distance_diff_rate",
+      "reviewed": true,
+      "sectionSha256": "b56e50e251c0e0148f689e0a938c76153c4dbfb7c27975d2f5f4c3ddd2469667",
+      "reviewNote": "Use the leader gap divided by the full field spread, multiplied by 100. A zero spread does not supply a denominator."
+    },
+    {
+      "key": "distance_diff_top",
+      "reviewed": true,
+      "sectionSha256": "7d465cff8bf330593a565d14e8ce05681daf299f57c077195c27757b5a2b6e4b",
+      "reviewNote": "Compare the whole-metre leader gap; this key is not the separate decimetre predicate."
+    },
+    {
+      "key": "distance_rate",
+      "reviewed": true,
+      "sectionSha256": "235a762b4fabbbc9ad5ae58d7b20f4cc9e41dcd4fed02bcee805b46f77334043"
+    },
+    {
+      "key": "distance_rate_after_random",
+      "reviewed": true,
+      "sectionSha256": "126ec16c21ebdce39a0b1445a941ad95b1b4c6a95e312678cf200beea85645b2"
+    },
+    {
+      "key": "distance_type",
+      "reviewed": true,
+      "sectionSha256": "0f14d0e219292dd37cf15a8cc2f5ffc34ab37a7f75d2c503e34df1732b1ccd18"
+    },
+    {
+      "key": "down_slope_random",
+      "reviewed": true,
+      "sectionSha256": "a85a60932308227c71fc154758fea929b0afafaafc26a90f1302c74c411b3a43"
+    },
+    {
+      "key": "grade",
+      "reviewed": true,
+      "sectionSha256": "7036e4cf59f742a7277ef4e93db615afe6ced9dfb2c18c56afc53a989b5ab899"
+    },
+    {
+      "key": "ground_condition",
+      "reviewed": true,
+      "sectionSha256": "3342b15c54a9106b9793ce77604eec0d3aadedf2cffd4d946fdb2e5af868c27f"
+    },
+    {
+      "key": "ground_type",
+      "reviewed": true,
+      "sectionSha256": "3b9066b488d8a55a32f91ba0f40fa445ab696f7b2b89a47281ed508abc3c09c1"
+    },
+    {
+      "key": "hp_per",
+      "reviewed": true,
+      "sectionSha256": "399e39a67473a51f8472b0891593da64d13c9bcbba68e745e89158e3ad9ccaf1"
+    },
+    {
+      "key": "infront_near_lane_time",
+      "reviewed": true,
+      "sectionSha256": "160762c3aa757ec8b8204a13a0ae9130b477ef5249fb63284f8c87a16ad99309",
+      "reviewNote": "Any qualifying runner can sustain proximity: at most 2.5 m longitudinally and one horse lane laterally. A change in this runner’s rank resets the timer; replacing the nearby runner does not."
+    },
+    {
+      "key": "is_activate_any_skill",
+      "reviewed": true,
+      "sectionSha256": "5cb12db08ac42b289062c05b065da3dca4be746a681a214ed39a9b1245027517"
+    },
+    {
+      "key": "is_badstart",
+      "reviewed": true,
+      "sectionSha256": "137b0c7423ba6fd0b955d4a170bac25c8757ff99abd2131a079c427eb5d62457"
+    },
+    {
+      "key": "is_basis_distance",
+      "reviewed": true,
+      "sectionSha256": "fd9fa05e76ad4efe0745a5cb96808abf5ec3512d4f3d80b053990919a3be0bcd"
+    },
+    {
+      "key": "is_behind_in",
+      "reviewed": true,
+      "sectionSha256": "0ca654dbf89829b6688bb49aaca4c40c381d8fb3730899fd86f839160a86fa2e",
+      "reviewNote": "Compare the runner behind with this runner: the smaller lane coordinate is nearer the inner fence."
+    },
+    {
+      "key": "is_dirtgrade",
+      "reviewed": true,
+      "sectionSha256": "0bf75dac8f49335f0e6e692a4b885c4c7b63937f28a5bc5af854a714d7a41b0d"
+    },
+    {
+      "key": "is_exist_chara_id",
+      "reviewed": true,
+      "sectionSha256": "169e68421966a02ed20ea1333ccb6dbdfb0319e5cce8313e9f41e2ec6fe19534"
+    },
+    {
+      "key": "is_finalcorner",
+      "reviewed": true,
+      "sectionSha256": "84c92d29acbdb3ffd98b2e4604d6b512318e5d1c4b595bd4b1c186492e0426ee"
+    },
+    {
+      "key": "is_finalcorner_laterhalf",
+      "reviewed": true,
+      "sectionSha256": "38410e67862e648df034159183b534b36210f48fb15e26acddd2141cfa76d82c",
+      "reviewNote": "Only the second half of the final corner qualifies. Unlike is_finalcorner, this flag does not continue onto the straight."
+    },
+    {
+      "key": "is_finalcorner_random",
+      "reviewed": true,
+      "sectionSha256": "4031c1c84cf53a167dd2957f549f973ea7df509767692e8ca999af79b1f0f57a"
+    },
+    {
+      "key": "is_last_straight_onetime",
+      "reviewed": true,
+      "sectionSha256": "3c082db645658dda85e29ea98750ff882f18dcde6be68fbda7fe91afd078a0f4",
+      "reviewNote": "Use the transition into the final straight, rather than treating the first 10 m as a lasting condition."
+    },
+    {
+      "key": "is_lastspurt",
+      "reviewed": true,
+      "sectionSha256": "69955d0d45b3465d7b92b1c6006c1ca340bcdff3935c14904d52ba46c932e473"
+    },
+    {
+      "key": "is_move_lane",
+      "reviewed": true,
+      "sectionSha256": "90d849919b0d896fbe9545df48b7df3f7cb8c31d382b98bcabecca26eeb1b092",
+      "reviewNote": "Value 1 is movement inward and value 2 is movement outward; this is not a boolean for any lane movement."
+    },
+    {
+      "key": "is_other_character_activate_advantage_skill",
+      "reviewed": true,
+      "sectionSha256": "e12d6fbd0bce096bc5adbf8961692ae6d23a00491d32239ef898129b882900eb",
+      "reviewNote": "Match a positive effect of the requested type on another runner. The Global value 9 is recovery, not any beneficial skill."
+    },
+    {
+      "key": "is_overtake",
+      "reviewed": true,
+      "sectionSha256": "75d5fa670e034d1cf872ec77d3be6f4fa6f21f3a7d42eb1782bc7dfb689a446c",
+      "reviewNote": "An overtaking candidate is ahead within 20 m and reachable within 15 s at current speeds; actual target selection is unrecorded."
+    },
+    {
+      "key": "is_surrounded",
+      "reviewed": true,
+      "sectionSha256": "34f96de95b2716a2653e940f267f5ba195b5f5517d4f36cdfa0d790f1d32e56a",
+      "reviewNote": "Require front, rear and side occupancy. One neighbor may satisfy multiple roles; the side neighbor can be on either side."
+    },
+    {
+      "key": "is_temptation",
+      "reviewed": true,
+      "sectionSha256": "bc23145e35dde645be842c781cf999f8ec087972bc8bb901c6609b8e0835f07c"
+    },
+    {
+      "key": "lane_type",
+      "reviewed": true,
+      "sectionSha256": "b9c75e67869e26efdc5f5c3c4f816213723601d73d0c13df7118d1e363ec6a85",
+      "reviewNote": "Classify the lane using boundaries 0.2, 0.4 and 0.6, inclusive at each upper edge."
+    },
+    {
+      "key": "last_straight_random",
+      "reviewed": true,
+      "sectionSha256": "2772f5d9c8a615bac3b04a92c4c578b5f3b420e83bb1dd95f42788230a1ef650"
+    },
+    {
+      "key": "lastspurt",
+      "reviewed": true,
+      "sectionSha256": "fd248e98c9b9421d62da95d472555105036058b6a1c19bf0a8e003064f999ffd",
+      "reviewNote": "Classify the HP budget as insufficient for base speed, sufficient for a reduced spurt, or sufficient for maximum spurt speed. Replay reconstruction is modeled evidence."
+    },
+    {
+      "key": "motivation",
+      "reviewed": true,
+      "sectionSha256": "de7343f5667ab6dc3f2e37c43490e4a97adf871ab8de77e8669d25f43d679448"
+    },
+    {
+      "key": "near_count",
+      "reviewed": true,
+      "sectionSha256": "db60023cecba54f3d247eb61d3a0512474ac3de92c2e573401525f28c5b9aef7",
+      "reviewNote": "The proximity count includes longitudinal gaps up to 3 m and lateral gaps up to three horse lanes."
+    },
+    {
+      "key": "order",
+      "reviewed": true,
+      "sectionSha256": "3be03c60757e0a4b7532b8bc7e9f1fe331752b0e90bfeda285ae0423cd6f8019"
+    },
+    {
+      "key": "order_rate",
+      "reviewed": true,
+      "sectionSha256": "9d2182234c71f9c8a3b817427e4a45423cb190af0fe4989fefe3435d839b2937"
+    },
+    {
+      "key": "order_rate_in20_continue",
+      "reviewed": true,
+      "sectionSha256": "0a292e4cb0c72dc20a95202cd4dc34c22942f523d1a5e2ba4a5a48b60bbf6d2d"
+    },
+    {
+      "key": "order_rate_in50_continue",
+      "reviewed": true,
+      "sectionSha256": "ec823ac64e155c5b8c7cc47d93bc5454bd4faff8db76364f7d4acf1cc88afe02"
+    },
+    {
+      "key": "order_rate_in80_continue",
+      "reviewed": true,
+      "sectionSha256": "d0db6f8f967afbdb7a5a5a4ae9df7d08058936c273fab301973c1a1d0534f1dd"
+    },
+    {
+      "key": "order_rate_out20_continue",
+      "reviewed": true,
+      "sectionSha256": "344f00e7ca4324f8a29b38339f22e82bc3199622685e85b3a0069cb4e7e608ee",
+      "reviewNote": "The published examples include the rounded rank boundary. Ignore the first five seconds; uninterrupted sampled history remains inferred."
+    },
+    {
+      "key": "order_rate_out40_continue",
+      "reviewed": true,
+      "sectionSha256": "8c4d0dcefd04b5ccbfd758da8dafdaf00b8dc6124eded6c1110d43a25bbd9e6c",
+      "reviewNote": "The published examples include the rounded rank boundary. Ignore the first five seconds; uninterrupted sampled history remains inferred."
+    },
+    {
+      "key": "order_rate_out50_continue",
+      "reviewed": true,
+      "sectionSha256": "3ca269e37becc12ecb68e17b6a481d1819378d42334a6898c1619bb042a64678",
+      "reviewNote": "The published examples include the rounded rank boundary. Ignore the first five seconds; uninterrupted sampled history remains inferred."
+    },
+    {
+      "key": "order_rate_out70_continue",
+      "reviewed": true,
+      "sectionSha256": "b0e2cb45d404fd6a908493255ca75d0aa770728b2111804e40b2b7e981b66d5a",
+      "reviewNote": "The published examples include the rounded rank boundary. Ignore the first five seconds; uninterrupted sampled history remains inferred."
+    },
+    {
+      "key": "overtake_target_no_order_up_time",
+      "reviewed": true,
+      "sectionSha256": "f4039bcffcf5328e40597a8eb9450516ce3a1d13a8c951756f7080bcc09fac0c",
+      "reviewNote": "An overtaking candidate is ahead within 20 m and reachable within 15 s at current speeds; actual target selection is unrecorded."
+    },
+    {
+      "key": "overtake_target_time",
+      "reviewed": true,
+      "sectionSha256": "5456a9ec16c0fdb13c9b359b550714d25a25bcd238fe7ad644b1e8ef2445a589",
+      "reviewNote": "Time spent being an overtaking target of another runner, rather than time spent targeting someone."
+    },
+    {
+      "key": "phase",
+      "reviewed": true,
+      "sectionSha256": "087b52a5c91b4aa78eb504eaa185639d9f7092d77c347a17094b89c10ff93fc2"
+    },
+    {
+      "key": "phase_firsthalf_random",
+      "reviewed": true,
+      "sectionSha256": "b96f74edd551439730e75ea5002a52a416756d18efb4c0e345118ceb883b5861"
+    },
+    {
+      "key": "phase_laterhalf_random",
+      "reviewed": true,
+      "sectionSha256": "54203e960cd17ba7bd09ba36210d1df0e17a9394005789941218370b9ace245a"
+    },
+    {
+      "key": "phase_random",
+      "reviewed": true,
+      "sectionSha256": "3c3011eaee962253efb624c364f7ae15509b1120fe6512de527e947d6ee48988"
+    },
+    {
+      "key": "popularity",
+      "reviewed": true,
+      "sectionSha256": "c798bbe9474b967b717fc0e484088e59896d421b65c1b34f86e5ed6dd88ef09a"
+    },
+    {
+      "key": "post_number",
+      "reviewed": true,
+      "sectionSha256": "40b0257665f2e3c7349de0471d0a1fbde4c82c772b42eead76444e6346d31593"
+    },
+    {
+      "key": "random_lot",
+      "reviewed": true,
+      "sectionSha256": "1d372971ef19b9a5c16d5bf0750c26632b01258a250e8713bfc15b464e71a8b3"
+    },
+    {
+      "key": "remain_distance",
+      "reviewed": true,
+      "sectionSha256": "c1448e2210072f0c33b19fdf68aa75f73bfdbecec2e011d1a0076c8d7458ace3"
+    },
+    {
+      "key": "remain_distance_viewer_id",
+      "reviewed": true,
+      "sectionSha256": "449a779a26bdeb4be9e1a062c8453300a5f235ece739d5e603877e4fdc168ca9",
+      "reviewNote": "Use a player runner, excluding NPCs. Bounds in one conjunction must be satisfied by the same runner. Missing player/NPC classification remains unknown."
+    },
+    {
+      "key": "rotation",
+      "reviewed": true,
+      "sectionSha256": "e0d7ba564085a1123eea3e2656b4fcd113f31a538687eb18451d98ac31eb6bf8"
+    },
+    {
+      "key": "running_style",
+      "reviewed": true,
+      "sectionSha256": "0686d3c0318069df0d4f3ad969bc749ee8fcc502de66cf602efdda9413f4ffc0"
+    },
+    {
+      "key": "running_style_count_nige_otherself",
+      "reviewed": true,
+      "sectionSha256": "89a4e022ab6eafe13ca4fa7d1259775e4826d814ac6977de94bb827d34d546a3"
+    },
+    {
+      "key": "running_style_count_oikomi_otherself",
+      "reviewed": true,
+      "sectionSha256": "2a73d0efa2cf25abcb8340bb415410669d382523931dcb70a9bdfa291883e4a5"
+    },
+    {
+      "key": "running_style_count_same",
+      "reviewed": true,
+      "sectionSha256": "a4af44395a4f9a6e426cd3019942b5a81a0a4569fd7d933b97bf922530543b25"
+    },
+    {
+      "key": "running_style_count_same_rate",
+      "reviewed": true,
+      "sectionSha256": "d992cea91367f138294929926e35b0fb7ccbc4b34668d11e3253ed2cb6f2e73d"
+    },
+    {
+      "key": "running_style_count_sashi_otherself",
+      "reviewed": true,
+      "sectionSha256": "b340f838899928512ec355e4448cda478dbd2e8c60cae2428de0b3d88c342d1a"
+    },
+    {
+      "key": "running_style_count_senko_otherself",
+      "reviewed": true,
+      "sectionSha256": "0495e42cd05f00896a7a24b6ace948207fc753250ec654bfae45620c26d49be0"
+    },
+    {
+      "key": "running_style_equal_popularity_one",
+      "reviewed": true,
+      "sectionSha256": "5d11ab7f5c75f8dda8bc7cd091f0ad5b813d3b07e8c04a748809f8d54dc0a07b"
+    },
+    {
+      "key": "running_style_temptation_opponent_count_nige",
+      "reviewed": true,
+      "sectionSha256": "c09b7155f4e06519f7da9d9f2c04e0b6c07054881b845a791fecd5cf5cccebe5",
+      "reviewNote": "Count currently rushed opponents, with the requested position or strategy filter. Exclude known teammates; unknown team membership widens the possible count."
+    },
+    {
+      "key": "running_style_temptation_opponent_count_oikomi",
+      "reviewed": true,
+      "sectionSha256": "90b39102d43cd26b2bad562595fe95290fa41ae68104c835cf9a680ef782955a",
+      "reviewNote": "Count currently rushed opponents, with the requested position or strategy filter. Exclude known teammates; unknown team membership widens the possible count."
+    },
+    {
+      "key": "running_style_temptation_opponent_count_sashi",
+      "reviewed": true,
+      "sectionSha256": "5aaf66b8b74db74bb28037ae2f60b543b0061b2da90ae897f11735ac4a5ace5a",
+      "reviewNote": "Count currently rushed opponents, with the requested position or strategy filter. Exclude known teammates; unknown team membership widens the possible count."
+    },
+    {
+      "key": "running_style_temptation_opponent_count_senko",
+      "reviewed": true,
+      "sectionSha256": "a08c92f9eb7524d04112b2558be7caf65fa607c185f4a6e1f2eb5dc90c379f0c",
+      "reviewNote": "Count currently rushed opponents, with the requested position or strategy filter. Exclude known teammates; unknown team membership widens the possible count."
+    },
+    {
+      "key": "same_skill_horse_count",
+      "reviewed": true,
+      "sectionSha256": "9c99cc30259e36b0cbe8ca4d8eed85cdeee73f27cbc47f22d67414216c3afa30"
+    },
+    {
+      "key": "season",
+      "reviewed": true,
+      "sectionSha256": "d144da12a2f6aac5c5bab6ce88fa94a9270ed8fe7c975e9d108fb6220183546b",
+      "reviewNote": "Retain value 5 for cherry-blossom season; ordinary spring conditions may include both values 1 and 5."
+    },
+    {
+      "key": "slope",
+      "reviewed": true,
+      "sectionSha256": "b3ddada900a2dedde79566cf39cb968a7e1195ab1cb6a9f106c906e3b1fe3c11"
+    },
+    {
+      "key": "straight_front_type",
+      "reviewed": true,
+      "sectionSha256": "4dcc573d38a8b0ec40b1078b55935031308e26d09bda1ec895c5f559b6c1be37"
+    },
+    {
+      "key": "straight_random",
+      "reviewed": true,
+      "sectionSha256": "f7f68ef3be091b4b055a1d4ad4d64cbef8e49c6a0615f1d38056b5f45e611a09",
+      "reviewNote": "The straight segment is selected before its point, so segment selection is not weighted by length. Use course-defined straights, not every non-corner distance."
+    },
+    {
+      "key": "temptation_count",
+      "reviewed": true,
+      "sectionSha256": "342d5781989b204f1805867691ed506c8721053f5530f29a32c55780ac126adc"
+    },
+    {
+      "key": "temptation_opponent_count_behind",
+      "reviewed": true,
+      "sectionSha256": "f5593de83d16975739e979b172414707163c85ce23da6a0a37e5de7b9c51aabc",
+      "reviewNote": "Count currently rushed opponents, with the requested position or strategy filter. Exclude known teammates; unknown team membership widens the possible count."
+    },
+    {
+      "key": "temptation_opponent_count_infront",
+      "reviewed": true,
+      "sectionSha256": "16a9825a00dfc5bdb42ca242cc77635d3bc2af4e1e2e70ea9753c4bc92aadee6",
+      "reviewNote": "Count currently rushed opponents, with the requested position or strategy filter. Exclude known teammates; unknown team membership widens the possible count."
+    },
+    {
+      "key": "time",
+      "reviewed": true,
+      "sectionSha256": "1d7902ffd9204dced322f3675a33fc6ac1d8811874cd89ca0ee0a3ba4d5e777c"
+    },
+    {
+      "key": "track_id",
+      "reviewed": true,
+      "sectionSha256": "a6c6aa41759e8993b17c3fef4b74dd34f81fef2ba8dd891f4c7fba820df56648"
+    },
+    {
+      "key": "up_slope_random",
+      "reviewed": true,
+      "sectionSha256": "214846651d519f7e2ff25469985d544e5a48e76ad8db5172efd3afc818340f06"
+    },
+    {
+      "key": "weather",
+      "reviewed": true,
+      "sectionSha256": "dd57e26d4845e0dfc5f0fd6aadc56996a12eeafcebae3ee2f077a506b12ec789"
+    }
+  ]
+}

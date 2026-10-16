@@ -1,0 +1,4 @@
+# Reference update hashes describe exact bytes on Windows and on GitHub.
+public/data/* -text
+# Generated audits are compared byte-for-byte with CLI output.
+docs/*.json -text

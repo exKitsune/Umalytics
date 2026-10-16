@@ -1,0 +1,28 @@
+/* Shared text sizes. Graph labels keep their original sizing at every setting. */
+:root { --font-scale:1; --font-increase:2pt; font-size:var(--font-16); }
+.telemetry-svg { --font-scale:1; --font-increase:0px; font-size:16px; }
+:root, .telemetry-svg {
+  --font-8:calc((8px + var(--font-increase)) * var(--font-scale));
+  --font-9:calc((9px + var(--font-increase)) * var(--font-scale));
+  --font-10:calc((10px + var(--font-increase)) * var(--font-scale));
+  --font-11:calc((11px + var(--font-increase)) * var(--font-scale));
+  --font-12:calc((12px + var(--font-increase)) * var(--font-scale));
+  --font-13:calc((13px + var(--font-increase)) * var(--font-scale));
+  --font-14:calc((14px + var(--font-increase)) * var(--font-scale));
+  --font-15:calc((15px + var(--font-increase)) * var(--font-scale));
+  --font-16:calc((16px + var(--font-increase)) * var(--font-scale));
+  --font-17:calc((17px + var(--font-increase)) * var(--font-scale));
+  --font-18:calc((18px + var(--font-increase)) * var(--font-scale));
+  --font-19:calc((19px + var(--font-increase)) * var(--font-scale));
+  --font-20:calc((20px + var(--font-increase)) * var(--font-scale));
+  --font-21:calc((21px + var(--font-increase)) * var(--font-scale));
+  --font-22:calc((22px + var(--font-increase)) * var(--font-scale));
+  --font-23:calc((23px + var(--font-increase)) * var(--font-scale));
+  --font-24:calc((24px + var(--font-increase)) * var(--font-scale));
+  --font-25:calc((25px + var(--font-increase)) * var(--font-scale));
+  --font-26:calc((26px + var(--font-increase)) * var(--font-scale));
+  --font-31:calc((31px + var(--font-increase)) * var(--font-scale));
+  --font-34:calc((34px + var(--font-increase)) * var(--font-scale));
+  --font-38:calc((38px + var(--font-increase)) * var(--font-scale));
+  --font-43:calc((43px + var(--font-increase)) * var(--font-scale));
+}

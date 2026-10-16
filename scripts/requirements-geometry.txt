@@ -1,0 +1,2 @@
+apsw-sqlite3mc==3.54.0.0
+UnityPy==1.25.4

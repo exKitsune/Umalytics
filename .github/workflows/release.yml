@@ -1,0 +1,466 @@
+name: Windows desktop release
+
+# Keep this file: github.run_number is the monotonic desktop release number.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: umalytics-master-pipeline
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+jobs:
+  web:
+    name: Build shared web bundle
+    if: github.ref == 'refs/heads/master' && github.repository == 'exKitsune/Umalytics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.20.0'
+      - name: Restore npm downloads
+        id: npm-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: Linux-node22.20.0-npm-v1-${{ hashFiles('package-lock.json') }}
+      - name: Install web dependencies
+        id: node-deps
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Build once for Pages and desktop
+        run: |
+          npm run build
+          python3 scripts/audit-public-files.py --dist
+          cmp public/data/update-manifest.json dist/data/update-manifest.json
+      - name: Include only frontend license inputs needed by Windows
+        run: |
+          node --input-type=module <<'NODE'
+          import { cp, mkdir, readdir } from 'node:fs/promises';
+          import { join } from 'node:path';
+          const bundle = '.cache/web-build';
+          await mkdir(bundle, { recursive: true });
+          await cp('dist', join(bundle, 'dist'), { recursive: true });
+          for (const name of ['svelte', 'pako', '@msgpack/msgpack']) {
+            const source = join('node_modules', name);
+            const target = join(bundle, source);
+            await mkdir(target, { recursive: true });
+            const notices = (await readdir(source)).filter(file => /^(LICENSE|LICENCE|COPYING|NOTICE)/i.test(file));
+            if (!notices.length) throw new Error('Missing frontend license: ' + name);
+            for (const file of ['package.json', ...notices]) await cp(join(source, file), join(target, file));
+          }
+          NODE
+      - name: Share immutable commit web bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-${{ github.run_id }}
+          path: .cache/web-build/
+          retention-days: 1
+          overwrite: true
+          if-no-files-found: error
+      - name: Save npm downloads even after build failure
+        if: always() && steps.node-deps.outcome == 'success' && steps.npm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.npm
+          key: ${{ steps.npm-cache.outputs.cache-primary-key }}
+
+  validate:
+    name: Full platform-neutral validation
+    if: github.ref == 'refs/heads/master' && github.repository == 'exKitsune/Umalytics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.20.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - name: Restore npm downloads
+        id: npm-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: Linux-node22.20.0-npm-v1-${{ hashFiles('package-lock.json') }}
+      - name: Install test dependencies
+        id: node-deps
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Audit public inputs and reference manifest
+        run: |
+          python scripts/audit-public-files.py --staged
+          python tests/public-inventory-workflow.py
+          python desktop/generate_manifest.py --check
+          python tests/history-retirement-workflow.py
+      - name: Run every platform-neutral system workflow once
+        run: npm test
+      - name: Save npm downloads even after test failure
+        if: always() && steps.node-deps.outcome == 'success' && steps.npm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.npm
+          key: ${{ steps.npm-cache.outputs.cache-primary-key }}
+
+  windows:
+    name: Windows build and native validation
+    needs: web
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+      CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cache/desktop-target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      # All keys are frozen here, before release.py stamps package/Cargo versions.
+      - name: Restore Python environment
+        id: python-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/proxy-venv
+          key: Windows-2022-x64-python3.12.10-venv-v1-${{ hashFiles('desktop/requirements-build.txt') }}
+      - name: Restore pip downloads
+        id: pip-cache
+        if: steps.python-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/pip
+          key: Windows-2022-x64-python3.12.10-pip-v1-${{ hashFiles('desktop/requirements-build.txt') }}
+      - name: Restore Cargo sources
+        id: cargo-sources
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/cargo/registry
+            .cache/cargo/git
+          key: Windows-2022-x64-rust1.90.0-sources-v1-${{ hashFiles('src-tauri/Cargo.lock', 'tests/updater-helper/Cargo.lock') }}
+          restore-keys: |
+            Windows-2022-x64-rust1.90.0-sources-v1-
+      - name: Restore compiled Cargo dependencies
+        id: cargo-targets
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/desktop-target
+            .cache/updater-helper-target
+            !.cache/desktop-target/release/umatrace.exe
+            !.cache/desktop-target/release/umatrace.pdb
+            !.cache/desktop-target/release/deps/umatrace*
+            !.cache/updater-helper-target/debug/umalytics-updater-helper-workflow.exe
+            !.cache/updater-helper-target/debug/umalytics_updater_helper_workflow.pdb
+            !.cache/updater-helper-target/debug/deps/umalytics_updater_helper_workflow*
+            !.cache/updater-helper-target/debug/incremental
+          key: Windows-2022-x64-rust1.90.0-targets-v1-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'tests/updater-helper/Cargo.lock', 'tests/updater-helper/Cargo.toml') }}-${{ github.sha }}-${{ github.run_attempt }}
+          restore-keys: |
+            Windows-2022-x64-rust1.90.0-targets-v1-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'tests/updater-helper/Cargo.lock', 'tests/updater-helper/Cargo.toml') }}-
+      - name: Set up locked Rust build
+        id: rust
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed.' }
+          rustup override set 1.90.0
+          if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain selection failed.' }
+      - name: Reuse or install Python build dependencies
+        id: python-deps
+        run: |
+          if ('${{ steps.python-cache.outputs.cache-hit }}' -ne 'true') {
+            python -m venv .cache/proxy-venv
+            if ($LASTEXITCODE -ne 0) { throw 'Python environment creation failed.' }
+            .cache/proxy-venv/Scripts/python.exe -m pip install -r desktop/requirements-build.txt
+            if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed.' }
+          }
+          .cache/proxy-venv/Scripts/python.exe -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Cached Python environment is inconsistent.' }
+      - name: Get shared web bundle and frontend license inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: web-${{ github.run_id }}
+          path: .
+      - name: Test Windows source service and updater
+        run: |
+          .cache/proxy-venv/Scripts/python.exe tests/updater/test_release_flow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Updater integration tests failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/portable-storage-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Portable storage integration tests failed.' }
+      - name: Test frozen runtime restart after parent cleanup
+        run: |
+          .cache/proxy-venv/Scripts/python.exe tests/frozen-handoff-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen runtime restart test failed.' }
+      - name: Stamp and build single executable from shared frontend
+        id: desktop-build
+        run: |
+          .cache/proxy-venv/Scripts/python.exe scripts/release.py prepare --build-number ${{ github.run_number }} --commit ${{ github.sha }}
+          if ($LASTEXITCODE -ne 0) { throw 'Release version preparation failed.' }
+          ./scripts/build-desktop.ps1 -SkipFrontend
+          .cache/proxy-venv/Scripts/python.exe -c "from pathlib import Path; assert Path('public/data/update-manifest.json').read_bytes() == Path('dist/data/update-manifest.json').read_bytes(), 'Bundled reference manifest differs from signed source'"
+          if ($LASTEXITCODE -ne 0) { throw 'Shared reference data identity check failed.' }
+      - name: Test native update and rollback
+        run: |
+          $env:CARGO_TARGET_DIR = "$PWD/.cache/updater-helper-target"
+          cargo build --locked --manifest-path tests/updater-helper/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Native update test harness build failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/updater-helper-workflow.py --harness "$env:CARGO_TARGET_DIR/debug/umalytics-updater-helper-workflow.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native update and rollback tests failed.' }
+      - name: Ensure WebView2 for native startup tests
+        run: |
+          function Get-WebViewVersion {
+            $keys = @(
+              'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+              'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+              'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+            )
+            foreach ($key in $keys) {
+              $version = (Get-ItemProperty -LiteralPath $key -Name pv -ErrorAction SilentlyContinue).pv
+              if ($version -and $version -ne '0.0.0.0') { return $version }
+            }
+          }
+          $version = Get-WebViewVersion
+          if (-not $version) {
+            $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+            $signature = Get-AuthenticodeSignature -LiteralPath $installer
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+              throw 'WebView2 installer is not signed by Microsoft.'
+            }
+            $process = Start-Process -FilePath $installer -ArgumentList '/silent', '/install' -WindowStyle Hidden -PassThru
+            if (-not $process.WaitForExit(180000)) { throw 'WebView2 installation timed out.' }
+            if ($process.ExitCode -ne 0) { throw "WebView2 installation failed: $($process.ExitCode)" }
+            $version = Get-WebViewVersion
+            if (-not $version) { throw 'WebView2 was not registered after installation.' }
+          }
+          Write-Output "WebView2 runtime: $version"
+      - name: Smoke test packaged runtime and native executable in parallel
+        run: |
+          $python = Join-Path $PWD '.cache/proxy-venv/Scripts/python.exe'
+          $specs = @(
+            @{ Name = 'packaged'; Arguments = @('desktop/smoke_packaged.py', '.cache/desktop-service/UmaTraceService.exe', '--headless') },
+            @{ Name = 'native'; Arguments = @('desktop/smoke_native.py', '.cache/dist/Umalytics.exe', '--headless') }
+          )
+          $tests = foreach ($spec in $specs) {
+            $stdout = Join-Path $PWD ".cache/smoke-$($spec.Name).out.log"
+            $stderr = Join-Path $PWD ".cache/smoke-$($spec.Name).err.log"
+            $process = Start-Process -FilePath $python -ArgumentList $spec.Arguments -WorkingDirectory $PWD -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            @{ Name = $spec.Name; Process = $process; Stdout = $stdout; Stderr = $stderr }
+          }
+          $failed = @()
+          foreach ($test in $tests) {
+            if (-not $test.Process.WaitForExit(240000)) {
+              $failed += "$($test.Name): timeout"
+              # This exact process tree was started above for this isolated test.
+              if (-not $test.Process.HasExited) { & taskkill.exe /PID $test.Process.Id /T /F }
+              $null = $test.Process.WaitForExit(10000)
+            }
+            Get-Content -LiteralPath $test.Stdout -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $test.Stderr -ErrorAction SilentlyContinue
+            if ($test.Process.ExitCode -ne 0) { $failed += "$($test.Name): exit $($test.Process.ExitCode)" }
+          }
+          if ($failed.Count) { throw ($failed -join '; ') }
+      - name: Share only the tested unsigned executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ github.run_id }}
+          path: .cache/dist/Umalytics.exe
+          compression-level: 0
+          retention-days: 1
+          overwrite: true
+          if-no-files-found: error
+      - name: Save Python environment even after later test failure
+        if: always() && steps.python-deps.outcome == 'success' && steps.python-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/proxy-venv
+          key: ${{ steps.python-cache.outputs.cache-primary-key }}
+      - name: Save pip downloads even after later test failure
+        if: always() && steps.python-deps.outcome == 'success' && steps.pip-cache.outcome == 'success' && steps.pip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/pip
+          key: ${{ steps.pip-cache.outputs.cache-primary-key }}
+      - name: Save Cargo sources even after build or test failure
+        if: always() && steps.python-deps.outcome == 'success' && steps.rust.outcome == 'success' && steps.cargo-sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/cargo/registry
+            .cache/cargo/git
+          key: ${{ steps.cargo-sources.outputs.cache-primary-key }}
+      - name: Save compiled dependencies even after build or test failure
+        if: always() && steps.python-deps.outcome == 'success' && steps.rust.outcome == 'success' && steps.cargo-targets.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/desktop-target
+            .cache/updater-helper-target
+            !.cache/desktop-target/release/umatrace.exe
+            !.cache/desktop-target/release/umatrace.pdb
+            !.cache/desktop-target/release/deps/umatrace*
+            !.cache/updater-helper-target/debug/umalytics-updater-helper-workflow.exe
+            !.cache/updater-helper-target/debug/umalytics_updater_helper_workflow.pdb
+            !.cache/updater-helper-target/debug/deps/umalytics_updater_helper_workflow*
+            !.cache/updater-helper-target/debug/incremental
+          key: ${{ steps.cargo-targets.outputs.cache-primary-key }}
+
+  pages:
+    name: Deploy validated viewer
+    needs: [web, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check this is still the newest master commit
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          latest="$(gh api repos/exKitsune/Umalytics/commits/master --jq .sha)"
+          if [ "$latest" = "$RELEASE_COMMIT" ]; then echo 'current=true' >> "$GITHUB_OUTPUT"; else echo 'current=false' >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/download-artifact@v4
+        if: steps.latest.outputs.current == 'true'
+        with:
+          name: web-${{ github.run_id }}
+          path: .cache/web-build
+      - uses: actions/configure-pages@v5
+        if: steps.latest.outputs.current == 'true'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.latest.outputs.current == 'true'
+        with:
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/web-build/dist
+          retention-days: 1
+      - name: Deploy
+        id: deployment
+        if: steps.latest.outputs.current == 'true'
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+
+  publish:
+    name: Sign and publish tested desktop
+    needs: [validate, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check latest commit and immutable release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_VERSION: 0.2.${{ github.run_number }}
+        run: |
+          latest="$(gh api repos/exKitsune/Umalytics/commits/master --jq .sha)"
+          if [ "$latest" != "$RELEASE_COMMIT" ]; then echo 'current=false' >> "$GITHUB_OUTPUT"; exit 0; fi
+          tag="v$RELEASE_VERSION"
+          if published="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)" && [ "$published" = 'false' ]; then
+            tag_commit="$(gh api "repos/exKitsune/Umalytics/commits/$tag" --jq .sha)"
+            if [ "$tag_commit" != "$RELEASE_COMMIT" ]; then echo 'The published release tag belongs to another commit.' >&2; exit 1; fi
+            echo 'This commit and version are already published; keeping their assets unchanged.'
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.latest.outputs.current == 'true'
+        with:
+          python-version: '3.12.10'
+      - name: Restore signing dependency downloads
+        id: signing-cache
+        if: steps.latest.outputs.current == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/pip
+          key: Linux-python3.12.10-signing-cryptography48.0.1-v1
+      - name: Install only the signing dependency
+        id: signing-deps
+        if: steps.latest.outputs.current == 'true'
+        run: python -m pip install cryptography==48.0.1
+      - uses: actions/download-artifact@v4
+        if: steps.latest.outputs.current == 'true'
+        with:
+          name: desktop-${{ github.run_id }}
+          path: .cache/dist
+      - name: Stamp matching metadata and sign the tested executable
+        if: steps.latest.outputs.current == 'true'
+        env:
+          UMALYTICS_UPDATE_SIGNING_KEY: ${{ secrets.UMALYTICS_UPDATE_SIGNING_KEY }}
+        run: |
+          python scripts/release.py prepare --build-number ${{ github.run_number }} --commit ${{ github.sha }}
+          python scripts/release.py sign
+      - name: Publish only the newest passing master commit
+        if: steps.latest.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_VERSION: 0.2.${{ github.run_number }}
+        run: |
+          latest="$(gh api repos/exKitsune/Umalytics/commits/master --jq .sha)"
+          if [ "$latest" != "$RELEASE_COMMIT" ]; then
+            echo 'A newer master commit exists; this build will not be published.'
+            exit 0
+          fi
+          tag="v$RELEASE_VERSION"
+          if existing="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$existing" != 'true' ]; then
+              tag_commit="$(gh api "repos/exKitsune/Umalytics/commits/$tag" --jq .sha)"
+              if [ "$tag_commit" = "$RELEASE_COMMIT" ]; then echo 'This commit and version are already published; keeping their assets unchanged.'; exit 0; fi
+              echo 'The published release tag belongs to another commit.' >&2; exit 1
+            fi
+          else
+            gh release create "$tag" --draft --target "$RELEASE_COMMIT" --title "Umalytics $RELEASE_VERSION" --notes 'Windows x64 desktop app with bundled reference data. Download Umalytics.exe. The signed manifest is verified by the built-in updater.'
+          fi
+          gh release upload "$tag" .cache/dist/Umalytics.exe .cache/dist/release-manifest.json .cache/dist/release-manifest.sig --clobber
+          latest="$(gh api repos/exKitsune/Umalytics/commits/master --jq .sha)"
+          if [ "$latest" != "$RELEASE_COMMIT" ]; then
+            echo 'Master advanced while uploading; the release remains a draft.'
+            exit 0
+          fi
+          gh release edit "$tag" --draft=false --latest
+      - name: Save signing dependency downloads even after publication failure
+        if: always() && steps.signing-deps.outcome == 'success' && steps.signing-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/pip
+          key: ${{ steps.signing-cache.outputs.cache-primary-key }}
+
+  retire-legacy-history:
+    name: Retire legacy public history
+    needs: [pages, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove old references only after the new root release is ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/retire-legacy-history.py --commit "${{ github.sha }}" --run-id "${{ github.run_id }}" --apply

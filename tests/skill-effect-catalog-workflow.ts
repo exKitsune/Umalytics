@@ -1,0 +1,40 @@
+/** Whole catalog CLI → deterministic public audit → future-code withholding. */
+import assert from 'node:assert/strict';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {resolve,join} from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const run=promisify(execFile),root=resolve(import.meta.dirname,'..'),folder=resolve(process.argv[2]);await mkdir(folder,{recursive:true});
+const cli=join(root,'scripts/audit-skill-effectiveness.ts'),one=join(folder,'catalog.json'),two=join(folder,'repeat.json');
+const before=await readFile(join(root,'public/data/metadata.json'));
+for(const output of [one,two])await run(process.execPath,['--import','tsx',cli,output],{cwd:root,windowsHide:true,timeout:15000});
+assert.ok((await readFile(one)).equals(await readFile(two)),'Repeated audits must produce identical bytes.');
+assert.ok((await readFile(join(root,'public/data/metadata.json'))).equals(before),'Source metadata must stay unchanged.');
+assert.ok((await readFile(one)).equals(await readFile(join(root,'docs/skill-effectiveness-coverage.json'))),'Published coverage snapshot must match current registry/catalog.');
+const report=JSON.parse(await readFile(one,'utf8')),metadata=JSON.parse(before.toString('utf8'));
+assert.equal(report.totals.skills,734);assert.equal(report.totals.branches,788);assert.equal(report.totals.effectRecords,971);assert.equal(report.totals.effectTypes,22);
+assert.equal(report.totals.directMagnitudeEffectRecords,933);assert.equal(report.totals.nonDirectMagnitudeEffectRecords,38);
+assert.deepEqual(report.totals.branchClassification,{'local-effect-formula-candidate':559,'initial-context-only':155,'partial-or-unsupported':74});
+assert.equal(report.branches.length,report.totals.branches);assert.equal(report.branches.reduce((n:number,b:any)=>n+b.effects.length,0),971);
+assert.ok(report.effectTypes.every((e:any)=>e.calculation.metric&&e.calculation.requirements.length>0));
+for(const [code,name] of [[501,'Carnival legacy bonus'],[502,'Carnival status bonus'],[503,'Carnival motivation bonus']]){const calculation=report.effectTypes.find((e:any)=>e.code===code).calculation;assert.equal(calculation.formulaState,'partial');assert.equal(calculation.name,name);assert.equal(calculation.implementation,'unsupported-event-metadata');assert.equal(calculation.formulas.length,0);assert.ok(calculation.evidence.some((e:any)=>e.source.includes('IL2CPP metadata')&&e.locator.includes('declaration only')));}
+assert.equal(report.effectTypes.find((e:any)=>e.code===8).calculation.implementation,'vision-model');
+assert.equal(report.valueUsages.find((e:any)=>e.code===10).calculation.implementation,'implemented-captured-input');
+assert.equal(report.valueUsages.find((e:any)=>e.code===12).calculation.formulaState,'partial');
+assert.equal(report.valueUsages.find((e:any)=>e.code===12).calculation.implementation,'implemented-reference-tiers');assert.ok(report.valueUsages.find((e:any)=>e.code===12).calculation.evidence.some((e:any)=>e.source.includes('replay reference@8832b268')));
+assert.equal(report.valueUsages.find((e:any)=>e.code===13).calculation.implementation,'implemented-captured-input');assert.equal(report.valueUsages.find((e:any)=>e.code===14).calculation.implementation,'implemented-contextual-input');
+for(const code of [2,3])assert.equal(report.durationUsages.find((e:any)=>e.code===code).calculation.implementation,'implemented-conditional-fallback');assert.equal(report.durationUsages.find((e:any)=>e.code===4).calculation.implementation,'implemented-sampled-history');
+assert.deepEqual(Object.values(report.unknownCodes),[[],[],[],[],[]]);
+assert.equal(report.fallbackCoverage.fallbackSkills,1463);assert.equal(report.fallbackCoverage.effectiveSkills,2197);
+assert.deepEqual(report.fallbackCoverage.effectTypes.filter((row:any)=>!row.known).map((row:any)=>row.code),[32,38,41,42,48,49,50]);
+assert.ok(report.fallbackCoverage.valueUsages.some((row:any)=>!row.known&&row.code===40));
+for(const [id,skill] of Object.entries(metadata.skills) as [string,any][])for(const [index,branch] of skill.branches.entries()){const row=report.branches.find((b:any)=>b.skillId===Number(id)&&b.branchIndex===(branch.branchIndex??index));assert.ok(row);assert.equal(row.effects.length,branch.effects.length);for(const [i,effect] of branch.effects.entries())assert.equal(row.effects[i].rawValue,effect.rawValue);}
+const future=join(folder,'future');await mkdir(future);metadata.skills[899999]={name:'Synthetic unknown skill',rarity:1,branches:[{branchIndex:0,rawDuration:10000,durationUsage:99,effects:[{type:999,valueUsage:99,levelUsage:99,rawValue:1234,targetType:99,additionalActivateType:99}]}]};
+await writeFile(join(future,'metadata.json'),JSON.stringify(metadata));const unknown=join(folder,'unknown.json');await run(process.execPath,['--import','tsx',cli,unknown,'--reference-dir',future],{cwd:root,windowsHide:true,timeout:15000});
+const unknownReport=JSON.parse(await readFile(unknown,'utf8'));assert.deepEqual(unknownReport.unknownCodes,{effectTypes:[999],valueUsages:[99],durationUsages:[99],levelUsages:[99],additionalActivations:[99]});
+const effect=unknownReport.effectTypes.find((e:any)=>e.code===999);assert.equal(effect.calculation.formulaState,'unverified');assert.equal(effect.calculation.implementation,'unsupported');assert.ok(unknownReport.branches.find((b:any)=>b.skillId===899999).unresolvedInputs.includes('Unknown effect type retained explicitly.'));
+assert.equal((await readFile(one,'utf8')).includes(root),false);
+await assert.rejects(run(process.execPath,['--import','tsx',cli,join(future,'metadata.json'),'--reference-dir',future],{cwd:root,windowsHide:true,timeout:15000}));
+assert.equal(JSON.parse(await readFile(join(future,'metadata.json'),'utf8')).skills[899999].branches[0].effects[0].type,999);
+await assert.rejects(run(process.execPath,['--import','tsx',cli,one,'--reference-dir',future,'ignored'],{cwd:root,windowsHide:true,timeout:15000}));
+console.log(JSON.stringify({skills:734,branches:788,effectRecords:971,effectTypes:22,wholeCatalog:'passed',deterministic:'passed',unknownCodes:'withheld',sourceMetadata:'unchanged'}));

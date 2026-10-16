@@ -1,0 +1,19 @@
+import type { RaceCategory } from './data/types';
+export interface CollectionSettings { schemaVersion: number; collectionEnabled: boolean; categories: Record<RaceCategory, boolean>; startAtLogin?: boolean }
+export interface CertificateStatus { exists: boolean; trusted: boolean; sha256?: string; sha1?: string; subject?: string; expiresAt?: string }
+export interface Health { ok: boolean; app?: string; mode: string; csrfToken?: string; proxy?: {state:string;port:number;error?:string;running?:boolean;listening?:boolean;gameConnected?:boolean;activeGameConnections?:number;lastGameTrafficAt?:string|null}; certificate?: CertificateStatus; launchOption?:string; dataDirectory?:string }
+export const defaultSettings = (): CollectionSettings => ({schemaVersion:1,collectionEnabled:true,categories:{career:true,'team-trials':true,practice:true,'champions-meeting':true,other:true}});
+export async function api<T>(path: string, body?: unknown, csrfToken?: string): Promise<T> {
+  const response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', headers: body === undefined ? {} : {'Content-Type':'application/json','X-UmaTrace-CSRF':csrfToken ?? ''}, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(body === undefined ? 15000 : 120000) });
+  if (!response.ok) { const detail=await response.json().catch(()=>null); throw new Error(detail?.error??`Collector request failed (${response.status}).`); }
+  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Desktop collector is unavailable in this viewer.');
+  return response.json();
+}
+
+export interface SavedExport { filename: string; path: string; revealed: boolean }
+export interface Preferences { theme:'dark'|'light'; fontScale:number; courseAssignments:Record<string,number>; browserMigrationComplete:boolean }
+export interface ImportReceipt { id:string; sha256:string; filename:string; receivedAt:string }
+export async function saveDesktopExport(filename: string, content: string, csrfToken: string): Promise<SavedExport> {
+  return api<SavedExport>('exports', {filename, content}, csrfToken);
+}
+

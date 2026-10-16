@@ -1,0 +1,10 @@
+[package]
+name = "umalytics-runtime-handoff-check"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde_json = "1"
+
+[workspace]

@@ -1,0 +1,3 @@
+# The official standalone executable lacks msgpack in its embedded environment.
+# Install these into a private venv; do not change the system Python packages.
+mitmproxy==12.2.3

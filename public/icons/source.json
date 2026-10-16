@@ -1,0 +1,719 @@
+{
+  "repository": "https://github.com/kachi-dev/uma-tools",
+  "revision": "4401e25987d9c78707f2d3f8a9dcd02c1c56529c",
+  "encoding": "Unchanged PNG bytes in data URLs; no image transforms",
+  "records": [
+    {
+      "key": "mood-1",
+      "path": "icons/global/utx_ico_motivation_m_00.png",
+      "sha256": "12f5d93b001ce8bebb857d9527084a8f6bb876c908e935bf6b1c482f9d573070",
+      "bytes": 8357,
+      "width": 184,
+      "height": 68
+    },
+    {
+      "key": "mood-2",
+      "path": "icons/global/utx_ico_motivation_m_01.png",
+      "sha256": "fc9158a6d2e6883aae09274fae79828a23a2c5d31611a068c45afbd30fe2e3ff",
+      "bytes": 8082,
+      "width": 184,
+      "height": 68
+    },
+    {
+      "key": "mood-3",
+      "path": "icons/global/utx_ico_motivation_m_02.png",
+      "sha256": "483b11ca0c0fe4de67ead677392b291396ed8a2ca1887e7b6d88a5eec54a872b",
+      "bytes": 8624,
+      "width": 184,
+      "height": 68
+    },
+    {
+      "key": "mood-4",
+      "path": "icons/global/utx_ico_motivation_m_03.png",
+      "sha256": "3050de29ef435f1f32e8e9e7c817dc36d19ca48957106f767f2242c040ac5b32",
+      "bytes": 8801,
+      "width": 184,
+      "height": 68
+    },
+    {
+      "key": "mood-5",
+      "path": "icons/global/utx_ico_motivation_m_04.png",
+      "sha256": "96fa07fd08baf1cf4932cef5bf91bec4d7738047352ae1582072625d0f30eda6",
+      "bytes": 8278,
+      "width": 184,
+      "height": 68
+    },
+    {
+      "key": "rank-A",
+      "path": "icons/utx_ico_statusrank_06.png",
+      "sha256": "f7cd914d8f9caef02635f4fe974ee62cdf4711a2be8c13632857e6a287cb98ca",
+      "bytes": 2845,
+      "width": 48,
+      "height": 54
+    },
+    {
+      "key": "rank-B",
+      "path": "icons/utx_ico_statusrank_05.png",
+      "sha256": "4f513c55b8f747bc2d99c87321787a7b4808c1386482f82f18e47d7b3bff9a9a",
+      "bytes": 2479,
+      "width": 45,
+      "height": 54
+    },
+    {
+      "key": "rank-C",
+      "path": "icons/utx_ico_statusrank_04.png",
+      "sha256": "9478cac28dd91bc3f00db20e2608c1ba815f23edcea64d5b794eb844633d0cfb",
+      "bytes": 3451,
+      "width": 47,
+      "height": 54
+    },
+    {
+      "key": "rank-D",
+      "path": "icons/utx_ico_statusrank_03.png",
+      "sha256": "d341ecde68fb5f70b92b6e6f7b724c4b720ac98bf0d1468a985dc1be4b3db2b5",
+      "bytes": 2821,
+      "width": 48,
+      "height": 53
+    },
+    {
+      "key": "rank-E",
+      "path": "icons/utx_ico_statusrank_02.png",
+      "sha256": "c9a8e15c6129b564a34606615d55e802a2f55d1a1db0156bbd30e2ebeb104bbe",
+      "bytes": 1666,
+      "width": 43,
+      "height": 54
+    },
+    {
+      "key": "rank-F",
+      "path": "icons/utx_ico_statusrank_01.png",
+      "sha256": "2d8f03beb5576b740866f683a93630f2e2bdf2a9e4e1907d83d747fc6fea9f45",
+      "bytes": 1368,
+      "width": 41,
+      "height": 54
+    },
+    {
+      "key": "rank-G",
+      "path": "icons/utx_ico_statusrank_00.png",
+      "sha256": "6e4a97fc15e3146e11e254b7cf97289b787430aebf89d02ceea2d66884e0b9b4",
+      "bytes": 3287,
+      "width": 48,
+      "height": 54
+    },
+    {
+      "key": "rank-S",
+      "path": "icons/utx_ico_statusrank_07.png",
+      "sha256": "2f2ec7d4dc3a0ff7e0f48687c497423d404cd10a08ab435a891aa1fb3e8b23aa",
+      "bytes": 3491,
+      "width": 46,
+      "height": 54
+    },
+    {
+      "key": "season-1",
+      "path": "icons/global/utx_txt_season_00.png",
+      "sha256": "ae7169a6243c3fd717cb605aad80112fb470649fa7bb7c15d7197d7446309819",
+      "bytes": 1448,
+      "width": 48,
+      "height": 48
+    },
+    {
+      "key": "season-2",
+      "path": "icons/global/utx_txt_season_01.png",
+      "sha256": "6fbab87b177dc820e7daca522813520fe1496e0b478c75f4e7876d4b8851ad89",
+      "bytes": 1421,
+      "width": 48,
+      "height": 48
+    },
+    {
+      "key": "season-3",
+      "path": "icons/global/utx_txt_season_02.png",
+      "sha256": "a8031561d3346ce0ffaa160b2d6e61cd946f3051c9159951bfa95b2e2f35ac05",
+      "bytes": 1321,
+      "width": 48,
+      "height": 48
+    },
+    {
+      "key": "season-4",
+      "path": "icons/global/utx_txt_season_03.png",
+      "sha256": "e4e2d0db35a7c5edbbd58a637be141e2fd5d18cabe920a03f083ca0514e135cf",
+      "bytes": 1489,
+      "width": 48,
+      "height": 48
+    },
+    {
+      "key": "skill-10011",
+      "path": "icons/10011.png",
+      "sha256": "c93423d49a7036f1bf274ef3ae587085e8cd3bf6a4594fa7e0bd488c35a67023",
+      "bytes": 1158,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10012",
+      "path": "icons/10012.png",
+      "sha256": "9bc9088610933029649565744135ef17b566e6d628d1b71e6ac77a3828680dea",
+      "bytes": 1382,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10014",
+      "path": "icons/10014.png",
+      "sha256": "ed6d112179636cb850e12ac98390e4addeb520856cd5db5761238f3d1b98408f",
+      "bytes": 1118,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10021",
+      "path": "icons/10021.png",
+      "sha256": "abac0e4ca0285492c29e655736cbb973cfe2f90dd2b815a234bdb4cac3386157",
+      "bytes": 1141,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10022",
+      "path": "icons/10022.png",
+      "sha256": "b9d50a30af3efe096e658bb4ee6562d8a0b60e69f5f33ff0dd9a8983112da17e",
+      "bytes": 1229,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10024",
+      "path": "icons/10024.png",
+      "sha256": "72713f6c82b6cccb2c7a92858dc3f0acea0539a6b3504259e0af1000b69906d6",
+      "bytes": 1052,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10031",
+      "path": "icons/10031.png",
+      "sha256": "d3d8e5e7402f87d52e5d752d2ceb5bb1dd75162e3d68c7f3f612210bd2070dc0",
+      "bytes": 1156,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10032",
+      "path": "icons/10032.png",
+      "sha256": "091cd821384c43ff3bf7d664e1329e9307e278513c3c7c7213369f97ace65dd5",
+      "bytes": 1243,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10034",
+      "path": "icons/10034.png",
+      "sha256": "8ac64dfcf9d3b8a102900e7974354c80811b883993978a79c54331e87f121974",
+      "bytes": 1072,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10041",
+      "path": "icons/10041.png",
+      "sha256": "1e453a885a86a5994bc049325539cf971e4c8406609ccc3b9839744f0949ba79",
+      "bytes": 1369,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10044",
+      "path": "icons/10044.png",
+      "sha256": "efa69756362a89cd166d9c7f244d0ebe63abd096c62aa55d28bdf52c3b3365f7",
+      "bytes": 1293,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10051",
+      "path": "icons/10051.png",
+      "sha256": "9445c8a273ef05ace81b6b67c9b5c49fe93b8ebbb26203c25cbe2b9ae8a670f5",
+      "bytes": 1227,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10054",
+      "path": "icons/10054.png",
+      "sha256": "b1b631bf37c3c11ef69b5f32032f99b95f9bb509b3bcc4b17fb618129b68869f",
+      "bytes": 1091,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10061",
+      "path": "icons/10061.png",
+      "sha256": "fd52400d79f638e0156a3a944e80580cf9c502551714ec7aca2edaf4ba284da1",
+      "bytes": 1620,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-10062",
+      "path": "icons/10062.png",
+      "sha256": "31cba450d1bf0657fe6f065e572418606fd78203cc011dc5b4edd7b9d7be8ef2",
+      "bytes": 1822,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-1010011",
+      "path": "icons/1010011.png",
+      "sha256": "3f5a935056363e803969d11eed16a4a9b1bec34b7c2e7f65a34af6267b601336",
+      "bytes": 1305,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20011",
+      "path": "icons/20011.png",
+      "sha256": "dfea0c1fc95143257b1d2d0f2305cf8255bf58398dc549ca99999f37437ca056",
+      "bytes": 1724,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20012",
+      "path": "icons/20012.png",
+      "sha256": "1e53deedf3f1f2c619c2d0853dd508df429f60abf0ab52ceade557a09d10f4f3",
+      "bytes": 1446,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20013",
+      "path": "icons/20013.png",
+      "sha256": "3ff3868870bfe179a02cee46912b71fb1761702c36a6959276455d17abbc4e54",
+      "bytes": 2235,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20014",
+      "path": "icons/20014.png",
+      "sha256": "7b4de60d7e6efb49b77da480bc920bd41501c2040881f4800afb4141ef17ca12",
+      "bytes": 1351,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20015",
+      "path": "icons/20015.png",
+      "sha256": "c9e2706be5382db3a5e46f8dad9da03162fe474fa01032905783678e461645c2",
+      "bytes": 1264,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20021",
+      "path": "icons/20021.png",
+      "sha256": "2b24d0e187596aafd1db940dcc69db97b09018d882c8688effb9fedf60cb599c",
+      "bytes": 1405,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20022",
+      "path": "icons/20022.png",
+      "sha256": "84b82f689699920331549b07fe41b2fcc41fe9c223c72fc7fef3fef9b1ae10cc",
+      "bytes": 1548,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20023",
+      "path": "icons/20023.png",
+      "sha256": "795bb989747190e1b5d1592c9527a9373a6783c81bd4299957a48cc15c04b34e",
+      "bytes": 1802,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20024",
+      "path": "icons/20024.png",
+      "sha256": "b1db95fbaac282c7875432e01a7cd655628128ec8dec36c6d8f7a17546dcff75",
+      "bytes": 1182,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20041",
+      "path": "icons/20041.png",
+      "sha256": "4e584c8950cda88e58d80a8af2e4016f6f839d0008ee58e70bef55ff146412af",
+      "bytes": 1428,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20042",
+      "path": "icons/20042.png",
+      "sha256": "96635890a07109a80b0cae9ef808242b53561e73198f91166ff6cfc90c8818dc",
+      "bytes": 1329,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20043",
+      "path": "icons/20043.png",
+      "sha256": "eb798cdcff1eaeabcb049994197e518b945bf6a4b620e3c2764ba64c8f6f249f",
+      "bytes": 1975,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20044",
+      "path": "icons/20044.png",
+      "sha256": "bf757ed6248f088682b6b141d1974cf616ce774015042a0a47515a64c1b96aae",
+      "bytes": 1406,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20051",
+      "path": "icons/20051.png",
+      "sha256": "ce5dc920fe614ce3b6e3235e71b0a03a765dda00253a641cf1101c47587afeb6",
+      "bytes": 1096,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20052",
+      "path": "icons/20052.png",
+      "sha256": "a96dfdd9328bb590bac67aec766ec54dd8f31b90a7ad8e1084bb18f252527bdf",
+      "bytes": 1103,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20061",
+      "path": "icons/20061.png",
+      "sha256": "ef40bcbff3e5c38d6c09487cd03a9961bcaabb57227c8065251227c554d51e06",
+      "bytes": 1173,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20062",
+      "path": "icons/20062.png",
+      "sha256": "6786bfbe70edc30b90be993a89e85b3d559a3abe2e6faafc18e1d81717204115",
+      "bytes": 1051,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20064",
+      "path": "icons/20064.png",
+      "sha256": "c84b28e13f06ebb7d509c6d1721c29713a33d5afe5dfde4930142e9df013ee58",
+      "bytes": 1212,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20091",
+      "path": "icons/20091.png",
+      "sha256": "c63bc0c794f7f623dfb626999a9aa48c832310fa7b1f7e30ecb5c88f0fa7e8ad",
+      "bytes": 1346,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20092",
+      "path": "icons/20092.png",
+      "sha256": "1f95608446566ef08d9ee664666152b78d7e4542d875e3b3b2abab852e9ec4b2",
+      "bytes": 1387,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-2010010",
+      "path": "icons/2010010.png",
+      "sha256": "8000a270f28ca170bac30bf1e77d03f78c9c00d9058d5f59525cc7a81ca820d0",
+      "bytes": 1834,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20101",
+      "path": "icons/20101.png",
+      "sha256": "3c1d67aa5e646961cdcb9749b745fad133aedce824f02c0dd7638c039b75efb5",
+      "bytes": 1571,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20102",
+      "path": "icons/20102.png",
+      "sha256": "4316e33b0ba30e91af241341f5a3a8cb6c865b4c5c7a06caab2e4a64f39ec50f",
+      "bytes": 1566,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20111",
+      "path": "icons/20111.png",
+      "sha256": "0d2e8dbe6423411b6b2cee9ee7751d32c8e729803eb0f8357ca4f88da9b59a43",
+      "bytes": 1458,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20112",
+      "path": "icons/20112.png",
+      "sha256": "831f44347ff79b2d92d3d5ae5eb66564cca4e7972512f0a50c87421bc4de2f1b",
+      "bytes": 1575,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20121",
+      "path": "icons/20121.png",
+      "sha256": "746b667dbe3f4bbc3449e2e13e99b99b6c545f206c498a76d57340f572c22ea4",
+      "bytes": 1697,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20122",
+      "path": "icons/20122.png",
+      "sha256": "f6ca533b1a53b025ff169a063ec3828ab2ff5e448c6066c07f96d13c065239ca",
+      "bytes": 1614,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20131",
+      "path": "icons/20131.png",
+      "sha256": "68bdc6ced20d86ac2f57ae5ed132f959f2de5882ac6a3e7748536bfc2c97f8e2",
+      "bytes": 1348,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20132",
+      "path": "icons/20132.png",
+      "sha256": "9f58aad02ed66028e7d8ee5c5f9651bddeaebc9afdf5aa3cc2f17bbdb28d3cfa",
+      "bytes": 1255,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20141",
+      "path": "icons/20141.png",
+      "sha256": "eaab9dd96465925c7203833dda3187263b144436284e1b13c2f9579df66dfdbd",
+      "bytes": 1798,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20142",
+      "path": "icons/20142.png",
+      "sha256": "8b46bfa341145b8b39f9da3802f0fb4d3461fb54ed107ed8d7f19ec9224f3bf0",
+      "bytes": 1674,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20151",
+      "path": "icons/20151.png",
+      "sha256": "ceefacf549c40fcec0aeb711853763697a88ba20025ef17aa709d0ef9b15001a",
+      "bytes": 3625,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20152",
+      "path": "icons/20152.png",
+      "sha256": "7c81953e264e9ec84c015947bfb350fe9dcac29b07a7a0bdc634fc7ffffde128",
+      "bytes": 3740,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20161",
+      "path": "icons/20161.png",
+      "sha256": "26ccd81245f98f2c7295fc349cfc24ad80e41cf2306449e8ed47d2d97301496d",
+      "bytes": 3667,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20162",
+      "path": "icons/20162.png",
+      "sha256": "a73bf5cddbb4fdea5b77d808a082b92d010979807eeabb3b23d314231f0d300d",
+      "bytes": 3774,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20171",
+      "path": "icons/20171.png",
+      "sha256": "90c03e71ce428c7e1baf3e4cbd63ce35ac4a7ce80680c6b84690e5b406b76a5d",
+      "bytes": 3674,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-20181",
+      "path": "icons/20181.png",
+      "sha256": "28fc4c41896e04a85e11150a9fc6e34ba8a18b0505f0d9d5eab3736c6e79507b",
+      "bytes": 3389,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30011",
+      "path": "icons/30011.png",
+      "sha256": "bb28987c586b2598455742b0f39bb828e977659838ffa532e11edf2156a413a6",
+      "bytes": 1375,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30012",
+      "path": "icons/30012.png",
+      "sha256": "9815c7881edcdd586e02dbbf1abeda1722eb7f0baf0c44b58190d41f5ae756da",
+      "bytes": 1459,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30021",
+      "path": "icons/30021.png",
+      "sha256": "615c15030d9c17a85ad23934ca43f221033f2aa15bbbc54c671b0ceee0135907",
+      "bytes": 1492,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30022",
+      "path": "icons/30022.png",
+      "sha256": "ea6094533d61c3128777782b96a20f9b1fa3ba25ab1ba07928f7df7ab8b5d64d",
+      "bytes": 1689,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30041",
+      "path": "icons/30041.png",
+      "sha256": "479e3ba182a107ca7ed05a3b26c2c6ed0d30e5bf7fb48a5cc110ff1a91dc116b",
+      "bytes": 1366,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30051",
+      "path": "icons/30051.png",
+      "sha256": "3baad75246191e81f8e72b3ec0e858270eeb08b97e16c836ef174a3001b70a34",
+      "bytes": 1419,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30052",
+      "path": "icons/30052.png",
+      "sha256": "f4b4af33326688072bbd2ecda710ebab5649def6ff74e57a14647b84dbec2cb8",
+      "bytes": 1266,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30071",
+      "path": "icons/30071.png",
+      "sha256": "7d5aaccae3ca8f0b13a45ca185bf1438bc8a4813de0642812a0730183fea3943",
+      "bytes": 1101,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-30072",
+      "path": "icons/30072.png",
+      "sha256": "8145c8e45e5101d93215efd6f249bca2bdea9255ce472a5e7a0c7fa3879b2ec5",
+      "bytes": 1302,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "skill-40012",
+      "path": "icons/40012.png",
+      "sha256": "13d8fe3b848bfb5e4dc52720f2b875baf41c522485557afe01081c1865851170",
+      "bytes": 1587,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "stat-guts",
+      "path": "icons/status_03.png",
+      "sha256": "33096605f1c40c30e5599f45277b0e0675f68aee8d7fd622a2cd29896f1e5677",
+      "bytes": 1500,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "stat-power",
+      "path": "icons/status_02.png",
+      "sha256": "fde8e6ff1080c3eabb5b566db037a45878804ebe524a43c958165d7406f71bdb",
+      "bytes": 1336,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "stat-speed",
+      "path": "icons/status_00.png",
+      "sha256": "7a286f97f3c83dd17b4867f35e83b97bab5d8cc0278ae4cba0992b45cec2218f",
+      "bytes": 1530,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "stat-stamina",
+      "path": "icons/status_01.png",
+      "sha256": "d9d9f0f7d1b22c211214b653079db787744092d21ac06cc40f20503c0d2a9a3e",
+      "bytes": 1355,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "stat-wisdom",
+      "path": "icons/status_04.png",
+      "sha256": "07603252859851c325fc84683636d22b61bf5a1749f1564bc0b969cbace8442b",
+      "bytes": 1712,
+      "width": 64,
+      "height": 64
+    },
+    {
+      "key": "weather-1",
+      "path": "icons/utx_ico_weather_00.png",
+      "sha256": "2c481435134b18c2d10710350c2f255478dd192c4d8659d4102f1ec5df80f21f",
+      "bytes": 2590,
+      "width": 60,
+      "height": 60
+    },
+    {
+      "key": "weather-2",
+      "path": "icons/utx_ico_weather_01.png",
+      "sha256": "f8aabded748aa93965aca63fa26b889eca7a5d2b1b1dbd6150c3ec658172a767",
+      "bytes": 1582,
+      "width": 60,
+      "height": 48
+    },
+    {
+      "key": "weather-3",
+      "path": "icons/utx_ico_weather_02.png",
+      "sha256": "166b5cb0e40dfc54a4dd7b11a70f37aa2aa0202186f26538ca43d9d996381113",
+      "bytes": 2224,
+      "width": 55,
+      "height": 60
+    },
+    {
+      "key": "weather-4",
+      "path": "icons/utx_ico_weather_03.png",
+      "sha256": "e7fa0b300c8a49695d3322479acd71f9b6e73b7b23e96ee7b087c7111780004c",
+      "bytes": 2726,
+      "width": 60,
+      "height": 60
+    }
+  ]
+}

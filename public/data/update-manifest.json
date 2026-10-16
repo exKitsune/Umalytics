@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "metadata.json": {
+      "sha256": "86b99c0bea54940df337ccf2e2191c39c0a13a9c41fca0fcf56773700a6d7114",
+      "bytes": 1595542
+    },
+    "courses.json": {
+      "sha256": "4a4174bf07193db72a0345897aa41144e045b314dd1dbbf221081ad792834a20",
+      "bytes": 58414
+    },
+    "course-geometry.json": {
+      "sha256": "84bb28d2715c73526672ce6c7a919b192ad4974ce2be03704c4b4eba9fb30ea6",
+      "bytes": 3423741
+    },
+    "simulator-skill-ids.json": {
+      "sha256": "74b61abb64a585a67db88b97dc62286b2596386d72243d5a8120034f42b1ad90",
+      "bytes": 15365
+    },
+    "reference-source.json": {
+      "sha256": "8330ce7789e227a595ad7a3f9e864d190338dd21209c2021ceaba419bd04cfa7",
+      "bytes": 918
+    },
+    "NOTICE.txt": {
+      "sha256": "a5c1dbb58522e4722d8310dd9c84c0333a7e9258cc53cd6c4824c8ec9f1c7b4d",
+      "bytes": 1120
+    },
+    "UMA-TOOLS-LICENSE.txt": {
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "bytes": 35149
+    }
+  }
+}

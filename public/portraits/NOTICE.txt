@@ -1,0 +1,9 @@
+Character and outfit portraits
+
+Source: kachi-dev/uma-tools, revision 4401e25987d9c78707f2d3f8a9dcd02c1c56529c.
+https://github.com/kachi-dev/uma-tools/tree/4401e25987d9c78707f2d3f8a9dcd02c1c56529c/icons/chara
+The 130 character and 224 outfit PNGs are unchanged. Card-to-outfit mapping
+comes from that revision's icons.json. Source paths and hashes are recorded
+in the accompanying JSON files.
+Game artwork belongs to its original rights holders; the upstream software
+license does not grant ownership of that artwork. No user images are included.

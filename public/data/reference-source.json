@@ -1,0 +1,17 @@
+{
+  "name": "Moomoolator Global course snapshot",
+  "revision": "5ce95905fef753a33f7519b5559a86e92f5d56cc",
+  "url": "https://github.com/TheCing/uma-tools/tree/5ce95905fef753a33f7519b5559a86e92f5d56cc",
+  "license": "GPL-3.0-or-later",
+  "retrieved": "2026-10-14T04:58:47.045Z",
+  "hashes": {
+    "umalator-global/course_data.json": "4a4174bf07193db72a0345897aa41144e045b314dd1dbbf221081ad792834a20",
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "umalator-global/skill_data.json": "a2e4331ca2acb5c8524f40f62335b100996fe67fb927ae33fb1dc55f4a76f875"
+  },
+  "notes": [
+    "Game data © the UM:PD rights holders. No artwork, icons or simulator implementation included.",
+    "Course segment distances and grades are versioned reference data, not surveyed map coordinates.",
+    "The Global simulator snapshot may include courses and skills not yet released on your server."
+  ]
+}

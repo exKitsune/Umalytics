@@ -1,0 +1,4 @@
+mitmproxy==12.2.3
+pyinstaller==6.16.0
+Pillow==11.3.0
+cryptography==48.0.1

@@ -1,0 +1,8 @@
+UI icons
+
+Source: kachi-dev/uma-tools, revision 4401e25987d9c78707f2d3f8a9dcd02c1c56529c.
+https://github.com/kachi-dev/uma-tools/tree/4401e25987d9c78707f2d3f8a9dcd02c1c56529c/icons
+source.json records source paths, hashes and sizes. PNG bytes are unchanged.
+Simple stat symbols are credited to the upstream contributors. Strategy labels
+and chevrons are Umalytics UI. Game artwork belongs to its original rights holders;
+the upstream software license does not grant ownership of that artwork.
