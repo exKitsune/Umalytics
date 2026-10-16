@@ -1,4 +1,4 @@
-"""Portable installation paths and conservative, byte-preserving migrations."""
+"""Per-user app paths and conservative, byte-preserving migrations."""
 import hashlib
 import json
 import os
@@ -34,10 +34,14 @@ def atomic_json(path, data):
 
 
 def default_data_directory():
-    # The desktop shell passes this explicitly; standalone frozen services use
-    # their adjacent installation too. Development stays inside the checkout.
-    base = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[1] / '.cache' / 'portable'
-    return base / 'Umalytics-data'
+    # The native shell migrates legacy data before passing this explicitly.
+    # Development remains isolated from the installed application's storage.
+    if getattr(sys, 'frozen', False):
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+        if not base.is_absolute():
+            raise ValueError('Local AppData must be an absolute path.')
+        return base / 'Umalytics'
+    return Path(__file__).resolve().parents[1] / '.cache' / 'application-data'
 
 
 def prepare_storage(directory):

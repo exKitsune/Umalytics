@@ -6,14 +6,15 @@ A replay and telemetry viewer.
 
 ## First-time setup
 
-1. Download **Umalytics.exe** from the [latest release](https://github.com/exKitsune/Umalytics/releases/latest).
-2. Put it in its own folder, such as `Documents\Umalytics`, then open it. The app creates its files there.
-3. Open **Settings → Capture certificate → Install certificate**. Approve the Windows prompt once.
-4. Under **Steam setup**, click **Copy launch option**.
-5. In Steam, right-click the game → **Properties → General → Launch Options**. Paste the copied line.
-6. Launch the game from Steam. Look for **Game connected** in Umalytics, then play or open a replay. Captured races appear in the sidebar.
+1. Download **Umalytics.exe** from the [latest release](https://github.com/exKitsune/Umalytics/releases/latest), then open it.
+2. Open **Settings → Capture certificate → Install certificate**. Approve the Windows prompt once.
+3. Under **Steam setup**, click **Copy launch option**.
+4. In Steam, right-click the game → **Properties → General → Launch Options**. Paste the copied line.
+5. Launch the game from Steam. Look for **Game connected** in Umalytics, then play or open a replay. Captured races appear in the sidebar.
 
-Closing the window keeps collection running in the tray. Use **Exit** in the tray menu to stop it. Keep the app folder private: it holds your races and capture certificate key.
+App files are saved in `%LOCALAPPDATA%\Umalytics`. Keep that folder private: it holds your races and capture certificate key. Existing data beside the executable is moved there once and the old folder is removed after verification.
+
+Closing the window keeps collection running in the tray. Use **Exit** in the tray menu to stop it.
 
 The app checks for updates hourly. **Update and restart** installs the latest app and data after the game closes.
 

@@ -3,6 +3,7 @@
 use std::{fs, path::PathBuf, process::{Command, Stdio}};
 mod service_startup;
 mod updater;
+mod storage_paths;
 use service_startup::ServiceEndpoint;
 use sha2::{Digest, Sha256};
 use tauri::{menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -39,12 +40,40 @@ fn hidden(command: &mut Command) -> &mut Command {
 
 fn data_path() -> Result<PathBuf, String> {
     let executable = std::env::current_exe().map_err(|_| "Could not resolve desktop executable.")?;
-    let portable = executable.parent().ok_or("Could not resolve installation folder.")?.join("Umalytics-data");
-    if fs::create_dir_all(&portable).is_ok() {
-        let probe = portable.join(format!("write-probe-{}", std::process::id()));
-        if fs::write(&probe, []).is_ok() { let _ = fs::remove_file(probe); return Ok(portable); }
+    let legacy = executable.parent().ok_or("Could not resolve installation folder.")?.join("Umalytics-data");
+    let data = storage_paths::user_data()?;
+    let _migration = storage_paths::lock(&data)?;
+    if storage_paths::initialized(&data)? { return Ok(data); }
+    storage_paths::regular(&legacy)?;
+    // An older updater verifies the new collector at its original path. Let
+    // that transaction finish before restarting once more to migrate storage.
+    if legacy.join("cache/update/backup").exists() || legacy.join("cache/update/success.json").exists() {
+        return Ok(legacy);
     }
-    Err("Umalytics needs a writable folder. Move Umalytics.exe to a folder such as Documents\\Umalytics, then open it again.".into())
+    if legacy.exists() { ServiceEndpoint { port: 4317 }.stop_for_migration(&legacy)?; }
+    storage_paths::migrate_once(&legacy, &data)?;
+    Ok(data)
+}
+
+fn wait_for_parent(arguments: &mut Vec<String>) -> Result<(), String> {
+    if arguments.first().map(String::as_str) != Some("--restart-after") { return Ok(()); }
+    let pid: u32 = arguments.get(1).ok_or("Restart process is missing.")?.parse().map_err(|_| "Restart process is invalid.")?;
+    #[cfg(windows)] {
+        #[link(name="kernel32")] unsafe extern "system" {
+            fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+            fn WaitForSingleObject(handle: *mut std::ffi::c_void, milliseconds: u32) -> u32;
+            fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+        }
+        let handle = unsafe { OpenProcess(0x100000, 0, pid) };
+        if !handle.is_null() {
+            let result = unsafe { WaitForSingleObject(handle, 30000) };
+            unsafe { CloseHandle(handle); }
+            if result != 0 { return Err("The older window has not closed. Reopen Umalytics shortly.".into()); }
+        }
+    }
+    #[cfg(not(windows))] { let _ = pid; std::thread::sleep(std::time::Duration::from_secs(2)); }
+    arguments.drain(..2);
+    Ok(())
 }
 
 fn extract_service(path: &PathBuf) -> Result<(), String> {
@@ -151,7 +180,8 @@ fn open_browser(url: &str) {
 }
 
 fn main() {
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let mut arguments: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(error) = wait_for_parent(&mut arguments) { show_error(&error); std::process::exit(1); }
     if matches!(arguments.first().map(String::as_str), Some("--apply-update" | "--rollback-update")) {
         let result = arguments.get(1).ok_or_else(|| "Update transaction is missing.".to_string())
             .and_then(|path| if arguments[0] == "--apply-update" { updater::apply(std::path::Path::new(path)) } else { updater::rollback(std::path::Path::new(path)) });
@@ -159,6 +189,7 @@ fn main() {
         return;
     }
     let data = match data_path() { Ok(path) => path, Err(error) => { show_error(&error); std::process::exit(1); } };
+    let migration_pending = storage_paths::user_data().is_ok_and(|target| target != data);
     match updater::recover_pending(&data) {
         Ok(true) => return,
         Ok(false) => {},
@@ -231,6 +262,24 @@ fn main() {
                     ticks += 1;
                     if ticks % 14 == 0 && data.join("cache/update/success.json").is_file() {
                         let _ = updater::cleanup(&data);
+                    }
+                    if migration_pending && !data.join("cache/update/backup").exists()
+                        && !data.join("cache/update/transaction.json").exists()
+                        && !data.join("cache/update/success.json").exists() {
+                        if let Some(status) = health() {
+                            if ServiceEndpoint::matches_instance(&status, &path, &data) {
+                                let stopped = request("POST", "/api/app/exit", Some("{\"onlyIfIdle\":true}"), status["csrfToken"].as_str());
+                                if stopped.is_some_and(|value| value["ok"] == true) {
+                                    if let Ok(exe) = std::env::current_exe() {
+                                        let mut restart = Command::new(exe);
+                                        restart.arg("--restart-after").arg(std::process::id().to_string());
+                                        if background { restart.arg("--background"); }
+                                        if hidden(&mut restart).spawn().is_err() { show_error("Reopen Umalytics to finish moving your data to AppData."); }
+                                    }
+                                    handle.exit(0); break;
+                                }
+                            }
+                        }
                     }
                     match health() {
                         Some(status) => {

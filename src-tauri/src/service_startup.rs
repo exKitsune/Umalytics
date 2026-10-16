@@ -54,6 +54,27 @@ impl ServiceEndpoint {
             && (proxy["running"].as_bool() == Some(false) || proxy["listening"].as_bool() == Some(true))
     }
 
+    pub fn stop_for_migration(&self, data: &Path) -> Result<(), String> {
+        if let Some(status) = self.health() {
+            if !Self::matching_data(&status, data) {
+                return Err("Close the other Umalytics app before moving this data.".into());
+            }
+            if !Self::idle(&status) { return Err("Close the game, then reopen Umalytics to move its data.".into()); }
+            let stopped = self.request("POST", "/api/app/exit", Some("{\"onlyIfIdle\":true}"), status["csrfToken"].as_str());
+            if stopped.is_none_or(|value| value["ok"] != true) { return Err("The collector could not stop safely. Your data is unchanged.".into()); }
+            for _ in 0..100 {
+                if !self.listening() {
+                    // Give the old tray and browser profile time to close too.
+                    thread::sleep(Duration::from_secs(2)); return Ok(());
+                }
+                thread::sleep(Duration::from_millis(200));
+            }
+            return Err("The old collector is still closing. Reopen Umalytics shortly.".into());
+        }
+        if self.listening() { return Err("The collector port is busy. Close the other app before migration.".into()); }
+        Ok(())
+    }
+
     /// Reuse only this installation's exact runtime. Legacy health responses
     /// without runtime identity can hand off after ownership and idle checks.
     /// The supplied launcher starts a real runtime; it is never called on a

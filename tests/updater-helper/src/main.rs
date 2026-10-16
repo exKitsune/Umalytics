@@ -1,9 +1,15 @@
 use std::{path::Path, process::{Command, Stdio}};
 #[path="../../../src-tauri/src/service_startup.rs"]mod service_startup;
 #[path="../../../src-tauri/src/updater.rs"]mod updater;
+#[path="../../../src-tauri/src/storage_paths.rs"]mod storage_paths;
 #[cfg(windows)]use std::os::windows::process::CommandExt;
 fn main(){
     let arguments:Vec<String>=std::env::args().skip(1).collect();
+    if arguments.first().is_some_and(|arg|arg=="--migrate-storage") {
+        let result = (|| { let target=storage_paths::user_data()?; let _lock=storage_paths::lock(&target)?;
+            storage_paths::migrate_once(Path::new(&arguments[1]),&target)?; Ok::<_,String>(target) })();
+        println!("{}",serde_json::json!({"ok":result.is_ok(),"path":result.as_ref().ok(),"error":result.err()}));return;
+    }
     if arguments.first().is_some_and(|arg|arg=="--apply-update"||arg=="--rollback-update"){
         let key:Vec<u8>=(0..32).map(|i|u8::from_str_radix(&arguments[2][i*2..i*2+2],16).unwrap()).collect();
         let key=key.try_into().unwrap();let port=arguments[3].parse().unwrap();

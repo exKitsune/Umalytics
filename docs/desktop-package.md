@@ -9,10 +9,20 @@ unsigned, so Windows may show a reputation prompt on a new download.
 The frontend is bundled once, inside the embedded service. Tauri opens the
 service's loopback URL; it does not carry a second unused copy of the website.
 
-Copy the executable to its intended installation folder before first use. It
-creates a sibling `Umalytics-data/` directory if that folder is writable. Use a writable folder, such as `Documents/Umalytics`. A protected installation
-folder is rejected so updates and user data always remain beside the executable.
-The app's settings panel reports the actual directory.
+Keep the executable in a writable folder so it can update itself. App files live
+in `%LOCALAPPDATA%\Umalytics`, regardless of the executable's location. Settings
+shows the actual data path. An adjacent `Umalytics-data` folder is copied there
+on first launch. All file hashes are verified before originals are removed;
+conflicting files stop migration without replacing either copy. Settings, races,
+certificates, exports and the browser profile are preserved. A running older
+collector must be idle before it can stop for migration.
+
+This is temporary transition code. `storage-layout.json` records completion
+on migrated and fresh installs. Later launches ignore adjacent data folders.
+The migration entry point can be removed without changing normal AppData storage.
+
+When upgrading from the old layout, the old updater first finishes verification
+at its original path. The new app then restarts once to migrate to AppData.
 
 The directory contains:
 
@@ -145,7 +155,7 @@ unchanged settings, and saving/revealing a JSON export in Explorer.
 `--no-proxy` skips the collector and launcher checks.
 These tests do not install a certificate, change startup settings, or launch Uma.
 
-The native smoke copies the distributable to an isolated portable installation,
+The native smoke copies the distributable to an isolated installation and AppData,
 verifies its extracted service hash and bundled frontend, forwards a harmless
 launcher fixture through the native EXE, checks compact race metadata and
 Explorer selection, and verifies that its resident tray exits with the owned service. `--headless`

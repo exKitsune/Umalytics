@@ -75,9 +75,12 @@ Cargo package and lock, Tauri configuration, and bundled `desktop/build-info.jso
 The local source default is `0.2.0`. Stamping happens only in the runner checkout.
 `scripts/build-desktop.ps1` writes the single distributable to
 `.cache/dist/Umalytics.exe`; this build directory contains no installation data.
-Copy the EXE into a writable portable installation folder. Its only installation
-data directory is the adjacent `Umalytics-data/`; a protected folder produces a
-clear error so the user can move the installation to a writable location.
+Copy the EXE into a writable installation folder. App files use
+`%LOCALAPPDATA%\Umalytics`; an adjacent legacy `Umalytics-data` directory is
+migrated after a verified copy. Updates and rollback accept only that per-user
+directory or the legacy path during migration. The EXE can be on another drive:
+an atomic replacement uses a temporary swap file beside it and keeps recovery
+files in AppData. The temporary file is removed after the swap.
 
 The workflow uploads three assets to a draft release: `Umalytics.exe`,
 `release-manifest.json` and `release-manifest.sig`. It checks that its commit is
@@ -139,7 +142,7 @@ preparing a restart. Active game connections and launcher activity defer the
 restart. The app downloads the executable and its bundled reference data as one
 version; there is no separate reference-data update action.
 
-Only the installation's `cache/update/` folder holds staging files. The current
+The AppData `cache/update/` folder holds downloads and recovery files. The current
 EXE is copied there as `helper.exe`, with a transaction containing the exact
 installation paths, expected current EXE hash and a one-use random restart token.
 The helper independently checks the signature, executable and paths, then calls

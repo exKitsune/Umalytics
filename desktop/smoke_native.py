@@ -104,15 +104,18 @@ assert all(port_available(port) for port in (4317, 4327)), 'Existing app/proxy o
 with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as folder:
     install = Path(folder)
     executable = install / 'Umalytics.exe'
-    data = install / 'Umalytics-data'
+    legacy = install / 'Umalytics-data'
+    local = install / 'local-appdata'
+    environment = dict(os.environ, LOCALAPPDATA=str(local))
+    data = local / 'Umalytics'
     shutil.copy2(args.executable.resolve(), executable)
-    (data / 'webview').mkdir(parents=True)
-    (data / 'webview/legacy-profile-marker.txt').write_text('legacy browser profile preserved', encoding='utf-8')
+    (legacy / 'webview').mkdir(parents=True)
+    (legacy / 'webview/legacy-profile-marker.txt').write_text('legacy browser profile preserved', encoding='utf-8')
     export_path = None
     started = False
     resident = None
     try:
-        resident = subprocess.Popen([str(executable), '--background'], creationflags=no_window)
+        resident = subprocess.Popen([str(executable), '--background'], creationflags=no_window, env=environment)
         started = True
         for _ in range(240):
             assert resident.poll() is None, 'Background launch exited without a resident tray.'
@@ -124,6 +127,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         else:
             raise AssertionError('Native background tray did not start its collector.')
         assert health['staticReady'] and not health['certificate']['trusted']
+        assert not legacy.exists(), 'The old adjacent data directory was not removed.'
         assert str(executable) in health['launchOption']
         for _ in range(120):
             health = own_health(data)
@@ -171,7 +175,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         output = install / 'child-argv.json'
         forwarded = [str(output), '', 'two words', 'quote"inside', 'C:\\ends with slash\\', '日本語', '%command%', '$literal`value', '--check']
         result = subprocess.run([str(executable), '--launch-game', '--', str(fixture), *forwarded],
-                                creationflags=no_window, timeout=30)
+                                creationflags=no_window, timeout=30, env=environment)
         assert result.returncode == 37
         record = json.loads(output.read_text(encoding='utf-8'))
         assert record['args'] == forwarded, 'Launcher arguments changed: ' + repr(record['args'])
@@ -188,10 +192,14 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
             explorer_selection(export_path)
             explorer_selection(export_path, close=True)
         before = {p:p.stat().st_mtime_ns for p in data.rglob('*') if p.is_file() and 'cache' not in p.relative_to(data).parts}
-        subprocess.run([str(executable), '--background'], creationflags=no_window, timeout=60, check=True)
+        legacy.mkdir()
+        (legacy / 'ignore-after-migration.txt').write_text('stale folder must stay untouched')
+        subprocess.run([str(executable), '--background'], creationflags=no_window, timeout=60, check=True, env=environment)
         assert own_health(data)['proxy']['listening']
         assert resident.poll() is None, 'A second background launch closed the resident tray.'
         assert all(p.stat().st_mtime_ns == modified for p, modified in before.items())
+        assert (legacy / 'ignore-after-migration.txt').is_file()
+        assert not (data / 'ignore-after-migration.txt').exists()
         assert not (data / 'collector-status.json').exists()
         assert post('/api/app/exit', {}, own_health(data))['ok']
         started = False
@@ -203,7 +211,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
             raise AssertionError('Native service/proxy did not release their ports.')
         wait_for_owned_runtime(data)
         assert resident.wait(timeout=15) == 0, 'Native tray stayed alive after the collector was stopped.'
-        print(json.dumps({'nativeExecutable':'passed', 'portableInstallation':'passed',
+        print(json.dumps({'nativeExecutable':'passed', 'appDataInstallation':'passed', 'adjacentDataMigration':'passed',
                           'embeddedRuntimeHash':'passed', 'nativeLauncherFixture':'passed',
                           'desktopExportExplorerSelection':'skipped (headless)' if args.headless else 'passed', 'courseSummary':'passed',
                           'residentTrayLifetime':'passed', 'singleInstanceBackground':'passed',

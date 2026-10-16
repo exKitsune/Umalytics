@@ -215,6 +215,8 @@ jobs:
           $env:CARGO_TARGET_DIR = "$PWD/.cache/updater-helper-target"
           cargo build --locked --manifest-path tests/updater-helper/Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw 'Native update test harness build failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/appdata-migration-workflow.py --harness "$env:CARGO_TARGET_DIR/debug/umalytics-updater-helper-workflow.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'AppData migration tests failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/updater-helper-workflow.py --harness "$env:CARGO_TARGET_DIR/debug/umalytics-updater-helper-workflow.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Native update and rollback tests failed.' }
       - name: Ensure WebView2 for native startup tests

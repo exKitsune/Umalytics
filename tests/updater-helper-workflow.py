@@ -58,7 +58,7 @@ def wait_health(port, version=None):
 def owned_service(payload, install, port):
     payload = json.loads(payload)
     install = Path(install)
-    data = install / 'Umalytics-data'
+    data = Path(os.environ.get('UMALYTICS_WORKFLOW_DATA', install / 'Umalytics-data'))
     reference = ('synthetic-reference:' + payload['version']).encode()
     runtime = ('synthetic-collector:' + payload['version']).encode()
     (data / 'data').mkdir(parents=True, exist_ok=True)
@@ -132,7 +132,7 @@ def owned_service(payload, install, port):
     server.server_close()
 
 
-def main(harness):
+def main(harness, cross_drive_root=None):
     private = Ed25519PrivateKey.generate()
     public = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
     original = harness.read_bytes()
@@ -141,13 +141,15 @@ def main(harness):
         root = Path(temporary).resolve()
         assert root.parent == Path(tempfile.gettempdir()).resolve()
 
-        def scenario(name, payload=None, alter=None, expected=True, recovery=False):
+        def scenario(name, payload=None, alter=None, expected=True, recovery=False, appdata=False, install_root=None):
             nonlocal cases
             print('Updater workflow: ' + name, file=sys.stderr, flush=True)
-            install = root / name
-            update = install / 'Umalytics-data/cache/update'
+            install = (install_root or root) / name
+            local = root / (name + '-local')
+            data = local / 'Umalytics' if appdata else install / 'Umalytics-data'
+            install.mkdir(parents=True, exist_ok=True)
+            update = data / 'cache/update'
             update.mkdir(parents=True)
-            data = install / 'Umalytics-data'
             protected = {'races/one.json': b'synthetic saved race', 'settings.json': b'important preferences',
                          'capture/mitmproxy-ca.pem': b'synthetic private certificate bytes',
                          'cache/webview/profile.txt': b'existing browser data',
@@ -162,6 +164,7 @@ def main(harness):
                 probe.bind(('127.0.0.1', 0))
                 port = probe.getsockname()[1]
             env = {**os.environ, 'UMALYTICS_WORKFLOW_PYTHON': sys.executable,
+                   'LOCALAPPDATA': str(local), 'UMALYTICS_WORKFLOW_DATA': str(data),
                    'UMALYTICS_WORKFLOW_SCRIPT': str(Path(__file__).resolve()),
                    'UMALYTICS_WORKFLOW_INSTALL': str(install), 'UMALYTICS_WORKFLOW_PORT': str(port),
                    # Simulate the inherited bootloader state of the old frozen
@@ -196,7 +199,7 @@ def main(harness):
                 initial_payload['refuseStop'] = True
             initial = subprocess.Popen([sys.executable, __file__, '--owned-service', json.dumps(initial_payload),
                                         str(install), str(port)], creationflags=FLAGS,
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
             helper_process = None
             outputs = []
             try:
@@ -296,6 +299,14 @@ def main(harness):
 
         scenario('bad-exe-rollback', alter=bad_executable, expected=False)
         scenario('interrupted-helper-recovery', {'staticDelay': 20}, recovery=True)
+        scenario('appdata-success', appdata=True)
+        scenario('appdata-rollback', {'badData': True}, expected=False, appdata=True)
+        scenario('appdata-recovery', {'staticDelay': 20}, recovery=True, appdata=True)
+        if cross_drive_root:
+            with tempfile.TemporaryDirectory(prefix='umalytics-update-test-', dir=cross_drive_root) as other:
+                assert Path(other).drive.lower() != root.drive.lower(), 'Cross-drive fixture needs a different drive.'
+                scenario('cross-drive-success', appdata=True, install_root=Path(other))
+                scenario('cross-drive-rollback', {'badData': True}, expected=False, appdata=True, install_root=Path(other))
     print(json.dumps({'cases': cases, 'signedReplacement': 'passed', 'rollback': 'passed',
                       'crashRecovery': 'passed', 'unknownFiles': 'unchanged', 'userData': 'unchanged',
                       'restartAbort': 'passed', 'temporaryCleanup': 'passed',
@@ -308,5 +319,6 @@ if __name__ == '__main__':
     else:
         parser = argparse.ArgumentParser()
         parser.add_argument('--harness', type=Path, required=True)
+        parser.add_argument('--cross-drive-root', type=Path)
         args = parser.parse_args()
-        main(args.harness.resolve())
+        main(args.harness.resolve(), args.cross_drive_root)

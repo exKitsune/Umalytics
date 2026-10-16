@@ -67,7 +67,8 @@ impl Plan{
         let install=PathBuf::from(field(&value,"installationDir")?);regular_path(&install)?;
         if !install.is_dir(){return bad("Portable installation is unavailable.");}
         let exe=expected_path(&value,"executablePath",&install.join("Umalytics.exe"))?;
-        let data=expected_path(&value,"dataDirectory",&install.join("Umalytics-data"))?;
+        let data=PathBuf::from(field(&value,"dataDirectory")?);regular_path(&data)?;
+        if !crate::storage_paths::approved_data(&data,&install){return bad("Update data is outside this user's approved app folder.");}
         let folder=data.join("cache/update");regular_path(&folder)?;
         if !path_equal(transaction,&folder.join("transaction.json")){return bad("Update transaction is outside its staging directory.");}
         let own=std::env::current_exe().map_err(|_|"Could not locate the update helper.")?;
@@ -138,11 +139,27 @@ fn replace_executable(target:&Path,replacement:&Path,backup:&Path)->Result<(),St
     #[cfg(windows)]{
         use std::os::windows::ffi::OsStrExt;
         #[link(name="kernel32")]unsafe extern "system"{fn ReplaceFileW(target:*const u16,replacement:*const u16,backup:*const u16,flags:u32,exclude:*mut std::ffi::c_void,reserved:*mut std::ffi::c_void)->i32;}
+        // AppData and the downloaded EXE can be on different drives. Windows
+        // requires the replacement on the target volume; only this temporary
+        // swap file lives beside the EXE. Recovery stays in AppData.
+        let stamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_|"System clock is unavailable.")?.as_nanos();
+        let local=target.with_file_name(format!(".Umalytics-swap-{}-{stamp}.partial",std::process::id()));
+        let mut output=fs::OpenOptions::new().write(true).create_new(true).open(&local).map_err(|_|"The app's folder must be writable to install updates.")?;
+        let copy_result=(||{
+            let mut source=fs::File::open(replacement).map_err(|_|"Could not read the replacement executable.")?;
+            std::io::copy(&mut source,&mut output).map_err(|_|"Could not prepare the executable replacement.")?;
+            output.sync_all().map_err(|_|"Could not finish writing the executable replacement.")?;drop(output);
+            if digest(&local)?!=digest(replacement)?{return bad("The executable copy failed verification.");}
+            let mut old=fs::File::open(target).map_err(|_|"Could not read the previous executable.")?;
+            let mut saved=fs::OpenOptions::new().write(true).create_new(true).open(backup).map_err(|_|"Could not create the rollback executable.")?;
+            if std::io::copy(&mut old,&mut saved).and_then(|_|saved.sync_all()).is_err(){drop(saved);let _=fs::remove_file(backup);return bad("Could not finish the rollback copy.");}
+            drop(saved);if digest(backup)?!=digest(target)?{let _=fs::remove_file(backup);return bad("The rollback copy failed verification.");}Ok(())
+        })();
+        if let Err(error)=copy_result{let _=fs::remove_file(&local);return Err(error);}
         let target:Vec<u16>=target.as_os_str().encode_wide().chain(Some(0)).collect();
-        let replacement:Vec<u16>=replacement.as_os_str().encode_wide().chain(Some(0)).collect();
-        let backup:Vec<u16>=backup.as_os_str().encode_wide().chain(Some(0)).collect();
+        let local_wide:Vec<u16>=local.as_os_str().encode_wide().chain(Some(0)).collect();
         let deadline=Instant::now()+Duration::from_secs(20);
-        loop{if unsafe{ReplaceFileW(target.as_ptr(),replacement.as_ptr(),backup.as_ptr(),2,std::ptr::null_mut(),std::ptr::null_mut())}!=0{return Ok(());}if Instant::now()>=deadline{return bad("Windows could not atomically replace the application. Its previous executable is preserved.");}thread::sleep(Duration::from_millis(200));}
+        loop{if unsafe{ReplaceFileW(target.as_ptr(),local_wide.as_ptr(),std::ptr::null(),2,std::ptr::null_mut(),std::ptr::null_mut())}!=0{let _=fs::remove_file(replacement);return Ok(());}if Instant::now()>=deadline{let _=fs::remove_file(local);return bad("Windows could not atomically replace the application. Its previous executable is preserved.");}thread::sleep(Duration::from_millis(200));}
     }
     #[cfg(not(windows))]{move_retry(target,backup)?;if let Err(error)=move_retry(replacement,target){let _=move_retry(backup,target);return Err(error);}Ok(())}
 }
@@ -292,7 +309,7 @@ pub(crate) fn apply_verified(transaction:&Path,key:&[u8;32],port:u16)->Result<()
 pub fn recover_pending(data:&Path)->Result<bool,String>{
     let own=std::env::current_exe().map_err(|_|"Could not locate the app for update recovery.")?;
     let install=own.parent().ok_or("Portable installation is unavailable.")?;
-    if !path_equal(data,&install.join("Umalytics-data")){return Ok(false);}
+    if !crate::storage_paths::approved_data(data,install){return Ok(false);}
     let folder=data.join("cache/update");let backup=folder.join("backup");
     if !backup.exists(){return Ok(false);}regular_path(&folder)?;safe_tree(&backup)?;
     let transaction=folder.join("transaction.json");regular_path(&transaction)?;
@@ -330,7 +347,7 @@ pub(crate) fn rollback_verified(transaction:&Path,key:&[u8;32],port:u16)->Result
 pub fn cleanup(data:&Path)->Result<(),String>{
     let own=std::env::current_exe().map_err(|_|"Could not locate the application for update cleanup.")?;
     let install=own.parent().ok_or("Could not resolve portable installation.")?;
-    if !path_equal(data,&install.join("Umalytics-data")){return Ok(());}
+    if !crate::storage_paths::approved_data(data,install){return Ok(());}
     let folder=data.join("cache/update");if !folder.exists(){return Ok(());}regular_path(&folder)?;
     let _lock=match update_lock(&folder){Ok(lock)=>lock,Err(_)=>return Ok(())};
     let marker=folder.join("success.json");if !marker.exists(){return Ok(());}regular_path(&marker)?;
