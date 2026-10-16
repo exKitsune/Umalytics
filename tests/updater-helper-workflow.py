@@ -153,6 +153,7 @@ def main(harness, cross_drive_root=None, startup_only=False):
             (update / 'backup').mkdir(parents=True)
             executable = install / 'Umalytics.exe'
             executable.write_bytes(original)
+            (update / 'transaction.json').write_text(json.dumps({'expectedOldExeSha256': sha(original)}))
             old = subprocess.Popen([str(executable), '--hold-desktop-fixture', str(install)], creationflags=FLAGS)
             replacement = None
             try:
@@ -161,6 +162,13 @@ def main(harness, cross_drive_root=None, startup_only=False):
                         break
                     time.sleep(.025)
                 assert (install / 'old-ready').exists()
+                import ctypes
+                kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+                kernel.ReplaceFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_wchar_p,
+                                               ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p]
+                staged = install / 'replacement.exe'
+                staged.write_bytes(original)
+                assert kernel.ReplaceFileW(str(executable), str(staged), None, 2, None, None), ctypes.get_last_error()
                 with staging_lock(update):
                     replacement = subprocess.Popen([str(executable), '--replacement-wait-fixture', str(install)], creationflags=FLAGS)
                     time.sleep(.5)
@@ -169,6 +177,7 @@ def main(harness, cross_drive_root=None, startup_only=False):
                     old.wait(timeout=5)
                     replacement.wait(timeout=5)
                     assert replacement.returncode == 0 and (install / 'replacement-ready').exists()
+                    assert not list(install.glob('Umalytics.exe~RF*.TMP')), 'Renamed old executable was left behind'
                 cases += 1
                 print('Updater workflow: older-helper-startup passed', file=sys.stderr, flush=True)
             finally:

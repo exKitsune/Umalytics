@@ -166,7 +166,7 @@ fn replace_executable(target:&Path,replacement:&Path,backup:&Path)->Result<(),St
 fn abort_restart(plan:&Plan,endpoint:&ServiceEndpoint){
     if let Some(health)=endpoint.health(){if plan.owns(&health){let _=endpoint.request("POST","/api/update/abort",Some(&json!({"token":plan.token}).to_string()),health["csrfToken"].as_str());}}
 }
-fn wait_app_exit(exe:&Path)->Result<(),String>{
+fn wait_app_exit(exe:&Path,old_hash:Option<&str>)->Result<(),String>{
     // A mapped Windows executable can pass an exclusive read/delete open while
     // its process and single-instance mutex are still alive. Wait on processes.
     #[cfg(windows)]{
@@ -181,6 +181,7 @@ fn wait_app_exit(exe:&Path)->Result<(),String>{
         struct Handle(*mut c_void);
         impl Drop for Handle{fn drop(&mut self){unsafe{CloseHandle(self.0);}}}
         let deadline=Instant::now()+Duration::from_secs(25);
+        let mut renamed=std::collections::BTreeSet::new();
         loop{
             let mut ids=vec![0u32;4096];
             let count=loop{
@@ -196,9 +197,24 @@ fn wait_app_exit(exe:&Path)->Result<(),String>{
                 if handle.is_null(){continue;}let handle=Handle(handle);
                 let mut name=vec![0u16;32768];let mut length=name.len() as u32;
                 if unsafe{QueryFullProcessImageNameW(handle.0,0,name.as_mut_ptr(),&mut length)}==0{continue;}
-                if path_equal(Path::new(&std::ffi::OsString::from_wide(&name[..length as usize])),exe){running.push(handle);}
+                let image=PathBuf::from(std::ffi::OsString::from_wide(&name[..length as usize]));
+                if path_equal(&image,exe){running.push(handle);continue;}
+                // ReplaceFileW renames a still-mapped old image to EXE~RF*.TMP.
+                // Older helpers can reach this state before the desktop exits.
+                let name=image.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase();
+                let prefix=format!("{}~rf",exe.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase());
+                let temporary=name.strip_prefix(&prefix).and_then(|name|name.strip_suffix(".tmp"))
+                    .is_some_and(|suffix|!suffix.is_empty()&&suffix.len()<=16&&suffix.bytes().all(|c|c.is_ascii_hexdigit()));
+                if temporary&&image.parent().zip(exe.parent()).is_some_and(|(a,b)|path_equal(a,b))
+                    &&old_hash.is_some_and(|expected|regular_path(&image).is_ok()&&digest(&image).is_ok_and(|hash|hash==expected)){
+                    renamed.insert(image);running.push(handle);
+                }
             }
-            if running.is_empty(){return Ok(());}
+            if running.is_empty(){
+                // Only files observed as the verified old process image qualify.
+                for path in renamed{if old_hash.is_some_and(|expected|regular_path(&path).is_ok()&&digest(&path).is_ok_and(|hash|hash==expected)){let _=fs::remove_file(path);}}
+                return Ok(());
+            }
             for handle in running{
                 loop{match unsafe{WaitForSingleObject(handle.0,200)}{
                     0=>break,
@@ -209,7 +225,7 @@ fn wait_app_exit(exe:&Path)->Result<(),String>{
             }
         }
     }
-    #[cfg(not(windows))]{let _=exe;thread::sleep(Duration::from_millis(1000));Ok(())}
+    #[cfg(not(windows))]{let _=(exe,old_hash);thread::sleep(Duration::from_millis(1000));Ok(())}
 }
 
 /// Also protects upgrades initiated by older helpers with the faulty file-lock
@@ -218,7 +234,11 @@ pub(crate) fn wait_replacement_turn(data:&Path)->Result<(),String>{
     let folder=data.join("cache/update");
     if folder.join("backup").exists()&&update_lock(&folder).is_err(){
         let own=std::env::current_exe().map_err(|_|"Could not locate the replacement app.")?;
-        wait_app_exit(&own)?;
+        let transaction=folder.join("transaction.json");regular_path(&transaction)?;
+        let value:Value=serde_json::from_slice(&read_small(&transaction,16384)?).map_err(|_|"Update transaction is invalid.")?;
+        let hash=field(&value,"expectedOldExeSha256")?;
+        if !is_hex(hash,64){return bad("Previous executable hash is invalid.");}
+        wait_app_exit(&own,Some(hash))?;
     }Ok(())
 }
 
@@ -300,7 +320,7 @@ fn run(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
     if !plan.owns(&health)||!plan.idle(&health)||health["version"]!=plan.previous{return bad("The running installation changed or Uma is active. Try again after closing Uma.");}
     let response=endpoint.request("POST","/api/update/restart",Some(&json!({"token":plan.token}).to_string()),health["csrfToken"].as_str());
     if response.is_none_or(|response|response["phase"]!="restarting"){return bad("The running application refused update authorization.");}
-    if let Err(error)=wait_app_exit(&plan.exe){abort_restart(plan,endpoint);let _=launch(&plan.exe,&plan.install);return Err(error);}
+    if let Err(error)=wait_app_exit(&plan.exe,Some(&plan.old_hash)){abort_restart(plan,endpoint);let _=launch(&plan.exe,&plan.install);return Err(error);}
     if let Err(error)=stop_owned(plan,endpoint){abort_restart(plan,endpoint);let _=launch(&plan.exe,&plan.install);return Err(error);}
     // Recheck after the shutdown interval so a changed staged file is never run.
     let preparation=(||{
@@ -410,7 +430,7 @@ pub(crate) fn rollback_verified(transaction:&Path,key:&[u8;32],port:u16)->Result
     let plan=Plan::load(transaction,key,true)?;let _lock=update_lock(&plan.folder)?;
     let endpoint=ServiceEndpoint{port};let journal=load_journal(&plan)?;
     let result=(||{
-        wait_app_exit(&plan.exe)?;
+        wait_app_exit(&plan.exe,Some(&plan.old_hash))?;
         if endpoint.health().is_some(){stop_owned(&plan,&endpoint)?;}
         let marker=plan.folder.join("success.json");
         if marker.exists(){regular_path(&marker)?;let receipt:Value=serde_json::from_slice(&read_small(&marker,1024)?).map_err(|_|"Update success receipt is invalid.")?;if receipt["sha256"]==plan.manifest["sha256"]&&digest(&plan.exe)?==field(&plan.manifest,"sha256")?{remove_tree(&plan.backup)?;let _=launch(&plan.exe,&plan.install);return Ok(());}}
