@@ -10,7 +10,14 @@
   $: progress=status&&status.downloadTotal>0?Math.min(100,Math.round(status.downloadBytes/status.downloadTotal*100)):null;
   $: label=status?.phase==='checking'?'Checking for updates…':status?.phase==='downloading'?`Downloading update${progress===null?'…':` · ${progress}%`}`:status?.phase==='waiting-for-game'?(status.gameActive?'Update ready. Close Uma to finish updating.':'Preparing to restart safely…'):status?.phase==='restarting'?'Restarting Umalytics…':status?.phase==='available'?`Version ${status.availableVersion} is available.`:status?.phase==='idle'&&status.checkedAt?'Umalytics is up to date.':'';
   let polling=false;
-  async function refresh(){if(polling)return;polling=true;try{status=await api<UpdateStatus>('update/status');error='';}catch{error='Update service is unavailable. Reconnect to the desktop app to try again.';}finally{polling=false;}}
+  let restartWaitUntil=0;
+  async function refresh(){if(polling)return;polling=true;try{status=await api<UpdateStatus>('update/status');if(status.phase==='restarting')restartWaitUntil=Date.now()+90000;error='';}catch{
+    if(status?.phase==='restarting'||status?.phase==='waiting-for-game'&&!status.gameActive){
+      if(!restartWaitUntil)restartWaitUntil=Date.now()+90000;
+      if(Date.now()<restartWaitUntil){status={...status,phase:'restarting'};error='';}
+      else error='Restart is taking longer than expected. Reopen Umalytics.';
+    }else error='Update service is unavailable. Reopen Umalytics to try again.';
+  }finally{polling=false;}}
   async function action(kind:'check'|'install'){if(!csrfToken)return;busy=true;error='';try{status=await api<UpdateStatus>(`update/${kind}`,{},csrfToken);}catch(e){error=String(e);}finally{busy=false;}}
   onMount(()=>{void refresh();const timer=setInterval(()=>{void refresh()},2000);return()=>clearInterval(timer);});
 </script>

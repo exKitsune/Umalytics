@@ -195,6 +195,7 @@ fn main() {
         Ok(false) => {},
         Err(error) => { show_error(&error); std::process::exit(1); }
     }
+    if let Err(error) = updater::wait_replacement_turn(&data) { show_error(&error); std::process::exit(1); }
     let path = data.join("runtime").join("UmalyticsCollector.exe");
     if let Err(error) = migrate_webview(&data) { show_error(&error); std::process::exit(1); }
     if let Err(error) = start_service(&path, &data) { show_error(&error); std::process::exit(1); }
@@ -253,6 +254,7 @@ fn main() {
                 })
                 .on_tray_icon_event(|tray, event| { if let TrayIconEvent::DoubleClick { .. } = event { show(tray.app_handle()); } })
                 .build(app)?;
+            updater::desktop_ready(&data)?;
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut unavailable = 0;

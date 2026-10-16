@@ -122,6 +122,8 @@ def owned_service(payload, install, port):
                 if self.path == '/api/app/exit' and (not body.get('onlyIfIdle') or payload.get('gameActive') or payload.get('refuseStop')):
                     self.send_json({'error': 'Busy'}, 409)
                     return
+                with (install / 'events.txt').open('a') as output:
+                    output.write(self.path + '\n')
                 self.send_json({'ok': True})
                 threading.Thread(target=server.shutdown, daemon=True).start()
             else:
@@ -132,7 +134,7 @@ def owned_service(payload, install, port):
     server.server_close()
 
 
-def main(harness, cross_drive_root=None):
+def main(harness, cross_drive_root=None, startup_only=False):
     private = Ed25519PrivateKey.generate()
     public = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
     original = harness.read_bytes()
@@ -140,6 +142,43 @@ def main(harness, cross_drive_root=None):
     with tempfile.TemporaryDirectory(prefix='umalytics-updater-workflow-') as temporary:
         root = Path(temporary).resolve()
         assert root.parent == Path(tempfile.gettempdir()).resolve()
+
+        # An installed older helper may replace the file before the old window
+        # exits. The new app must wait before acquiring its single-instance lock.
+        if os.name == 'nt':
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'desktop'))
+            from updater import staging_lock
+            install = root / 'older-helper-startup'
+            update = install / 'cache/update'
+            (update / 'backup').mkdir(parents=True)
+            executable = install / 'Umalytics.exe'
+            executable.write_bytes(original)
+            old = subprocess.Popen([str(executable), '--hold-desktop-fixture', str(install)], creationflags=FLAGS)
+            replacement = None
+            try:
+                for _ in range(100):
+                    if (install / 'old-ready').exists():
+                        break
+                    time.sleep(.025)
+                assert (install / 'old-ready').exists()
+                with staging_lock(update):
+                    replacement = subprocess.Popen([str(executable), '--replacement-wait-fixture', str(install)], creationflags=FLAGS)
+                    time.sleep(.5)
+                    assert replacement.poll() is None and not (install / 'replacement-ready').exists(), 'Replacement raced the old desktop'
+                    (install / 'old-exit').touch()
+                    old.wait(timeout=5)
+                    replacement.wait(timeout=5)
+                    assert replacement.returncode == 0 and (install / 'replacement-ready').exists()
+                cases += 1
+                print('Updater workflow: older-helper-startup passed', file=sys.stderr, flush=True)
+            finally:
+                for process in (replacement, old):
+                    if process and process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=5)
+            if startup_only:
+                print(json.dumps({'olderHelperStartup': 'passed'}))
+                return
 
         def scenario(name, payload=None, alter=None, expected=True, recovery=False, appdata=False, install_root=None):
             nonlocal cases
@@ -201,9 +240,18 @@ def main(harness, cross_drive_root=None):
                                         str(install), str(port)], creationflags=FLAGS,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
             helper_process = None
+            old_desktop = None
             outputs = []
             try:
                 wait_health(port, '0.2.0')
+                if name == 'old-desktop-still-running':
+                    old_desktop = subprocess.Popen([str(exe), '--old-desktop-fixture'], env=env,
+                                                   creationflags=FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    for _ in range(100):
+                        if (install / 'old-desktop-ready.txt').exists():
+                            break
+                        time.sleep(.05)
+                    assert (install / 'old-desktop-ready.txt').exists()
                 if alter:
                     alter(manifest, tx, update)
                 raw = json.dumps(manifest, separators=(',', ':')).encode()
@@ -252,6 +300,13 @@ def main(harness, cross_drive_root=None):
                     assert (install / 'app-attached.txt').exists(), 'Relaunched app did not reuse the owned collector'
                 if name == 'static-ready-wait':
                     assert time.monotonic() - started >= 1.5
+                if name == 'desktop-ready-wait':
+                    assert time.monotonic() - started >= 3.5, 'Collector health must not stand in for desktop readiness'
+                if name == 'old-desktop-still-running':
+                    events = (install / 'events.txt').read_text().splitlines()
+                    assert events.index('old-desktop-exited') < events.index('/api/app/exit'), events
+                if name == 'desktop-exited-rollback':
+                    assert 'desktop exited' in report['error'], report
                 if expected or recovery:
                     request(port, '/api/app/exit', {'onlyIfIdle': True})
                     time.sleep(.3)
@@ -271,6 +326,9 @@ def main(harness, cross_drive_root=None):
                 if helper_process and helper_process.poll() is None:
                     helper_process.kill()
                     helper_process.wait(timeout=5)
+                if old_desktop and old_desktop.poll() is None:
+                    old_desktop.kill()
+                    old_desktop.wait(timeout=5)
                 if initial.poll() is None:
                     try:
                         initial.wait(timeout=3)
@@ -283,6 +341,10 @@ def main(harness, cross_drive_root=None):
 
         scenario('success')
         scenario('static-ready-wait', {'staticDelay': 1.5})
+        scenario('desktop-ready-wait', {'desktopDelay': 1.5})
+        scenario('desktop-exited-rollback', {'desktopExit': True}, expected=False)
+        if os.name == 'nt':
+            scenario('old-desktop-still-running')
         scenario('bad-signature', expected=False)
         scenario('tampered-executable', alter=lambda m, t, u: (u / 'Umalytics.exe').write_bytes(b'tampered'), expected=False)
         scenario('outside-install', alter=lambda m, t, u: t.update(dataDirectory=str(root)), expected=False)
@@ -320,5 +382,6 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser()
         parser.add_argument('--harness', type=Path, required=True)
         parser.add_argument('--cross-drive-root', type=Path)
+        parser.add_argument('--startup-only', action='store_true')
         args = parser.parse_args()
-        main(args.harness.resolve(), args.cross_drive_root)
+        main(args.harness.resolve(), args.cross_drive_root, args.startup_only)

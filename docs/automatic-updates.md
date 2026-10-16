@@ -157,6 +157,13 @@ dataset; settings, races, capture credentials, exports and the WebView profile
 remain installation data. The helper removes temporary recovery copies after
 the replacement has passed health verification.
 
+On Windows, shutdown waits on the old desktop process, not just its executable
+file. A running executable can still pass a file-sharing check. The replacement
+must confirm that its window and tray were created and stay alive alongside a
+healthy collector before the helper commits the update. A collector running
+without its desktop is a failed restart and triggers rollback. Planned service
+disconnects display restart progress instead of a connection error.
+
 ## Verification
 
 Run the service and release packaging integration flow with the build Python:

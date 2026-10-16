@@ -167,12 +167,80 @@ fn abort_restart(plan:&Plan,endpoint:&ServiceEndpoint){
     if let Some(health)=endpoint.health(){if plan.owns(&health){let _=endpoint.request("POST","/api/update/abort",Some(&json!({"token":plan.token}).to_string()),health["csrfToken"].as_str());}}
 }
 fn wait_app_exit(exe:&Path)->Result<(),String>{
-    // The native app observes phase=restarting before its collector is stopped.
+    // A mapped Windows executable can pass an exclusive read/delete open while
+    // its process and single-instance mutex are still alive. Wait on processes.
     #[cfg(windows)]{
+        use std::{ffi::c_void, os::windows::ffi::OsStringExt};
+        #[link(name="kernel32")]unsafe extern "system"{
+            fn K32EnumProcesses(ids:*mut u32,bytes:u32,needed:*mut u32)->i32;
+            fn OpenProcess(access:u32,inherit:i32,pid:u32)->*mut c_void;
+            fn QueryFullProcessImageNameW(process:*mut c_void,flags:u32,name:*mut u16,size:*mut u32)->i32;
+            fn WaitForSingleObject(handle:*mut c_void,milliseconds:u32)->u32;
+            fn CloseHandle(handle:*mut c_void)->i32;
+        }
+        struct Handle(*mut c_void);
+        impl Drop for Handle{fn drop(&mut self){unsafe{CloseHandle(self.0);}}}
         let deadline=Instant::now()+Duration::from_secs(25);
-        loop{if fs::OpenOptions::new().access_mode(0x80000000|0x10000).share_mode(0).open(exe).is_ok(){return Ok(());}if Instant::now()>=deadline{return bad("The old application is still open. Its files were left unchanged.");}thread::sleep(Duration::from_millis(200));}
+        loop{
+            let mut ids=vec![0u32;4096];
+            let count=loop{
+                let mut needed=0;
+                if unsafe{K32EnumProcesses(ids.as_mut_ptr(),(ids.len()*4) as u32,&mut needed)}==0{return bad("Could not check whether the previous app has closed.");}
+                if (needed as usize)<ids.len()*4{break needed as usize/4;}
+                if ids.len()>=65536{return bad("Could not complete the running-app check.");}ids.resize(ids.len()*2,0);
+            };
+            let mut running=Vec::new();
+            for pid in &ids[..count]{
+                if *pid==0||*pid==std::process::id(){continue;}
+                let handle=unsafe{OpenProcess(0x100000|0x1000,0,*pid)};
+                if handle.is_null(){continue;}let handle=Handle(handle);
+                let mut name=vec![0u16;32768];let mut length=name.len() as u32;
+                if unsafe{QueryFullProcessImageNameW(handle.0,0,name.as_mut_ptr(),&mut length)}==0{continue;}
+                if path_equal(Path::new(&std::ffi::OsString::from_wide(&name[..length as usize])),exe){running.push(handle);}
+            }
+            if running.is_empty(){return Ok(());}
+            for handle in running{
+                loop{match unsafe{WaitForSingleObject(handle.0,200)}{
+                    0=>break,
+                    258 if Instant::now()<deadline=>{},
+                    258=>return bad("The old application is still open. Its files were left unchanged."),
+                    _=>return bad("Could not wait for the previous app to close."),
+                }}
+            }
+        }
     }
     #[cfg(not(windows))]{let _=exe;thread::sleep(Duration::from_millis(1000));Ok(())}
+}
+
+/// Also protects upgrades initiated by older helpers with the faulty file-lock
+/// check. Wait before opening the single-instance plugin or collector runtime.
+pub(crate) fn wait_replacement_turn(data:&Path)->Result<(),String>{
+    let folder=data.join("cache/update");
+    if folder.join("backup").exists()&&update_lock(&folder).is_err(){
+        let own=std::env::current_exe().map_err(|_|"Could not locate the replacement app.")?;
+        wait_app_exit(&own)?;
+    }Ok(())
+}
+
+/// Written only after the desktop window and tray have both been created.
+pub(crate) fn desktop_ready(data:&Path)->Result<(),String>{
+    let folder=data.join("cache/update");
+    if !folder.join("backup").exists(){return Ok(());}
+    let transaction=folder.join("transaction.json");regular_path(&transaction)?;
+    let value:Value=serde_json::from_slice(&read_small(&transaction,16384)?).map_err(|_|"Update transaction is invalid.")?;
+    let token=field(&value,"token")?;if !is_hex(token,64){return bad("Update restart token is invalid.");}
+    let target=folder.join("desktop-ready.json");let temporary=folder.join("desktop-ready.partial");
+    for path in [&target,&temporary]{if path.exists(){regular_path(path)?;}}
+    fs::write(&temporary,json!({"pid":std::process::id(),"token":token}).to_string()).map_err(|_|"Could not confirm desktop startup.")?;
+    if target.exists(){fs::remove_file(&target).map_err(|_|"Could not replace desktop startup confirmation.")?;}
+    fs::rename(temporary,target).map_err(|_|"Could not finish desktop startup confirmation.".into())
+}
+
+fn desktop_confirmed(plan:&Plan,pid:u32)->bool{
+    let path=plan.folder.join("desktop-ready.json");
+    if regular_path(&path).is_err(){return false;}
+    read_small(&path,1024).ok().and_then(|raw|serde_json::from_slice::<Value>(&raw).ok())
+        .is_some_and(|value|exact_keys(&value,&["pid","token"])&&value["pid"].as_u64()==Some(pid as u64)&&value["token"]==plan.token)
 }
 fn wait_service_exit(endpoint:&ServiceEndpoint)->Result<(),String>{
     let deadline=Instant::now()+Duration::from_secs(25);
@@ -252,7 +320,18 @@ fn run(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
         if digest(&plan.exe)?!=field(&plan.manifest,"sha256")?{return bad("Installed release failed its signed hash check.");}
         child=Some(launch(&plan.exe,&plan.install)?);
         let deadline=Instant::now()+Duration::from_secs(60);
+        let mut desktop_since:Option<Instant>=None;
         while Instant::now()<deadline{
+            // The collector may outlive a desktop that failed to start. Its
+            // healthy API alone must never commit an otherwise failed update.
+            let app=child.as_mut().unwrap();
+            match app.try_wait(){
+                Ok(Some(_))=>return bad("The updated desktop exited before becoming ready."),
+                Err(_)=>return bad("Could not verify the updated desktop process."),
+                Ok(None)=>{},
+            }
+            if desktop_confirmed(plan,app.id()){desktop_since.get_or_insert_with(Instant::now);}
+            else{desktop_since=None;}
             if let Some(health)=endpoint.health(){
                 if !plan.owns(&health){return bad("Another installation answered during update verification.");}
                 if health["version"]!=plan.manifest["version"]||health["dataSha256"]!=plan.manifest["dataSha256"]{return bad("The restarted application version or reference data differs from the signed release.");}
@@ -263,10 +342,9 @@ fn run(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
                     plan.verify_runtime(&health)?;
                     let data=endpoint.request("GET","/api/data/status",None,None).ok_or("Updated reference data is unavailable.")?;
                     if data["manifestSha256"]!=plan.manifest["dataSha256"]{return bad("Updated reference data does not match the signed release.");}
-                    return Ok(());
+                    if desktop_since.is_some_and(|since|since.elapsed()>=Duration::from_secs(2)){return Ok(());}
                 }
             }
-            if child.as_mut().is_some_and(|child|matches!(child.try_wait(),Ok(Some(_)))){return bad("The updated application exited before becoming ready.");}
             thread::sleep(Duration::from_millis(250));
         }bad("The updated application did not become healthy in time.")
     })();
@@ -357,7 +435,7 @@ pub fn cleanup(data:&Path)->Result<(),String>{
     // process finish; the following startup safely removes the remaining files.
     if folder.join("backup").exists(){return Ok(());}
     let mut removed=true;
-    for name in ["helper.exe","transaction.json","release-manifest.json","release-manifest.sig","helper-error.txt","Umalytics.exe","Umalytics.exe.partial","recovery-helper.partial","failed.exe"]{
+    for name in ["helper.exe","transaction.json","release-manifest.json","release-manifest.sig","helper-error.txt","Umalytics.exe","Umalytics.exe.partial","recovery-helper.partial","failed.exe","desktop-ready.json","desktop-ready.partial"]{
         let path=folder.join(name);if path.exists(){regular_path(&path)?;if path.is_file(){if fs::remove_file(path).is_err(){removed=false;}}else{return bad("Update cleanup found an unexpected directory.");}}
     }
     if removed{let _=fs::remove_file(marker);}Ok(())
