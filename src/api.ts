@@ -11,7 +11,7 @@ export async function api<T>(path: string, body?: unknown, csrfToken?: string): 
 }
 
 export interface SavedExport { filename: string; path: string; revealed: boolean }
-export interface Preferences { theme:'dark'|'light'; fontScale:number; courseAssignments:Record<string,number>; browserMigrationComplete:boolean }
+export interface Preferences { theme:'dark'|'light'; fontScale:number; courseAssignments:Record<string,number>; browserMigrationComplete:boolean; raceTags?:Record<string,string[]> }
 export interface ImportReceipt { id:string; sha256:string; filename:string; receivedAt:string }
 export async function saveDesktopExport(filename: string, content: string, csrfToken: string): Promise<SavedExport> {
   return api<SavedExport>('exports', {filename, content}, csrfToken);

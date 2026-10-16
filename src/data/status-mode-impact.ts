@@ -5,6 +5,7 @@ import { createRaceMotionEngine } from './race-motion';
 import { statusHpFactor } from './mechanics-effects';
 import { effectiveStrategyCode } from './skill-details';
 import { atTime } from './effect-sampling';
+import { preparedFor } from '../analysis/prepared';
 
 export interface StatusModeImpact {
   kind: string; intervals: number; duration: number;
@@ -13,12 +14,18 @@ export interface StatusModeImpact {
   assessedDuration: number; coverage: number; carryoverDuration: number; complete: boolean;
   reachableRange: { distance: [number, number]; time: [number, number]; hp: [number, number] | null } | null;
   detail: string;
+  hills?:StatusModeHillImpact[];
+}
+export interface StatusModeHillImpact {
+  distanceStart:number;distanceEnd:number;duration:number;carryoverDuration:number;
+  distance:number|null;time:number|null;hp:number|null;complete:boolean;
 }
 const kinds = new Set(['pace-up', 'pace-down', 'speed-up', 'overtake', 'downhill-mode']);
 const cache = new WeakMap<RaceAnalysis, Map<number, { engine: ReturnType<typeof createRaceMotionEngine>; values: Map<string, StatusModeImpact[]> }>>();
 /** Lazy all-runner result data: one shared-engine excluded path per mode kind,
  * never one trajectory per episode and never an eager analyzeRace recursion. */
 export function modeImpactsFor(race: Race, reference: ReferenceData | null, analysis: RaceAnalysis, runnerId: string, courseId?: number | null): StatusModeImpact[] {
+  const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&(courseId==null||courseId===race.courseId))return ready.modes;
   const id = courseId ?? race.courseId ?? -1;
   let courses = cache.get(analysis); if (!courses) cache.set(analysis, courses = new Map());
   let entry = courses.get(id); if (!entry) courses.set(id, entry = { engine: createRaceMotionEngine(race, reference, id, analysis), values: new Map() });
@@ -35,34 +42,49 @@ export function modeImpactsFor(race: Race, reference: ReferenceData | null, anal
     const totals = [0, 1, 2].map(() => ({ distance: 0, time: 0, hp: 0 })), channels = ['min', 'mid', 'max'] as const;
     let assessed = 0, carryover = 0, any = false, complete = true, hpKnown = Boolean(course && race.distance === course.distance && [1, 2, 3, 4].includes(Number(race.conditions?.ground)) && full.initialStats.guts), tail = false;
     const other = new Map(without.samples.map(s => [s.time, s]));
+    const hills=kind==='downhill-mode'?detail.hillImpacts.filter(h=>h.kind==='downhill').map(h=>({
+      distanceStart:h.distanceStart,distanceEnd:h.distanceEnd,start:h.start,end:h.end,
+      duration:h.start==null||h.end==null?0:union.reduce((sum,w)=>sum+Math.max(0,Math.min(w[1],h.end!)-Math.max(w[0],h.start!)),0),
+      assessed:0,carryoverDuration:0,distance:0,time:0,hp:0,any:false,complete:true,hpKnown:true,
+    })):[];
+    let tailHill=-1;
     for (let i = 1; i < full.samples.length; i++) {
       const a = full.samples[i - 1], b = full.samples[i], u = other.get(a.time), v = other.get(b.time), dt = b.time - a.time, mid = (a.time + b.time) / 2;
       const active = union.some(w => mid >= w[0] && mid < w[1]);
       if (!active && !tail) continue;
+      const sample = atTime(race, runnerId, mid);
+      const hillIndex=active?hills.findIndex(h=>sample?.distance!=null&&sample.distance>=h.distanceStart&&sample.distance<h.distanceEnd):tailHill;
+      if(active)tailHill=hillIndex;
+      const hill=hills[hillIndex];
       const valid = dt > 0 && dt <= 2 && a.constrained && b.constrained && u?.constrained && v?.constrained;
-      if (!valid) { complete = false; tail = false; continue; }
+      if (!valid) { complete = false; tail = false;if(hill)hill.complete=false;tailHill=-1; continue; }
       const magnitude = Math.max(...channels.map(c => Math.abs(b.constrained![c] - v!.constrained![c])));
       if (active) assessed += dt; else carryover += dt;
+      if(hill){hill.any=true;if(active)hill.assessed+=dt;else hill.carryoverDuration+=dt;}
       any = true;
-      const sample = atTime(race, runnerId, mid), ground = Number(race.conditions?.ground), totalDistance = race.distance ?? 0, base = 20 - (totalDistance - 2000) / 1000;
+      const ground = Number(race.conditions?.ground), totalDistance = race.distance ?? 0, base = 20 - (totalDistance - 2000) / 1000;
       const factor = ground === 4 ? 1.02 : ground === 3 ? course?.surface === 1 ? 1.02 : 1.01 : 1;
       const fullHp = statusHpFactor(detail.intervals, mid, style), withoutHp = statusHpFactor(detail.intervals, mid, style, kind);
       if(a.selfActual===null||b.selfActual===null||u!.selfActual===null||v!.selfActual===null)hpKnown=false;
       for (const [scenario, c] of channels.entries()) {
         const withVelocity = (a.constrained![c] + b.constrained![c]) / 2, withoutVelocity = (u!.constrained![c] + v!.constrained![c]) / 2, distance = (withVelocity - withoutVelocity) * dt;
         totals[scenario].distance += distance; totals[scenario].time += distance / Math.max(.001, withVelocity);
+        if(hill&&scenario===1){hill.distance+=distance;hill.time+=distance/Math.max(.001,withVelocity);}
         if (hpKnown && sample?.hp != null && sample.distance != null) {
           const guts = full.initialStats.guts![c], late = sample.distance >= totalDistance * 2 / 3 ? 1 + 200 / Math.sqrt(600 * guts) : 1;
           const hp = (velocity: number) => sample.hp! <= 0 ? 0 : 20 * Math.max(0, velocity - base + 12) ** 2 / 144 * factor * late;
           const direct = (a.currentSpeedDelta + b.currentSpeedDelta) / 2, directWithout = (u!.currentSpeedDelta + v!.currentSpeedDelta) / 2;
-          totals[scenario].hp += (hp(Math.max(0, withVelocity - direct)) * fullHp - hp(Math.max(0, withoutVelocity - directWithout)) * withoutHp) * dt;
-        } else hpKnown = false;
+          const hpDelta=(hp(Math.max(0, withVelocity - direct)) * fullHp - hp(Math.max(0, withoutVelocity - directWithout)) * withoutHp) * dt;
+          totals[scenario].hp += hpDelta;if(hill&&scenario===1)hill.hp+=hpDelta;
+        } else {hpKnown = false;if(hill)hill.hpKnown=false;}
       }
       tail = magnitude > .001;
     }
     const range = (key: 'distance' | 'time' | 'hp'): [number, number] => [Math.min(...totals.map(v => v[key])), Math.max(...totals.map(v => v[key]))];
     complete &&= Math.abs(assessed - duration) < .0001;
     result.push({ kind, intervals: windows.length, duration, assessedDuration: assessed, coverage: Math.min(1, assessed / duration), carryoverDuration: carryover, complete,
+      ...(hills.length?{hills:hills.map(h=>({distanceStart:h.distanceStart,distanceEnd:h.distanceEnd,duration:h.duration,carryoverDuration:h.carryoverDuration,
+        distance:h.any?h.distance:null,time:h.any?h.time:null,hp:h.any&&h.hpKnown?h.hp:null,complete:h.complete&&Math.abs(h.assessed-h.duration)<.0001}))}:{}),
       reachableExtraDistance: complete && any ? totals[1].distance : null, reachableExtraTime: complete && any ? totals[1].time : null, reachableExtraHp: complete && any && hpKnown ? totals[1].hp : null,
       assessedReachableExtraDistance: any ? totals[1].distance : null, assessedReachableExtraTime: any ? totals[1].time : null, assessedReachableExtraHp: any && hpKnown ? totals[1].hp : null,
       reachableRange: complete && any ? { distance: range('distance'), time: range('time'), hp: hpKnown ? range('hp') : null } : null,

@@ -113,7 +113,7 @@ export function cameraAngle(course:CourseReference|null,distance:number):number 
 }
 function phaseAt(distance:number,total:number):string {
   if(!total)return 'Phase unknown';
-  return distance<total/6?'Early race':distance<total*2/3?'Middle race':distance<total*5/6?'Late race':'Final sixth';
+  return distance<total/6?'Early race':distance<total*2/3?'Middle race':distance<total*5/6?'Late race':'Last spurt';
 }
 /** Marker distances are fixed in course space, independently of the camera. */
 export function replayCourseMarkers(course:CourseReference|null,total:number,enabled:ReplayOptions['courseMarkers']):{distance:number;label:string}[] {

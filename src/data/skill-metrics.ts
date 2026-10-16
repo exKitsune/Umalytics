@@ -1,4 +1,5 @@
 import type { Race, Runner } from './types';
+import { preparedFor } from '../analysis/prepared';
 import type { RaceAnalysis, SkillActivation, SkillRow } from './analytics';
 import type { ReferenceData, SkillReference } from './reference';
 import type { StatKey } from './effect-types';
@@ -37,6 +38,7 @@ function missing(e:Effect):string {
 }
 /** Resolved applications are deliberately separate from equipped definitions. */
 export function metricsForSkill(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,skillId:number):SkillMetric[] {
+  const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&skillId in ready.metrics)return ready.metrics[skillId];
   const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];
   if(!runner||!detail||!reference)return [];
   const canonical=referenceEquippedSkillId(runner,skillId)??skillId,row=detail.skillRows.find(r=>r.skillId===canonical||r.skillId===skillId);

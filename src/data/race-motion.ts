@@ -23,6 +23,11 @@ export interface MotionSample {
   time: number; distance: number | null; actual: number | null;
   currentSpeedDelta: number; selfActual: number | null;
   targetBase: MotionBand | null; targetActive: MotionBand | null;healthyTargetActive:MotionBand|null;healthyAccelerationRange:MotionBand|null;hpEmpty:boolean|null;
+  /** Conditional target retaining inferred modes for the local traffic comparison. */
+  trafficTargetActive?: MotionBand | null;
+  healthyTrafficTargetActive?: MotionBand | null;
+  /** Last-spurt budget decision governing this sample, after any own recovery. */
+  decisionTime?: number | null;
   free: MotionBand | null; constrained: MotionBand | null; acceleration: number | null; accelerationRange:MotionBand|null;
   blockCap: number | null; constraint: MotionConstraint; nearbySlowdown: boolean;
   downhillTargetDelta: MotionBand; pace: string; startDash: boolean | null;
@@ -64,7 +69,7 @@ const notes = 'Acceleration-bounded replay-context reference paths. Recorded dis
 interface Effect { key: string; sourceId: string; skillId: number; type: number; start: number; end: number | null; value: number | null; initial: boolean; unknownRecipient: boolean; unknownTeam:boolean;
   source:Runner;referenceId:number;raw:SkillReference['branches'][number]['effects'][number] }
 export interface StatBands { speed: MotionBand | null; stamina: MotionBand | null; power: MotionBand | null; guts: MotionBand | null; wisdom: MotionBand | null }
-interface State { base: MotionBand | null; target: MotionBand | null; targetStack?:TargetStack|null;accel: MotionBand | null; current: number; currentRange:MotionBand; minimum: MotionBand | null;terrain:MotionBand;decisionTime:number|null;
+interface State { base: MotionBand | null; target: MotionBand | null; trafficTarget:MotionBand|null;targetStack?:TargetStack|null;accel: MotionBand | null; current: number; currentRange:MotionBand; minimum: MotionBand | null;terrain:MotionBand;decisionTime:number|null;
   downhill: MotionBand; pace: string; paceDown: boolean; hpEmpty: boolean | null; reasons: string[]; assumptions: string[]; calibrated: boolean }
 
 /** A rule-based neighborhood hypothesis, separate from the replay's block flag.
@@ -154,7 +159,7 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
   }
   function stateAt(runner:Runner,time:number,excluded:EffectExclusion,sections?:SectionCalibration[],healthy=false,useSpurtEvidence=true,excludedStatus:string|null=null,applyInferredModes=false):State {
     const sample=atTime(race,runner.id,time),detail=analysis.runners[runner.id],stats=structuredClone(initialStats(runner)),reasons:string[]=[],assumptions:string[]=[];
-    const empty:State={base:null,target:null,accel:null,current:0,currentRange:zero(),minimum:null,terrain:zero(),decisionTime:null,downhill:zero(),pace:'unknown',paceDown:false,hpEmpty:null,reasons,assumptions,calibrated:false};
+    const empty:State={base:null,target:null,trafficTarget:null,accel:null,current:0,currentRange:zero(),minimum:null,terrain:zero(),decisionTime:null,downhill:zero(),pace:'unknown',paceDown:false,hpEmpty:null,reasons,assumptions,calibrated:false};
     if(!course||race.distance!==course.distance||!sample||sample.distance===null){reasons.push('Course or recorded progress unavailable.');return empty;}
     const distance=sample.distance,total=course.distance,base=20-(total-2000)/1000,phase=distance>=total*2/3?2:distance>=total/6?1:0,style=effectiveStrategyCode(runner,detail.skillRows);
     if(style===null||!styleSpeed[style]){reasons.push('Running style unavailable.');return empty;}
@@ -265,14 +270,14 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
     const spurt=runner.lastSpurtDistance!=null&&runner.lastSpurtDistance>=0&&distance>=runner.lastSpurtDistance;
     const decision=spurtDecisions.get(runner.id)!({time,runners:[sample]}),floor=spurt&&useSpurtEvidence?spurtFloorsFor(runner).filter(f=>f.time<=time&&f.decisionTime===decision.decisionTime).at(-1)?.floor:null;
     const section=Math.min(23,Math.max(0,Math.floor(distance/(total/24)))),calibration=sections?.[section];
-    let calibrated=false;const targetBase=zero(),targetActive=zero(),acceleration=zero(),minimum=zero(),terrainRange=zero();
+    let calibrated=false;const targetBase=zero(),targetActive=zero(),trafficTarget=zero(),acceleration=zero(),minimum=zero(),terrainRange=zero();
     positiveTargets.sort((a,b)=>a.start-b.start||a.key.localeCompare(b.key));
     const targetStack:TargetStack={baseline:zero(),ceilings:{},floors:{}};
     for(const c of channels){const speed=stats.speed?.[c]??0,guts=stats.guts[c],power=stats.power[c],wisdom=stats.wisdom[c],term=phase===2?Math.sqrt(500*speed)*distanceAptitude[aptitude-1]*.002:0;
       const ordinary=base*styleSpeed[style][phase]+term,maximumSpurt=(ordinary+.01*base)*1.05+term+(450*guts)**.597*.0001;
       let baseTarget=ordinary;
-      if(spurt){const plateau=useSpurtEvidence?spurtPlateauFor(runner):null;
-        if(plateau!=null){const onMaximum=Math.abs(plateau-maximumSpurt)<=.05;baseTarget=onMaximum?maximumSpurt:clamp(plateau,ordinary,maximumSpurt);assumptions.push(onMaximum?'Last spurt target is the maximum. Clear unblocked speed sits on that ceiling.':'Last spurt target is the clear unblocked speed plateau. The wisdom step sits under the theoretical maximum, so a block is the gap under that line.');}
+      if(spurt){const plateau=useSpurtEvidence?spurtPlateauFor(runner,decision.decisionTime):null;
+        if(plateau!=null){const onMaximum=Math.abs(plateau-maximumSpurt)<=.05;baseTarget=onMaximum?maximumSpurt:clamp(plateau,ordinary,maximumSpurt);assumptions.push(onMaximum?'Last spurt target is the maximum. Clear unblocked speed in this decision window sits on that ceiling.':'Last spurt target is the clear unblocked speed plateau in this decision window. The wisdom step sits under the theoretical maximum, so a block is the gap under that line.');}
         else{const recorded=sample.speed,committed=decision.value===2||recorded!=null&&Math.abs(recorded-maximumSpurt)+.05<Math.abs(recorded-ordinary);
           baseTarget=committed?maximumSpurt:c==='min'?ordinary:c==='max'?maximumSpurt:(ordinary+maximumSpurt)/2;
           if(decision.value===2)assumptions.push('Reference HP decision supports maximum spurt; selected speed inferred, not recorded.');
@@ -290,6 +295,9 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
         else if(laneChanged(runner.id,time,sample.lane)){lane=extra;assumptions.push('Lane-speed target adds sqrt(0.0002×power) while a lane-speed skill is active and recorded lane is changing.');}}
       // Section wit and terrain remain outside the position-keep multiplier.
       targetActive[c]=clamp((hpEmpty?minimum[c]:baseTarget*pace[c]+wit)+targetSkill[c]+terrain+downhill[c]+statusSpeed+extraTarget[c]+forceIn[c]+lane,minimum[c],30);
+      const contextPace=paceKinds.size===1&&paceMultiplier!=null?paceMultiplier:pace[c];
+      const contextDownhill=slope<0&&dh?intervals.find(i=>i.kind==='downhill-mode-model')?.model?.speedDelta??downhill[c]:downhill[c];
+      trafficTarget[c]=clamp((hpEmpty?minimum[c]:baseTarget*contextPace+wit)+targetSkill[c]+terrain+contextDownhill+statusSpeed+extraTarget[c]+forceIn[c]+lane,minimum[c],30);
       const normal=(hpEmpty?minimum[c]:baseTarget*pace[c]+wit)+targetSkill[c]-positiveTargets.reduce((n,e)=>n+e.amount[c],0)+terrain+downhill[c]+statusSpeed+extraTarget[c]+forceIn[c]+lane;
       targetStack.baseline[c]=clamp(normal,minimum[c],30);
       let cumulative=0;
@@ -307,14 +315,15 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
       if(hpEmpty)acceleration[c]=-1.2;
     }
     if(stats.guts.min!==stats.guts.max||stats.power.min!==stats.power.max||stats.wisdom.min!==stats.wisdom.max||stats.speed&&stats.speed.min!==stats.speed.max)assumptions.push('Unresolved equipped passive uses conditional final-stat endpoints.');
-    return {base:targetBase,target:reasons.length?null:targetActive,targetStack:reasons.length?null:targetStack,accel:reasons.length?null:acceleration,current,currentRange,minimum,terrain:terrainRange,decisionTime:decision.decisionTime,downhill,pace:paceLabel,paceDown:paceLabel==='pace-down',hpEmpty,reasons:[...new Set(reasons)],assumptions:[...new Set(assumptions)],calibrated};
+    return {base:targetBase,target:reasons.length?null:targetActive,trafficTarget:reasons.length?null:trafficTarget,targetStack:reasons.length?null:targetStack,accel:reasons.length?null:acceleration,current,currentRange,minimum,terrain:terrainRange,decisionTime:decision.decisionTime,downhill,pace:paceLabel,paceDown:paceLabel==='pace-down',hpEmpty,reasons:[...new Set(reasons)],assumptions:[...new Set(assumptions)],calibrated};
   }
 
   /** Clear spurt speed picks the target. The maximum is used when she holds it. A stable step under it is the wisdom choice. A lane-speed add is not that step. */
-  function spurtPlateauFor(runner:Runner):number|null{
-    if(spurtPlateauCache.has(runner.id))return spurtPlateauCache.get(runner.id)!;
-    spurtPlateauCache.set(runner.id,null);
-    if(runner.lastSpurtDistance==null||runner.lastSpurtDistance<0)return null;
+  function spurtPlateauFor(runner:Runner,decisionTime:number|null):number|null{
+    const key=`${runner.id}:${decisionTime}`;
+    if(spurtPlateauCache.has(key))return spurtPlateauCache.get(key)!;
+    spurtPlateauCache.set(key,null);
+    if(runner.lastSpurtDistance==null||runner.lastSpurtDistance<0||decisionTime===null)return null;
     // A malformed early spurt marker must not fit the late-leg ceiling from
     // middle-leg cruising speed. Only the final leg can supply spurt evidence.
     const spurtStart=Math.max(runner.lastSpurtDistance,(course?.distance??race.distance??Infinity)*2/3);
@@ -326,17 +335,22 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
       if(a.blockFrontRunnerIndex!==-1||b.blockFrontRunnerIndex!==-1||Math.abs(b.speed-a.speed)/dt>.12)continue;
       if(proximityPressure(race,runner.id,a)!==false||proximityPressure(race,runner.id,b)!==false)continue;
       if(neighborhoodConstraintAt(race,runner,p.time).kind!=='none'||neighborhoodConstraintAt(race,runner,q.time).kind!=='none')continue;
+      const decide=spurtDecisions.get(runner.id)!;
+      if(decide({time:p.time,runners:[a]}).decisionTime!==decisionTime||decide({time:q.time,runners:[b]}).decisionTime!==decisionTime)continue;
+      if((compiled.get(runner.id)??[]).some(e=>e.start>p.time&&e.start<=q.time||e.end!==null&&e.end>p.time&&e.end<=q.time))continue;
       const state=stateAt(runner,(p.time+q.time)/2,null,undefined,false,false);
       if(!state.target||!state.base||state.currentRange.min!==state.currentRange.max)continue;
-      const raw=(a.speed+b.speed)/2-state.current,implied=raw-(state.target.mid-state.base.mid),ceiling=state.base.mid;
-      if(raw>=ceiling-.05&&raw<=ceiling+.08)onMax.push(ceiling);
+      // Normalize to the flat spurt base. Keeping terrain in the fitted value
+      // would apply the same uphill penalty again when the target is rebuilt.
+      const raw=(a.speed+b.speed)/2-state.current,implied=raw-(state.target.mid-state.base.mid)-state.terrain.mid,ceiling=state.base.mid-state.terrain.mid;
+      if(implied>=ceiling-.05&&implied<=ceiling+.08)onMax.push(ceiling);
       else if(implied<=ceiling-.015&&implied>=ceiling-.8)under.push(implied);
     }
     const chosen=onMax.length>=3?onMax:under.length>=3?under:null;
     if(!chosen)return null;
     chosen.sort((x,y)=>x-y);
     const plateau=chosen[Math.floor(chosen.length/2)];
-    spurtPlateauCache.set(runner.id,plateau);
+    spurtPlateauCache.set(key,plateau);
     return plateau;
   }
 
@@ -439,7 +453,10 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
             const residual=(compiled.get(runner.id)??[]).filter(e=>!isExcluded(excluded,e.key,e.type)&&e.type===22&&e.end!=null&&e.end>previous+1e-8&&e.end<=time+1e-8&&!e.unknownRecipient).reduce((n,e)=>{const value=resolvedValue(e,e.end!-1e-7,excluded);return n+(value===null?0:effectBand(e,value)[c]);},0);
             const stepFree=advance(freeSelf[c],freeDash[index],null),freeEndWithoutImpulse=stepFree.speed;freeSelf[c]=stepFree.speed+residual;freeDash[index]=recordedDash===true?true:stepFree.dash;
             let constrainedEndWithoutImpulse:number|null=null;
-            if(constrainedSelf&&constrained){const step=advance(constrainedSelf[c],constrainedDash[index],constraint.cap);constrainedEndWithoutImpulse=step.speed;constrainedSelf[c]=constraint.cap===null?step.speed+residual:Math.min(constraint.cap,step.speed+residual);constrainedDash[index]=recordedDash===true?true:step.dash;constrained[c]=Math.max(0,constrainedSelf[c]+state.currentRange[c]);}
+            if(constrainedSelf&&constrained){
+              // The front cap limits self speed; direct current-speed effects
+              // are applied afterward, as in the recorded velocity pipeline.
+              const step=advance(constrainedSelf[c],constrainedDash[index],constraint.cap);constrainedEndWithoutImpulse=step.speed;constrainedSelf[c]=constraint.cap===null?step.speed+residual:Math.min(constraint.cap,step.speed+residual);constrainedDash[index]=recordedDash===true?true:step.dash;constrained[c]=Math.max(0,constrainedSelf[c]+state.currentRange[c]);}
             free[c]=Math.max(0,freeSelf[c]+state.currentRange[c]);
             // Instant current-speed changes belong to the interval where they
             // were active. An expiry impulse affects only subsequent travel.
@@ -461,7 +478,7 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
         const healthy=state.hpEmpty?stateAt(runner,time,excluded,sections,true,true,options.excludeStatusKey??null,applyInferredModes):state;
         samples.push({time,distance:raw?.distance??null,actual:raw?.speed??null,currentSpeedDelta:state.current,selfActual:raw?.speed==null||state.currentRange.max!==state.currentRange.min||state.reasons.some(r=>r.startsWith('Skill '))?null:Math.max(0,raw.speed-state.current),targetBase:state.base,targetActive:state.target,healthyTargetActive:healthy.target,healthyAccelerationRange:healthy.accel,hpEmpty:state.hpEmpty,free,constrained,acceleration:state.accel?.mid??null,accelerationRange:state.accel,
           blockCap:constraint.cap,constraint,nearbySlowdown:constraint.kind==='geometry-block',downhillTargetDelta:state.downhill,pace:state.pace,startDash:recordedDash!==null?recordedDash:free?freeDash[1]:null,
-          targetStack:state.targetStack,intervalTargetStack:physics.targetStack,intervalFree,intervalConstrained,cumulativeDistance:{...distanceDeficit},cumulativeTime:{...timeDeficit},evidence:!free?'unknown':state.calibrated?'calibrated':bounded?'bounded':'reference',reasons:[...new Set(reasons)],assumptions:[...new Set(assumptions)]});
+          trafficTargetActive:state.trafficTarget,healthyTrafficTargetActive:healthy.trafficTarget,decisionTime:state.decisionTime,targetStack:state.targetStack,intervalTargetStack:physics.targetStack,intervalFree,intervalConstrained,cumulativeDistance:{...distanceDeficit},cumulativeTime:{...timeDeficit},evidence:!free?'unknown':state.calibrated?'calibrated':bounded?'bounded':'reference',reasons:[...new Set(reasons)],assumptions:[...new Set(assumptions)]});
       }
       const complete=Math.abs(constrainedDuration-stop)<1e-4,assessed=constrainedDuration>0;
       const losses=motionLosses(race,runner,samples,course,analysis);

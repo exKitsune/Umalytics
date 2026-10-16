@@ -6,11 +6,11 @@ const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 export interface LayoutSeed {offsets:Map<string,{x:number;y:number}>;iterations?:number}
 interface Box extends Rect {marker:Marker;alpha:number;anchorX:number;anchorY:number}
 
-/** Close views favor proximity; wide views use the canvas to separate stacks.
+/** Owner proximity takes precedence over filling empty space at the edges.
  * Horizontal order follows current owners, so boxes can exchange places. */
 export function placeReplayCards(markers:ReplayScene['markers'],width:number,height:number,obstacles:Rect[]=[],seed?:LayoutSeed,fontScale=100,viewWindow=140):Pick<ReplayScene,'cardRects'|'cardGroups'> {
   const text=replayTextMetrics(fontScale),header=text.headerInset+2;
-  const spread=clamp((viewWindow-140)/15,0,1);
+  const spread=clamp((viewWindow-140)/460,0,1);
   const bottom=height-104,capacity=Math.max(1,Math.floor((bottom-36-header)/text.rowStride));
   const boxes:Box[]=markers.filter(m=>m.cards.length).map(marker=>{
     const count=marker.cards.reduce((n,c)=>n+c.alpha,0),rows=Math.min(capacity,Math.max(.15,count));
@@ -22,18 +22,9 @@ export function placeReplayCards(markers:ReplayScene['markers'],width:number,hei
     const prior=seed?.offsets.get(marker.runner.id);
     return {marker,width:boxWidth,height:boxHeight,x:prior?marker.x+prior.x:anchorX,y:prior?anchorY+prior.y:anchorY,anchorX,anchorY,alpha:Math.max(...marker.cards.map(c=>c.alpha))};
   });
-  if(spread>0)for(const side of ['above','below']){
-    const row=boxes.filter(b=>b.marker.cardSide===side).sort((a,b)=>a.marker.x-b.marker.x||a.marker.runner.index-b.marker.runner.index);
-    if(row.length<2)continue;
-    const left=8+row[0].width/2,right=width-8-row.at(-1)!.width/2;
-    for(const [i,b]of row.entries()){
-      b.anchorX+=(left+(right-left)*i/(row.length-1)-b.anchorX)*spread;
-      if(!seed?.offsets.has(b.marker.runner.id))b.x=b.anchorX;
-    }
-  }
   const bound=(b:Box)=>{
-    const reach=140+width*spread,vertical=height*spread;
-    b.x=clamp(b.x,b.marker.x-reach,b.marker.x+reach);b.y=clamp(b.y,b.anchorY-(b.marker.cardSide==='above'&&!b.marker.focused?110:90)-vertical,b.anchorY+90+vertical);
+    const reach=viewWindow>140?240:140,vertical=50*spread;
+    b.x=clamp(b.x,b.marker.x-reach,b.marker.x+reach);b.y=clamp(b.y,b.marker.y-b.height-170-vertical,b.marker.y+170+vertical);
     b.x=clamp(b.x,8+b.width/2,width-8-b.width/2);b.y=clamp(b.y,36,bottom-b.height);
   };
   const push=(a:Box,r:Rect,weight:number,tie:number)=>{
@@ -41,13 +32,13 @@ export function placeReplayCards(markers:ReplayScene['markers'],width:number,hei
     const px=(a.width+r.width)/2+6-Math.abs(dx),py=(a.height+r.height)/2+6-Math.abs(dy);
     if(px<=0||py<=0)return{x:0,y:0};
     const wx=1/(1+Math.exp(clamp((px-py)/12,-25,25))),wy=1-wx;
-    return{x:px*wx*dx/Math.sqrt(dx*dx+16)*weight,y:py*wy*(Math.abs(dy)<.1?tie:dy/Math.sqrt(dy*dy+1))*weight};
+    return{x:px*wx*(Math.abs(dx)<.1?tie:dx/Math.sqrt(dx*dx+16))*weight,y:py*wy*(Math.abs(dy)<.1?tie:dy/Math.sqrt(dy*dy+1))*weight};
   };
   for(let pass=0;pass<(seed?.iterations??24+Math.round(24*spread));pass++){
-    const pull=.04*(1-.85*spread);
+    const pull=.018;
     const delta=boxes.map(b=>({x:(b.anchorX-b.x)*pull,y:(b.anchorY-b.y)*pull}));
     for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){
-      const a=boxes[i],b=boxes[j],p=push(a,{x:b.x-b.width/2,y:b.y,width:b.width,height:b.height},Math.min(a.alpha,b.alpha)*.75,a.marker.runner.index<b.marker.runner.index?-1:1);
+      const a=boxes[i],b=boxes[j],p=push(a,{x:b.x-b.width/2,y:b.y,width:b.width,height:b.height},Math.min(a.alpha,b.alpha),a.marker.runner.index<b.marker.runner.index?-1:1);
       // Keep a consistent vertical tier when same-side stacks nearly coincide.
       // Otherwise two equally good up/down solutions alternate and smoothing
       // averages them into a complete overlap. Horizontal order stays free.

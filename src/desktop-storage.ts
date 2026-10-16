@@ -3,6 +3,7 @@ import { deleteSavedRace, raceLibraryEntry, savedRaces, type LibraryEntry } from
 import { toPortableRace } from './data/share';
 import type { Race } from './data/types';
 import { FONT_SCALE_KEY, normalizeFontScale } from './typography';
+import { readRaceTags } from './library-filters';
 
 export const THEME_KEY='umatrace-theme';
 export const COURSE_KEY='umalytics-course-assignments';
@@ -42,14 +43,16 @@ export async function migrateBrowserStorage(csrfToken:string):Promise<Preference
     theme:native.browserMigrationComplete||themeRaw===null?native.theme:legacy.theme,
     fontScale:native.browserMigrationComplete||fontRaw===null?normalizeFontScale(native.fontScale):legacy.fontScale,
     courseAssignments:native.browserMigrationComplete?{...legacy.courseAssignments,...native.courseAssignments}:{...native.courseAssignments,...legacy.courseAssignments},
+    raceTags:{...readRaceTags(),...native.raceTags},
   };
   const preferences=await api<Preferences>('preferences',patch,csrfToken);
   if('theme' in patch&&preferences.theme!==patch.theme)throw new Error('Appearance save was not acknowledged.');
   if(preferences.fontScale!==patch.fontScale)throw new Error('Text size save was not acknowledged.');
   if('courseAssignments' in patch&&Object.entries(patch.courseAssignments!).some(([id,course])=>preferences.courseAssignments[id]!==course))throw new Error('Course choices were not acknowledged.');
+  if(Object.entries(patch.raceTags).some(([id,tags])=>JSON.stringify(preferences.raceTags?.[id])!==JSON.stringify(tags)))throw new Error('Race tags were not acknowledged.');
   const complete=await api<Preferences>('preferences',{browserMigrationComplete:true},csrfToken);
   if(!complete.browserMigrationComplete)throw new Error('Library migration was not acknowledged.');
   // Remove only preference keys owned by this app.
-  try {localStorage.removeItem(THEME_KEY);localStorage.removeItem(COURSE_KEY);localStorage.removeItem(FONT_SCALE_KEY);}catch {/* The acknowledged native copy remains usable if browser cleanup is disabled. */}
+  try {localStorage.removeItem(THEME_KEY);localStorage.removeItem(COURSE_KEY);localStorage.removeItem(FONT_SCALE_KEY);localStorage.removeItem('umalytics-race-tags');}catch {/* The acknowledged native copy remains usable if browser cleanup is disabled. */}
   return complete;
 }

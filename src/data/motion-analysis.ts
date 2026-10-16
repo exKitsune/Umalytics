@@ -3,6 +3,7 @@ import type { ReferenceData } from './reference';
 import type { RaceAnalysis, SkillActivation } from './analytics';
 import { activationMotionKey, createRaceMotionEngine, type RunnerMotion } from './race-motion';
 import { measureMotionBenefit } from './motion-benefit';
+import { preparedFor } from '../analysis/prepared';
 
 const cache=new WeakMap<RaceAnalysis,Map<number,{engine:ReturnType<typeof createRaceMotionEngine>;paths:Map<string,RunnerMotion>}>>();
 function motionEntry(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,courseId?:number|null){
@@ -13,6 +14,8 @@ function motionEntry(race:Race,reference:ReferenceData|null,analysis:RaceAnalysi
 }
 /** Lazy, immutable replay-context scenarios shared by charts and skill cards. */
 export function motionFor(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null,excludeActivationKey?:string|readonly string[],applyInferredModes=false,excludeEffectTypes?:readonly number[]):RunnerMotion {
+  const ready=preparedFor(analysis)?.runners[runnerId];
+  if(ready&&!excludeActivationKey&&!excludeEffectTypes&&(courseId==null||courseId===race.courseId))return applyInferredModes?ready.inferredMotion:ready.motion;
   const entry=motionEntry(race,reference,analysis,courseId);
   const excluded=typeof excludeActivationKey==='string'?[excludeActivationKey]:[...new Set(excludeActivationKey??[])].sort();
   const types=excludeEffectTypes?[...new Set(excludeEffectTypes)].sort((a,b)=>a-b):undefined;

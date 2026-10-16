@@ -21,6 +21,10 @@ export function statusHelp(kind:string):string {
 }
 export const uphillHelp='Target speed loss −grade×200/power while on an uphill. Higher power reduces the loss.';
 export const downhillHelp='Downhill mode target gain 0.3+|grade|/10. Slope time without that mode is not included.';
+export function slopeEffectHelp(grade:number,power:number|null|undefined,name:string):string {
+  if(grade>0)return `${name} · Uphill ${grade}% · ${power!=null&&power>0?`Target speed −${(grade*200/power).toFixed(2)} m/s · Effective power ${Math.round(power)}`:'Target speed loss unavailable: power is unresolved.'}`;
+  return `${name} · Downhill ${Math.abs(grade)}% · Target speed +${(.3+Math.abs(grade)/10).toFixed(2)} m/s while DH is active.`;
+}
 export const debuffHelp='HP and distance lost to skills from other runners.';
 export const modelHelp='Calculated from replay speed, stats and known effects. See FAQ for details.';
 export const statHelp='Stats after mood, course, strategy, ground and skill bonuses.';

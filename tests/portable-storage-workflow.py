@@ -4,6 +4,8 @@ Run with .cache/proxy-venv/Scripts/python.exe tests/portable-storage-workflow.py
 No real installation, game, trust store mutation or external network is used.
 """
 import hashlib
+import base64
+import gzip
 import json
 import os
 from pathlib import Path
@@ -99,6 +101,45 @@ def assert_active(data, contents):
     assert all(not path.is_dir() for path in folder.iterdir() if len(path.name) == 64)
 
 
+def cache_workflow(instance, data, race_id):
+    before = {p.name: p.read_bytes() for p in (data / 'races').iterdir()}
+    prefs = instance.request('/api/preferences', {'raceTags': {race_id: ['Finals', 'Wet']}})[1]
+    status = instance.request('/api/analysis-cache')[1]
+    assert status['policy']['mode'] == 'unlimited' and status['entries'] == []
+    assert instance.request('/api/analysis-cache', {'action': 'purge'}, authenticated=False)[0] == 403
+    payload = base64.b64encode(gzip.compress(os.urandom(600000))).decode()
+    for i in range(3):
+        body = {'action': 'put', 'key': str(i) * 64, 'raceId': f'fixture-{i}', 'date': f'2026-10-{10+i}T12:00:00Z', 'revision': 'a' * 64, 'payload': payload}
+        code, status = instance.request('/api/analysis-cache', body)
+        assert code == 200 and len(status['entries']) == i + 1
+    assert instance.request('/api/analysis-cache/' + '1' * 64)[1]['payload'] == payload
+    policy = {'mode': 'races', 'value': 2, 'background': True}
+    status = instance.request('/api/analysis-cache', {'action': 'policy', 'policy': policy})[1]
+    assert [row['raceId'] for row in status['entries']] == ['fixture-2', 'fixture-1']
+    policy.update(mode='size', value=1)
+    status = instance.request('/api/analysis-cache', {'action': 'policy', 'policy': policy})[1]
+    assert len(status['entries']) == 1 and status['bytes'] <= 1024 * 1024
+    assert status['entries'][0]['raceId'] == 'fixture-2'
+    assert instance.request('/api/analysis-cache', {'action': 'revision', 'revision': 'b' * 64})[1]['entries'] == []
+    policy.update(mode='unlimited')
+    instance.request('/api/analysis-cache', {'action': 'policy', 'policy': policy})
+    body.update(revision='b' * 64)
+    instance.request('/api/analysis-cache', body)
+    instance.request('/api/analysis-cache', body)
+    assert len(instance.request('/api/analysis-cache')[1]['entries']) == 1
+    status = instance.request('/api/analysis-cache', {'action': 'purge'})[1]
+    assert status['entries'] == [] and status['bytes'] < 100000
+    for patch in ({'mode': 'size', 'value': -1, 'background': True}, {'mode': 'unknown', 'value': 1, 'background': True}):
+        assert instance.request('/api/analysis-cache', {'action': 'policy', 'policy': patch})[0] == 400
+    assert instance.request('/api/analysis-cache', dict(body, key='../escape'))[0] == 400
+    assert instance.request('/api/preferences', {'raceTags': {race_id: ['x' * 41]}})[0] == 400
+    assert {p.name: p.read_bytes() for p in (data / 'races').iterdir()} == before
+    assert instance.request('/api/preferences')[1] == prefs
+    # Leave one entry to prove the next service process restores it.
+    instance.request('/api/analysis-cache', body)
+    return prefs
+
+
 def workflows(temporary):
     resources = temporary / 'resources'
     (resources / 'desktop').mkdir(parents=True)
@@ -168,6 +209,7 @@ def workflows(temporary):
         listed = instance.request('/api/races?summary=1')[1]['races']
         assert next(item for item in listed if item['id'] == race_id)['courseId'] == 101
         assert (data / 'races/captured.json').read_bytes() == capture_raw
+        prefs = cache_workflow(instance, data, race_id)
         # Accept repository updates under this bundle, then replace them when
         # starting the next bundled app release, including source=repository.
         repository_manifest, repository_contents = snapshot('newer-repository')
@@ -182,6 +224,7 @@ def workflows(temporary):
     try:
         assert instance.request('/data/metadata.json')[1]['release'] == 'newer-repository'
         assert instance.request('/api/preferences') == (200, prefs)
+        assert len(instance.request('/api/analysis-cache')[1]['entries']) == 1
         assert instance.request('/api/races/' + race_id)[1]['data'] == race
         assert instance.request('/api/preferences', {'courseAssignments': {}})[1]['courseAssignments'] == {}
     finally:

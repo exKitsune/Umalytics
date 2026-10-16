@@ -125,7 +125,7 @@ export function coursePhases(distance: number): CourseBand[] {
     { start: 0, end: distance / 6, label: 'Early', kind: 'early' },
     { start: distance / 6, end: distance * 2 / 3, label: 'Middle', kind: 'middle' },
     { start: distance * 2 / 3, end: distance * 5 / 6, label: 'Late', kind: 'late' },
-    { start: distance * 5 / 6, end: distance, label: 'Final sixth', kind: 'final' },
+    { start: distance * 5 / 6, end: distance, label: 'Last spurt', kind: 'final' },
   ];
 }
 export function courseSegments(course: CourseReference): CourseBand[] {

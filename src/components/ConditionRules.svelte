@@ -19,7 +19,7 @@
       ground_type:{1:'Turf',2:'Dirt'},distance_type:{1:'Sprint',2:'Mile',3:'Medium',4:'Long'},
       weather:{1:'Sunny',2:'Cloudy',3:'Rainy',4:'Snowy'},ground_condition:{1:'Firm',2:'Good',3:'Soft',4:'Heavy'},
       season:{1:'Spring',2:'Summer',3:'Autumn',4:'Winter',5:'Cherry blossom season'},motivation:{1:'Awful mood',2:'Bad mood',3:'Normal mood',4:'Good mood',5:'Great mood'},
-      phase:{0:'Opening leg',1:'Middle leg',2:'Final leg',3:'Final sixth'},
+      phase:{0:'Opening leg',1:'Middle leg',2:'Final leg',3:'Last spurt'},
       lane_type:{0:'Inner lane (≤ 0.2)',1:'Middle lane (> 0.2–0.4)',2:'Outer lane (> 0.4–0.6)',3:'Outside lane (> 0.6)'},
       is_move_lane:{1:'Moved toward the inner fence',2:'Moved away from the inner fence'},
       rotation:{1:'Right-handed course',2:'Left-handed course'},
@@ -31,8 +31,8 @@
     if(key==='always'&&op==='=='&&value===1)return 'Always satisfied.';
     if(key==='track_id'&&['==','!='].includes(op))return `${op==='!='?'Not ':''}${reference?.metadata.trackNames[value]??`Course ${raw}`}.`;
     if(['distance','course_distance'].includes(key))return `Race distance ${op==='=='?'=':op} ${raw} m.`;
-    if(key==='phase_random')return `Random point in ${({0:'the opening leg',1:'the middle leg',2:'the final leg',3:'the final sixth'} as Record<number,string>)[value]??'the required phase'}.`;
-    if(['phase_firsthalf_random','phase_laterhalf_random'].includes(key))return `Random point in the ${key==='phase_firsthalf_random'?'first':'second'} half of ${({0:'the opening leg',1:'the middle leg',2:'the final leg',3:'the final sixth'} as Record<number,string>)[value]??'the required phase'}.`;
+    if(key==='phase_random')return `Random point in ${({0:'the opening leg',1:'the middle leg',2:'the final leg',3:'the last spurt'} as Record<number,string>)[value]??'the required phase'}.`;
+    if(['phase_firsthalf_random','phase_laterhalf_random'].includes(key))return `Random point in the ${key==='phase_firsthalf_random'?'first':'second'} half of ${({0:'the opening leg',1:'the middle leg',2:'the final leg',3:'the last spurt'} as Record<number,string>)[value]??'the required phase'}.`;
     const random:Record<string,string>={straight_random:'a straight',all_corner_random:'a corner',last_straight_random:'the final straight',is_finalcorner_random:'the final corner',up_slope_random:'an uphill',down_slope_random:'a downhill'};
     if(random[key])return `Random point on ${random[key]}.`;
     if(key==='is_activate_any_skill'&&op==='=='&&value===1)return 'Another skill activates.';

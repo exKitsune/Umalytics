@@ -42,6 +42,23 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+test('last-spurt targets and choice odds follow imported HP and wit',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/spurt-odds-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
+  const report=JSON.parse(result.stdout.trim());
+  for(const field of ['baselineTarget','maximum','hpBranches','probabilityMass','choiceMatching','unknownInputs','recoveryDecisions','noFutureFit'])assert.equal(report[field],'passed');
+});
+test('speed changes retain overlapping causes and the timing of traffic evidence',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/speed-explanations-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
+  const report=JSON.parse(result.stdout.trim());
+  for(const field of ['wholeReplay','overlappingCauses','timedEvidence','skillAndHp','noInventedTraffic'])assert.equal(report[field],'passed');
+});
+test('background replay analysis restores from compressed cache without recalculation',async t=>{
+  const folder=await workspace(t),imported=join(folder,'imported');await convert(fixture,imported);
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/analysis-cache-workflow.ts'),imported],{cwd:root,windowsHide:true,timeout:60000});
+  const report=JSON.parse(result.stdout.trim());
+  for(const field of ['calculationEquality','diskRestore','noRecalculation','promotion','preemption','invalidation','filters'])assert.equal(report[field],'passed');
+  t.diagnostic(`Worker calculation ${report.coldMs} ms; fresh-worker restore ${report.restoreMs} ms; ${report.compressedBytes} compressed bytes.`);
+});
 test('Global skill refresh and regional fallback survive replay analysis and export',async t=>{
   const folder=await workspace(t);
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/reference-fallback-workflow.ts'),folder],{cwd:root,windowsHide:true,timeout:60000});
@@ -59,7 +76,7 @@ test('traffic and exhaustion losses include continuous approach and recovery',as
   const folder=await workspace(t);
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/traffic-loss-workflow.ts'),folder],{cwd:root,windowsHide:true,timeout:60000});
   const report=JSON.parse(result.stdout.trim());assert.ok(report.cases>=18);
-  for(const key of ['trafficApproachAndRegain','recordedDurationSeparate','exactLocalAreas','exhaustionHealthyReference','zeroCrossingBounds','unknownGaps','gatePhysics'])assert.equal(report[key],'passed');
+  for(const key of ['trafficApproachAndRegain','recordedDurationSeparate','exactLocalAreas','exhaustionHealthyReference','zeroCrossingBounds','unknownGaps','gatePhysics','trafficAcrossModes','contextCap','phaseSeparation'])assert.equal(report[key],'passed');
   assert.equal(report.capture,'unchanged');
 });
 test('position keeping follows skill-adjusted acceleration through phase and hill changes',async t=>{

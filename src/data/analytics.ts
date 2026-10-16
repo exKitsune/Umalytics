@@ -369,7 +369,7 @@ export function skillActivations(race:Race,runnerId:string,reference:ReferenceDa
 export function skillRows(race:Race,runnerId:string,reference:ReferenceData|null,courseIdOverride?:number|null):SkillRow[]{
   return rowsFor(race,runnerId,reference,skillActivations(race,runnerId,reference,courseIdOverride),courseIdOverride);
 }
-function buildRaceAnalysis(race: Race, reference: ReferenceData | null, courseIdOverride?: number | null): RaceAnalysis {
+export function* analyzeRaceSteps(race: Race, reference: ReferenceData | null, courseIdOverride?: number | null): Generator<void, RaceAnalysis> {
   const course = reference?.courses[courseIdOverride ?? race.courseId ?? ''] ?? null;
   const runners: Record<string, RunnerAnalysis> = {};
   for (const runner of race.runners) {
@@ -386,6 +386,7 @@ function buildRaceAnalysis(race: Race, reference: ReferenceData | null, courseId
       skillActivations: skills, skillRows: rows, statusImpacts: statusImpactTotals(intervals),
       statBreakdown,hillImpacts:[],hillTotals:{uphill:unresolvedContribution(),downhill:unresolvedContribution()},
       skillImpacts:[],receivedDebuffImpacts:[],receivedDebuffTotals:unresolvedContribution(),slowdown:{blocking:emptySlowdown(),exhaustion:emptySlowdown()} };
+    yield;
   }
   const analysis:RaceAnalysis = { runners, debuffs:[], warnings: [
     'HP changes and acceleration are sampled net changes; overlapping effects and base consumption cannot be separated causally.',
@@ -393,9 +394,10 @@ function buildRaceAnalysis(race: Race, reference: ReferenceData | null, courseId
     'Guaranteed passive effects may be inferred from equipped skills and proven static conditions. Recorded activation events remain separate.',
     'Wit failures use a reference RNG model only when one stream matches every recorded start delay and known inventories/procs agree; otherwise the cause remains unresolved.',
   ] };
-  for(const runner of race.runners){const detail=runners[runner.id];populateStatusImpacts(race,runner.id,detail.intervals,course,reference,detail.skillRows,analysis);detail.statusImpacts=statusImpactTotals(detail.intervals);}
+  for(const runner of race.runners){const detail=runners[runner.id];populateStatusImpacts(race,runner.id,detail.intervals,course,reference,detail.skillRows,analysis);detail.statusImpacts=statusImpactTotals(detail.intervals);yield;}
   populateSkillImpacts(race,reference,course,analysis);
-  for(const runner of race.runners){const detail=analysis.runners[runner.id];detail.hillImpacts=hillImpactsFor(race,runner,course,detail,analysis);if(course)detail.hillTotals=hillTotals(detail.hillImpacts);detail.slowdown=slowdownFor(race,runner,course,analysis);}
+  yield;
+  for(const runner of race.runners){const detail=analysis.runners[runner.id];detail.hillImpacts=hillImpactsFor(race,runner,course,detail,analysis);if(course)detail.hillTotals=hillTotals(detail.hillImpacts);detail.slowdown=slowdownFor(race,runner,course,analysis);yield;}
   return analysis;
 }
 const analysisCache=new WeakMap<Race,{empty:Map<number,RaceAnalysis>;refs:WeakMap<ReferenceData,Map<number,RaceAnalysis>>}>();
@@ -405,7 +407,13 @@ export function analyzeRace(race:Race,reference:ReferenceData|null,courseIdOverr
   let entry=analysisCache.get(race);if(!entry)analysisCache.set(race,entry={empty:new Map(),refs:new WeakMap()});
   let values=reference?entry.refs.get(reference):entry.empty;if(!values){values=new Map();entry.refs.set(reference!,values);}
   const key=courseIdOverride??race.courseId??-1,prior=values.get(key);if(prior)return prior;
-  const analysis=buildRaceAnalysis(race,reference,courseIdOverride);values.set(key,analysis);return analysis;
+  const steps=analyzeRaceSteps(race,reference,courseIdOverride);let step=steps.next();while(!step.done)step=steps.next();
+  values.set(key,step.value);return step.value;
+}
+/** Install a worker/cache result under the exact immutable UI inputs. */
+export function rememberAnalysis(race:Race,reference:ReferenceData,analysis:RaceAnalysis) {
+  let entry=analysisCache.get(race);if(!entry)analysisCache.set(race,entry={empty:new Map(),refs:new WeakMap()});
+  entry.refs.set(reference,new Map([[race.courseId??-1,analysis]]));
 }
 export function analyticsAt(analysis: RaceAnalysis, runnerId: string, time: number): { statuses: StatusInterval[]; skills: SkillActivation[]; sample: AnalyticsSample | null } {
   const data = analysis.runners[runnerId];

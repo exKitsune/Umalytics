@@ -87,6 +87,33 @@ function frameRanks(race: Race): Map<string, number>[] {
   return values;
 }
 export interface PlotPoint { x: number; y: number }
+export interface TimedPlotValue {time:number;value:number|null|undefined}
+/** The replay can retain runout after an individual runner finishes. */
+export function telemetryEndTime(race:Race,runnerId:string):number {
+  const runner=race.runners.find(r=>r.id===runnerId),recorded=runner?replayFinishTime(runner):null;
+  const crossing=race.distance!=null?timeAtDistance(race,runnerId,race.distance):null;
+  return Math.min(race.duration,recorded??Infinity,crossing??Infinity);
+}
+/** Clip before projecting/reducing, retaining instant jumps and unknown gaps. */
+export function timedPlotPath(race:Race,runnerId:string,axis:'distance'|'time',points:readonly TimedPlotValue[],x:(v:number)=>number,y:(v:number)=>number,digits=2):string {
+  const end=telemetryEndTime(race,runnerId),parts:string[]=[],segment:PlotPoint[]=[];
+  let previous:TimedPlotValue|undefined,previousX=-Infinity;
+  const flush=()=>{if(segment.length)parts.push(reducePlotSegment(segment).map((p,i)=>`${i?'L':'M'}${p.x.toFixed(digits)},${p.y.toFixed(digits)}`).join(' '));segment.length=0;previousX=-Infinity;};
+  const append=(point:TimedPlotValue)=>{
+    const xv=axis==='time'?point.time:distanceAtTime(race,runnerId,point.time);
+    if(!finite(point.value)||!finite(xv)){flush();return;}
+    if(xv<previousX)flush();
+    segment.push({x:x(axis==='distance'&&race.distance!=null?Math.min(race.distance,xv):xv),y:y(point.value)});previousX=xv;
+  };
+  for(const point of points){
+    if(point.time>end){
+      if(previous&&previous.time<end&&point.time>previous.time&&finite(previous.value)&&finite(point.value))append({time:end,value:previous.value+(point.value-previous.value)*(end-previous.time)/(point.time-previous.time)});
+      break;
+    }
+    append(point);previous=point;
+  }
+  flush();return parts.join(' ');
+}
 /** Preserve endpoints/min/max per horizontal bucket and never join unknown gaps. */
 export function reducePlotSegment(points: PlotPoint[], buckets = 1200): PlotPoint[] {
   if (points.length <= buckets * 4) return points;
@@ -114,29 +141,15 @@ export function reducePlotSegment(points: PlotPoint[], buckets = 1200): PlotPoin
 export function metricPaths(race: Race, metric: Metric, axis: 'distance' | 'time', x: (v: number) => number, y: (v: number) => number, reference: ReferenceData | null = null) {
   const index = telemetryIndex(race), ranks = metric === 'position' ? frameRanks(race) : null;
   return race.runners.map(runner => {
-    const finish = replayFinishTime(runner);
-    let segment: PlotPoint[] = [], previousFrame = -2, previousX = -Infinity;
-    const parts: string[] = [];
-    const flush = () => {
-      if (segment.length) parts.push(reducePlotSegment(segment).map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
-      segment = []; previousX = -Infinity;
-    };
     if (metric === 'hp') {
-      for (const point of hpTimeline(race, runner.id, reference)) {
-        const xv = axis === 'time' ? point.time : distanceAtTime(race, runner.id, point.time);
-        if (!finite(point.hp) || !finite(xv) || (finish !== null && point.time > finish + .5)) { flush(); continue; }
-        if (xv < previousX) flush();
-        segment.push({ x: x(xv), y: y(point.hp) }); previousX = xv;
-      }
-      flush(); return { runner, path: parts.join(' ') };
+      return {runner,path:timedPlotPath(race,runner.id,axis,hpTimeline(race,runner.id,reference).map(p=>({time:p.time,value:p.hp})),x,y,1)};
     }
+    const points:TimedPlotValue[]=[];let previousFrame=-2;
     for (const point of index.byRunner.get(runner.id) ?? []) {
       const value = ranks ? ranks[point.frameIndex].get(runner.id) : metric === 'lane' ? point.sample.lane : point.sample[metric as 'speed' | 'hp'];
-      const xv = axis === 'time' ? point.time : point.sample.distance;
-      if (!finite(value) || !finite(xv) || (finish !== null && point.time > finish + .5)) { flush(); previousFrame = point.frameIndex; continue; }
-      if (previousFrame + 1 !== point.frameIndex || xv < previousX) flush();
-      segment.push({ x: x(xv), y: y(value) }); previousFrame = point.frameIndex; previousX = xv;
+      if(previousFrame+1!==point.frameIndex)points.push({time:point.time,value:null});
+      points.push({time:point.time,value});previousFrame=point.frameIndex;
     }
-    flush(); return { runner, path: parts.join(' ') };
+    return {runner,path:timedPlotPath(race,runner.id,axis,points,x,y,1)};
   });
 }

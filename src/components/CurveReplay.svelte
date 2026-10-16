@@ -23,7 +23,7 @@
   let phaseMarkers=true,sectionMarkers=true,slopeMarkers=true,remainingMarker=true;
   let visionGuide=false,debuffTargets=true;
   let canvas:HTMLCanvasElement,scene:ReplayScene|null=null,frame:number|null=null;
-  let canvasWidth=1280,canvasHeight=600;
+  let canvasWidth=1280,canvasHeight=780;
   let mounted=false,portraitRace:Race|null=null,iconReference:ReferenceData|null|undefined=undefined,iconAnalysis:RaceAnalysis|null|undefined=undefined,cardTitle='';
   $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,intervals,analysis,courseMarkers:{phases:phaseMarkers,sections:sectionMarkers,slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[{x:canvasWidth-(canvasWidth<=650?198:222),y:38,width:canvasWidth<=650?190:210,height:canvasWidth<=650?95:100}]:[]} satisfies ReplayOptions;
   // Include every visual dependency explicitly; playback time does not rebuild data.
@@ -58,7 +58,7 @@
     // Match the draw coordinate space to the visible size: a 1280px bitmap
     // squeezed into a narrow panel made 11px callout text unreadably small.
     const resize=new ResizeObserver(entries=>{
-      const width=Math.max(1,Math.round(entries[0].contentRect.width)),height=Math.round(Math.max(560,Math.min(680,width*.5)));
+      const width=Math.max(1,Math.round(entries[0].contentRect.width)),height=Math.round(1.3*Math.max(560,Math.min(680,width*.5)));
       if(width!==canvasWidth||height!==canvasHeight){canvasWidth=width;canvasHeight=height;schedule();}
     });
     resize.observe(canvas);return()=>{observer.disconnect();resize.disconnect();};

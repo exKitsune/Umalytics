@@ -8,7 +8,7 @@ import { importRace } from '../src/data/index';
 import { assembleReferenceData } from '../src/data/reference';
 import { hpTimeline, hpAt, hpSampledBridges, hpHitEvidence } from '../src/data/hp-timeline';
 import { sampleAt } from '../src/data/sample';
-import { metricPaths } from '../src/telemetry';
+import { metricPaths, timedPlotPath } from '../src/telemetry';
 import { analyzeRace } from '../src/data/analytics';
 const run=promisify(execFile),root=resolve(import.meta.dirname,'..'),folder=resolve(process.argv[2]);
 await mkdir(folder,{recursive:true});
@@ -38,6 +38,20 @@ let race=await imported('instant',base()),id=race.runners[0].id,before=JSON.stri
 let points=hpTimeline(race,id,reference),jump=points.filter(p=>p.time===15);assert.deepEqual(jump.map(p=>p.kind),['jump-before','jump-after']);near(jump[0].hp,787.5);near(jump[1].hp,842.5);
 near(hpAt(race,id,15,reference),842.5);near(sampleAt(race,15,reference)[0].hp,842.5);near(hpAt(race,id,10,reference),800);near(hpAt(race,id,20,reference),830);assert.ok(hpAt(race,id,15-1e-5,reference)!<788);
 const path=metricPaths(race,'hp','time',v=>v,v=>v,reference)[0].path;assert.match(path,/L15\.0,787\.5 L15\.0,842\.5/);assert.equal(JSON.stringify(race),before);assert.equal(hpTimeline(race,id,reference),points);
+// Imported runout must not extend either the main metric or secondary overlay.
+const runout:any=base();runout.events=[];runout.runners[1].finishTimeRaw=82;
+runout.frames=[0,70,79,81,85].map(time=>({time,runners:[0,1].map(i=>({runnerId:`fixture-${i}`,distance:1600*time/(i?82:80),speed:20+time*.01,hp:1000-5*time,lane:.1+i*.1}))}));
+const ended=await imported('finish-cutoff-with-runout',runout);
+for(const axis of ['time','distance'] as const)for(const metric of ['speed','hp','lane','position'] as const){
+  const plotted=metricPaths(ended,metric,axis,v=>v,v=>v,reference);
+  plotted.forEach((p,i)=>{const vertices=[...p.path.matchAll(/[ML]([\d.]+),([-\d.]+)/g)].map(m=>[Number(m[1]),Number(m[2])]),end=axis==='time'?(i?82:80):1600;assert.ok(vertices.length);near(vertices.at(-1)![0],end);assert.ok(vertices.every(v=>v[0]<=end));});
+}
+const endedId=ended.runners[0].id,overlay=timedPlotPath(ended,endedId,'time',hpTimeline(ended,endedId,reference).map(p=>({time:p.time,value:p.hp})),v=>v,v=>v);
+assert.ok(overlay.endsWith('L80.00,600.00'),'HP overlays interpolate the finish endpoint instead of displaying runout.');
+assert.ok(timedPlotPath(ended,endedId,'time',[{time:79,value:605},{time:81,value:595}],v=>v,v=>v).endsWith('L80.00,600.00'),'Sampled HP bridges use the same finish cutoff.');
+const afterFinish=structuredClone(runout);afterFinish.events=[event(820101,81)];afterFinish.frames[3].runners[0].hp+=55;afterFinish.frames[4].runners[0].hp+=55;
+const healedAfter=await imported('post-finish-heal-excluded',afterFinish);
+assert.ok(metricPaths(healedAfter,'hp','time',v=>v,v=>v,reference)[0].path.endsWith('L80.0,600.0'),'A post-finish recovery must not smear back into the displayed endpoint.');
 let input:any=base();input.events=[event(820102)];input.frames[1].runners[0].hp=990;input.frames[2].runners[0].hp=950;
 race=await imported('partial-cap',input);id=race.runners[0].id;jump=hpTimeline(race,id,reference).filter(p=>p.time===15);near(jump[0].hp,940);near(jump[1].hp,1000);
 const unresolved=[['unknown-branch',()=>{const r=base();r.events=[event(820101,15,99)];return r;}],['unknown-scaling',()=>{const r=base();r.events=[event(820103)];return r;}],['unknown-mask',()=>{const r=base();r.events=[event(820104,15,0,1)];return r;}],['same-tick',()=>{const r=base();r.events.push(event(820102));return r;}],['missing-max',()=>{const r=base();r.frames.shift();return r;}],['unexplained-gain',()=>{const r=base();r.events=[];return r;}],['insufficient-heal',()=>{const r=base();r.frames[2].runners[0].hp=900;return r;}],['clamp-plateau',()=>{const r=base();r.events=[event(820102,20)];r.frames[1].runners[0].hp=990;r.frames[2].runners[0].hp=1000;return r;}]] as const;

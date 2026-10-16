@@ -120,6 +120,12 @@ entry-anchored free-running path across a contiguous braking approach, a
 recorded/collision anchor and speed recovery. Known target drops, direct-speed
 jumps, HP exhaustion and missing samples stop unsupported extensions. The raw
 recorded-block duration remains separate from the full slowed interval.
+Traffic comparison retains the inferred pace and downhill context in every
+part of the race. Nearby traffic only anchors a comparison when its supported
+target-speed shortfall exceeds 0.15 m/s. A speed deficit alone is not traffic
+evidence. The comparison follows reachable acceleration and natural
+deceleration through phase changes, grades and skill expiry. Current-speed
+modifiers apply after the collision cap, as in the skill comparison paths.
 `observedTrafficDeficit/observedTrafficTime` mirror the new traffic summary for
 compatibility. A traffic-associated shortfall does not prove that traffic
 caused every unexplained deviation in that window.

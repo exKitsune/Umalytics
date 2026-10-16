@@ -73,6 +73,12 @@ if(process.argv[2]==='--child'){
   assert.ok(result.near.some((i:any)=>i.start<25&&i.end>=26));
   result=await analyze('recorded-block-keeps-overtake-tail',traffic(true,true));
   assert.ok(intervals(result,'overtake-model').some((i:any)=>i.start<23&&i.end>=26.5&&i.end<28));
+  const wideRecovery=traffic();for(const frame of wideRecovery.frames)if(frame.time>=24&&frame.time<=26.5){
+    const self=frame.runners[0],front=frame.runners[1];self.speed-=.2-.1*(frame.time-24);front.distance=self.distance+3.2;front.lane=self.lane;front.speed=self.speed+.02;
+  }
+  result=await analyze('speed-matched-near-recovery-outside-collision-width',wideRecovery);
+  assert.ok(intervals(result,'overtake-model').some((i:any)=>i.start<23&&i.end>=26.5));
+  assert.ok(result.near.some((i:any)=>i.start<25&&i.end>=26.5));
   result=await analyze('clear-road-exit-ends-overtake',make({on:19,off:24,style:1}));
   assert.ok(intervals(result,'overtake-model').every((i:any)=>!(i.start<23&&i.end>=26.5)));
   assert.equal(result.near.length,0);
@@ -100,5 +106,14 @@ if(process.argv[2]==='--child'){
   result=await analyze('downhill-heal-bracket-isolated',make({dh:true,heal:21.25}));assert.equal(has(result,21,21.5,'downhill-mode-model'),false);assert.ok(has(result,22,25,'downhill-mode-model'));
   const lostTail=make({dh:true});let h=2800;for(const f of lostTail.frames){if(f.time>=10&&f.time<=46){h-=20*(f.runners[0].speed-20+12)**2/144*.4*.25;f.runners[0].hp=h;}}
   result=await analyze('speed-exit-ends-downhill',lostTail);const partial=result.modes.find((m:any)=>m.kind==='downhill-mode');assert.equal(partial.complete,true);assert.ok(partial.reachableExtraDistance!==null);assert.ok(partial.assessedReachableExtraDistance!==null);
+  // One imported race crossing two hills: split the existing shared comparison,
+  // never run a separate counterfactual per hill or double count its tail.
+  course.slopes=[{start:0,length:503,slope:-10000},{start:503,length:1497,slope:-10000}];
+  await writeFile(join(reference,'courses.json'),JSON.stringify({99991:course}));
+  result=await analyze('two-downhills-share-one-comparison',make({skill:20,dh:true}));
+  const split=result.modes.find((m:any)=>m.kind==='downhill-mode');
+  assert.equal(split.hills.length,2);
+  assert.ok(split.hills.every((h:any)=>h.duration>0&&h.distance>0&&h.hp<0));
+  for(const [part,total] of [['distance','assessedReachableExtraDistance'],['time','assessedReachableExtraTime'],['hp','assessedReachableExtraHp'],['duration','duration'],['carryoverDuration','carryoverDuration']])assert.ok(Math.abs(split.hills.reduce((n:number,h:any)=>n+h[part],0)-split[total])<1e-6,`${part} must reconcile with the combined result`);
   console.log(JSON.stringify({cases,paceOnset:'passed',phaseAndHeal:'passed',skillNormalization:'passed',noInventedMode:'passed',positionLimit:'passed',independentDownhill:'passed',reachableGains:'passed',unknownGaps:'passed',sharedEngine:'passed',nearContinuity:'passed',nearThreshold:'passed'}));
 }

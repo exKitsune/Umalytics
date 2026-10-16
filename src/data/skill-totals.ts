@@ -4,6 +4,7 @@ import type { ReferenceData } from './reference';
 import type { EffectUtilization } from './effect-types';
 import { motionSkillImpact } from './motion-skill-impact';
 import { motionBenefitFor } from './motion-analysis';
+import { preparedFor } from '../analysis/prepared';
 
 /** Component seconds have a common denominator. HP capacity, stat coefficients
  * and lane travel do not, and must not be averaged into a movement score. */
@@ -14,7 +15,8 @@ export function movementUse(effects:EffectUtilization[]){
 }
 
 const cache=new WeakMap<RaceAnalysis,Map<string,ReturnType<typeof buildTotals>>>();
-export function skillTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null){
+export function skillTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null):ReturnType<typeof buildTotals>{
+  const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&(courseId==null||courseId===race.courseId))return ready.totals;
   let saved=cache.get(analysis);if(!saved)cache.set(analysis,saved=new Map());
   const key=`${runnerId}/${courseId??race.courseId}`;
   let result=saved.get(key);if(!result){result=buildTotals(race,reference,analysis,runnerId,courseId);saved.set(key,result);}return result;

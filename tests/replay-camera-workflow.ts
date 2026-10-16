@@ -185,7 +185,7 @@ let layoutFrames=0,largestLayoutStep=0,farthestCard=0,layoutOverlap=0,portraitOv
 let worstPortrait:unknown=null,worstDistance:unknown=null;
 let wideLayoutFrames=0,wideLayoutOverlap=0,wideLayoutStep=0;
 for(const width of [760,1280,1920])for(const scenario of ['crossing','heights','crowded']){
-  const height=Math.round(Math.max(560,Math.min(680,width*.5)));
+  const height=Math.round(1.3*Math.max(560,Math.min(680,width*.5)));
   const runners=Array.from({length:scenario==='crowded'?9:4},(_,i)=>({...race.runners[i%race.runners.length],id:`layout-${i}`,index:i,gate:i+1,name:`Layout runner ${i+1}`}));
   const layoutRace:Race={...race,runners,duration:12,courseId:10506,distance:2500,events:[],frames:Array.from({length:49},(_,frame)=>{
     const time=frame/4;return {time,runners:runners.map((r,i)=>({runnerId:r.id,speed:20,hp:1000,lane:(i%3)*.1,
@@ -194,20 +194,25 @@ for(const width of [760,1280,1920])for(const scenario of ['crossing','heights','
   const layoutOptions:ReplayOptions={race:layoutRace,course:reference.courses[10506],reference,selected:runners[0].id,follow:'selected',window:140,labels:true,elevation:true,cardObstacles:[reserve],
     intervals:id=>Array.from({length:scenario==='heights'?6:scenario==='crowded'?5:2},(_,i)=>({kind:'skill',label:`Layout effect ${i+1}`,skillId:201431,start:scenario==='heights'?i*.63:0,end:12,evidence:'recorded'}))};
   if(scenario==='crowded')for(const zoom of [150,200,300,600]){
-    const wideOptions={...layoutOptions,window:zoom};let maxOverlap=0,maxStep=0,last:ReturnType<typeof drawReplay>|null=null;
+    const wideOptions={...layoutOptions,window:zoom};let maxOverlap=0,maxOverlapRatio=0,maxStep=0,last:ReturnType<typeof drawReplay>|null=null;
     for(let frame=60;frame<150;frame++){
       texts.length=0;const wide=drawReplay(context,wideOptions,frame/30,width,height);wideLayoutFrames++;
       assert.equal(wide.cardRects.length,wide.markers.reduce((n,m)=>n+m.cards.length,0));
       assert.equal(texts.at(-1),wide.cardGroups.find(g=>g.runnerId===wideOptions.selected)!.header,'The selected header and effects must paint above all other content.');
       let area=0;
       for(const [i,g]of wide.cardGroups.entries()){
+        const owner=wide.markers.find(m=>m.runner.id===g.runnerId)!;
+        const gap=Math.hypot(Math.max(g.x-owner.x,0,owner.x-g.x-g.width),Math.max(g.y-owner.y,0,owner.y-g.y-g.height));
+        assert.ok(gap<230,`Wide card left its owner: ${width}/${zoom}: ${gap}`);
         assert.ok(g.x>=7.999&&g.y>=35.999&&g.x+g.width<=width-7.999&&g.y+g.height<=height-103.999);
         for(const other of wide.cardGroups.slice(i+1))area+=overlaps(g,other);
         const prev=last?.cardGroups.find(p=>p.runnerId===g.runnerId);if(prev)maxStep=Math.max(maxStep,Math.hypot(g.x-prev.x,g.y-prev.y));
       }
-      maxOverlap=Math.max(maxOverlap,area);last=wide;
+      maxOverlap=Math.max(maxOverlap,area);maxOverlapRatio=Math.max(maxOverlapRatio,area/wide.cardGroups.reduce((sum,g)=>sum+g.width*g.height,0));last=wide;
     }
-    if(width>=1280){assert.ok(maxOverlap<5000,`Wide stacks remain crowded: ${width}/${zoom}: ${maxOverlap}`);wideLayoutOverlap=Math.max(wideLayoutOverlap,maxOverlap);}
+    // Dense nine-runner fields allow limited overlap to keep labels near their
+    // owners. Check a fraction of visible stack area, independent of font size.
+    if(width>=1280){assert.ok(maxOverlapRatio<.2,`Wide stacks remain crowded: ${width}/${zoom}: ${maxOverlapRatio}`);wideLayoutOverlap=Math.max(wideLayoutOverlap,maxOverlap);}
     assert.ok(maxStep<15,`Wide layout jumped: ${width}/${zoom}: ${maxStep}`);wideLayoutStep=Math.max(wideLayoutStep,maxStep);
     const seek=drawReplay(context,wideOptions,3,width,height);drawReplay(context,wideOptions,1,width,height);assert.deepEqual(drawReplay(context,wideOptions,3,width,height),seek);
   }

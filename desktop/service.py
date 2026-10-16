@@ -253,7 +253,7 @@ class Service:
         return dict(self.settings, categories=dict(self.settings['categories']))
 
     def validate_preferences(self, patch):
-        if not isinstance(patch, dict) or set(patch) - {'theme', 'fontScale', 'courseAssignments', 'browserMigrationComplete'}:
+        if not isinstance(patch, dict) or set(patch) - {'theme', 'fontScale', 'courseAssignments', 'browserMigrationComplete', 'raceTags'}:
             raise ValueError('Unknown preference.')
         if 'theme' in patch and patch['theme'] not in ('dark', 'light'):
             raise ValueError('Invalid theme.')
@@ -268,6 +268,13 @@ class Service:
                            or '..' in key or type(value) is not int or not 0 < value <= 9007199254740991
                            for key, value in assignments.items())):
                 raise ValueError('Invalid course assignments.')
+        if 'raceTags' in patch:
+            tags = patch['raceTags']
+            if (not isinstance(tags, dict) or len(tags) > 10000
+                    or any(not isinstance(key, str) or len(key) > 300 or not isinstance(values, list) or len(values) > 20
+                           or any(not isinstance(value, str) or not 1 <= len(value) <= 40 for value in values)
+                           for key, values in tags.items())):
+                raise ValueError('Invalid race tags.')
         return patch
 
     def update_preferences(self, patch):
@@ -731,6 +738,10 @@ def make_handler(service):
                     self.send(200, service.settings)
                 elif path == '/api/preferences':
                     self.send(200, service.settings['preferences'])
+                elif path == '/api/analysis-cache' or path.startswith('/api/analysis-cache/'):
+                    from analysis_cache import AnalysisCache
+                    with service.lock:
+                        self.send(200, AnalysisCache(service.data_dir).read(path.split('/api/analysis-cache/')[1] if path.startswith('/api/analysis-cache/') else None))
                 elif path == '/api/licenses':
                     self.send(200, raw=service.notices, content_type='text/plain; charset=utf-8')
                 elif path == '/api/certificate':
@@ -773,7 +784,7 @@ def make_handler(service):
                 if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                     raise ValueError('JSON request required.')
                 length = int(self.headers.get('Content-Length', '0'))
-                limit = MAX_LIST if self.path == '/api/exports' else MAX_RACE + 16384 if self.path == '/api/races/import' else 1024 * 1024 if self.path == '/api/preferences' else 16384
+                limit = 34 * 1024 * 1024 if self.path == '/api/analysis-cache' else MAX_LIST if self.path == '/api/exports' else MAX_RACE + 16384 if self.path == '/api/races/import' else 1024 * 1024 if self.path == '/api/preferences' else 16384
                 if length < 1 or length > limit or self.headers.get('Transfer-Encoding'):
                     raise ValueError('Request body size is invalid.')
                 from reference_data import strict_json
@@ -800,6 +811,10 @@ def make_handler(service):
                     with service.lock:
                         result = service.update_preferences(body)
                     self.send(200, result)
+                elif self.path == '/api/analysis-cache':
+                    from analysis_cache import AnalysisCache
+                    with service.lock:
+                        self.send(200, AnalysisCache(service.data_dir).update(body))
                 elif self.path == '/api/settings':
                     with service.lock:
                         result = service.update_settings(body)

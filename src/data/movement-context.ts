@@ -29,9 +29,15 @@ export function proximityPressure(race:Race,runnerId:string,sample:RunnerSample)
     const inFront=gap>0&&(gap<4&&lane<1/18||gap<1.05&&lane<2/18);
     if(!inFront||neighbor.speed==null){if(inFront)missing=true;continue;}
     const matched=sample.speed<=neighbor.speed+.05&&neighbor.speed-sample.speed<=.15;
+    const priorNeighbor=previous&&race.frames[index-1].runners.find(runner=>runner.runnerId===other.id);
+    const priorGap=priorNeighbor?.distance!=null&&previous?.distance!=null?priorNeighbor.distance-previous.distance:null;
+    const priorLane=priorNeighbor?.lane!=null&&previous?.lane!=null?Math.abs(priorNeighbor.lane-previous.lane):null;
+    const priorMatched=priorNeighbor?.speed!=null&&previous?.speed!=null&&previous.speed<=priorNeighbor.speed+.05&&priorNeighbor.speed-previous.speed<=.15;
+    const recovering=climbing&&priorGap!==null&&priorLane!==null&&priorGap>0&&(priorGap<4&&priorLane<1/18||priorGap<1.05&&priorLane<2/18)
+      &&(previous?.blockFrontRunnerIndex===other.index||inFrontCollisionRange(priorGap,priorLane)||priorMatched);
     // A close cap can slow her while she is still faster than the horse ahead,
     // and while she is accelerating back out of that cap.
-    if(!inFrontCollisionRange(gap,lane)&&(climbing||!matched))continue;
+    if(!inFrontCollisionRange(gap,lane)&&!recovering&&(climbing||!matched))continue;
     held=true;
   }
   return held?true:missing?null:false;

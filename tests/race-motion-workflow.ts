@@ -21,6 +21,7 @@ if(process.argv[2]==='--scenario'){
   metadata.skills[850007]={name:'Synthetic wit passive',rarity:1,activateLot:0,branches:[{branchIndex:0,condition:'always==1',rawDuration:-1,durationUsage:1,effects:[{type:5,rawValue:600000,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:0}]}]};
   metadata.skills[850008]={name:'Synthetic uncertain guts passive',rarity:1,activateLot:0,branches:[{branchIndex:0,condition:'popularity==1',rawDuration:-1,durationUsage:1,effects:[{type:4,rawValue:600000,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:0}]}]};
   metadata.skills[850009]={name:'Synthetic lane speed',rarity:1,activateLot:0,branches:[{branchIndex:0,condition:'always==1',rawDuration:100000,durationUsage:1,effects:[{type:28,rawValue:500,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:0}]}]};
+  metadata.skills[850010]={name:'Synthetic spurt recovery',rarity:1,activateLot:0,branches:[{branchIndex:0,condition:'always==1',rawDuration:0,durationUsage:1,effects:[{type:9,rawValue:150,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:0}]}]};
   await writeFile(join(reference,'metadata.json'),JSON.stringify(metadata));
   const course={distance:2000,raceTrackId:10006,surface:1,turn:1,course:1,laneMax:15000,courseSetStatus:[],corners:[],straights:[{start:0,end:2000}],slopes:[] as any[]};
   const saveCourse=()=>writeFile(join(reference,'courses.json'),JSON.stringify({99995:course}));await saveCourse();
@@ -87,6 +88,22 @@ if(process.argv[2]==='--scenario'){
   race=base();race.runners[0].lastSpurtDistance=1400;
   for(const f of race.frames)if(f.time>=72){f.runners[0].speed=spurtPlateau;f.runners[1].distance=f.runners[0].distance+3.2;f.runners[1].lane=f.runners[0].lane;f.runners[1].speed=spurtPlateau+.3;}
   result=await analyze('faster-horse-ahead-keeps-own-pace',race);near(at(result,76).targetActive.mid,spurtPlateau,.05);assert.ok(result.intervals.every((i:any)=>i.kind!=='near-slowdown'));
+  course.slopes=[{start:1600,length:300,slope:20000}];await saveCourse();
+  race=base();race.runners[0].lastSpurtDistance=1400;race.events=[event(850001,72,26),event(850003,72,26)];
+  for(const f of race.frames)if(f.time>=72){const hill=f.time>=80&&f.time<95,boost=f.time<98?1.5:0;f.runners[0].speed=spurtPlateau+boost-(hill?1/3:0);
+    // Only uphill samples supply the clear plateau fit; the same flat base
+    // must be restored before adding terrain and the two resolved effects.
+    if(!hill){f.runners[0].blockFrontRunnerIndex=1;f.runners[1].distance=f.runners[0].distance+1;f.runners[1].speed=f.runners[0].speed/.994;}
+  }
+  result=await analyze('spurt-uphill-fit-normalizes-terrain-and-speed-effects',race);
+  near(at(result,76).targetBase.mid,spurtPlateau,.015);near(at(result,85).targetBase.mid,spurtPlateau-1/3,.015);near(at(result,85).targetActive.mid,spurtPlateau+.5-1/3,.015);near(at(result,85).currentSpeedDelta,1);
+  course.slopes=[];await saveCourse();
+  race=base();race.runners[0].lastSpurtDistance=1400;race.runners[0].skills.push({id:850010,level:1});race.events=[event(850010,84,0),event(850010,94,0)];
+  const firstChoice=spurtMaximum-.6,secondChoice=spurtMaximum-.2;
+  for(const f of race.frames)if(f.time>=72){const t=f.time;f.runners[0].speed=t<84?firstChoice:t<94?Math.min(secondChoice,firstChoice+referenceAccel*(t-84)):Math.min(spurtMaximum,secondChoice+referenceAccel*(t-94));f.runners[0].hp+=t>=94?800:t>=84?400:0;}
+  result=await analyze('spurt-fits-stay-inside-each-recovery-decision',race);
+  near(at(result,76).targetActive.mid,firstChoice,.015);near(at(result,90).targetActive.mid,secondChoice,.015);near(at(result,97).targetActive.mid,spurtMaximum,.015);
+  assert.ok(at(result,76).decisionTime<84);near(at(result,90).decisionTime,84);near(at(result,97).decisionTime,94);
   race=base();race.runners[0].skills.push({id:850009,level:1});race.events=[event(850009,50,6)];
   for(const f of race.frames)if(f.time>=52&&f.time<56)f.runners[0].lane=.1+(f.time-52)*.01;
   result=await analyze('move-lane-target-while-changing',race);const laneBonus=Math.sqrt(.0002*1200);

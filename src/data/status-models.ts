@@ -449,6 +449,7 @@ export function modeledStatuses(race: Race, runner: Runner, course: CourseRefere
     const detail = `Position-keep candidate before 10/24 distance. Each bracket is integrated from the observed self speed toward the no-mode target and toward each position-legal mode target. A mode is kept only when its integral meets the next sample more closely than the no-mode integral. Start dash, blocking, rushed/competition and unresolved skill windows are excluded. Resolved direct-speed modifiers are removed; target-skill offsets and a confirmed downhill bonus are in every hypothesis. Reference speed ${normal.min.toFixed(2)}–${normal.max.toFixed(2)} m/s; ${hpValid?`baseline ${expected.toFixed(2)} HP/s, observed net ${rate.toFixed(2)} HP/s.`:'HP evidence is unavailable in this instant-HP sample bracket; a downhill-sized surplus is not labeled as pace.'} Pacemaker selection is unrecorded; nonfront gap uses the leading runner of the most forward strategy as a proxy. Native entry rolls/cooldowns and unseen exits are not reconstructed. No unknown gaps are joined; absence is not mode off. Modeled speed/HP factors are not measured contributions.`;
     let label: string | null = null;
     const preceding = pace.at(-1), contiguous = preceding?.end === fa.time;
+    const nearEnd=proximityPressure(race,runner.id,b)===true,near=proximityPressure(race,runner.id,a)===true||nearEnd;
     const continuingUp = contiguous && preceding?.kind === 'pace-up-model';
     const continuingDown = contiguous && preceding?.kind === 'pace-down-model';
     const previousRamp=pendingRamp as {start:number;end:number;label:string}|null;
@@ -467,7 +468,7 @@ export function modeledStatuses(race: Race, runner: Runner, course: CourseRefere
       const second = Math.max(...field.filter(r => r.runner.id !== runner.id).map(r => r.a!.distance!));
       const earlier=race.frames[i-1],earlierSelf=earlier&&at(earlier,runner.id),earlierContext=earlier&&fa.time-earlier.time<=2?resolvedBracket(earlier.time,fa.time):null;
       const earlierTarget=earlierSelf?.distance!=null?target(earlierSelf,course.slopes.find(s=>earlierSelf.distance!>=s.start&&earlierSelf.distance!<s.start+s.length)?.slopePercent??0):null;
-      const recentOvertake=earlierTarget!==null&&earlierSelf?.distance!=null&&earlierSelf.speed!=null&&earlierContext!==null&&earlierContext!==undefined
+      const recentOvertake=(!contiguous||preceding?.kind==='overtake-model')&&earlierTarget!==null&&earlierSelf?.distance!=null&&earlierSelf.speed!=null&&earlierContext!==null&&earlierContext!==undefined
         &&earlierSelf.speed-earlierContext.currentStart>earlierTarget.max+earlierContext.targetStart+.04
         &&peers.some(r=>{const p=at(earlier,r.runner.id);return p?.distance!=null&&p.distance>earlierSelf.distance!+.01;});
       const prior = pace.at(-1), priorOvertake = prior?.kind === 'overtake-model' && prior.end != null && fa.time - prior.end <= .4 || pendingContiguous&&previousRamp?.label==='Overtake'||recentOvertake;
@@ -547,15 +548,15 @@ export function modeledStatuses(race: Race, runner: Runner, course: CourseRefere
       merge(pace, modeledInterval('pace-down-model', 'Pace down', fa.time, fb.time, detail+(seated(downMultiplier)?' Endpoint speed sits on the pace-down ceiling.':onFloor?' Endpoint speed is the minimum while the pace-down target is at or below that floor.':''),
       { ...model, speedMultiplier: downMultiplier, speedDelta: modeBase * (downMultiplier - 1), hpDrainMultiplier: .6, modeledHpRate: expected * .6, ...(seated(downMultiplier) || onFloor ? { velocityCeiling: true } : {}) }));
     }
-    else if(nextNormal&&contiguous&&preceding.model?.speedMultiplier!=null&&preceding.model.speedMultiplier>1&&acceleration<-.05
+    else if(!nearEnd&&nextNormal&&contiguous&&preceding.model?.speedMultiplier!=null&&preceding.model.speedMultiplier>1&&acceleration<-.05
       &&slopePercent===nextSlopePercent&&skillContext.targetStart===skillContext.targetEnd&&selfB>nextNormal.max+downBonus+skillContext.targetEnd+.04){
       const multiplier=preceding.model.speedMultiplier,deceleration=a.distance<race.distance/6?1.2:.8,
         exit=fb.time-(selfA-selfB)/deceleration,ceiling=normal.min+modeBase*(multiplier-1)+downBonus+skillContext.targetStart;
-      // A large drop has already left the ceiling; the mode ended on the previous sample.
-      if(selfA-selfB<=.15&&exit>fa.time+.1&&selfA>=ceiling-.1&&selfA<=normal.max+modeBase*(multiplier-1)+downBonus+skillContext.targetStart+.1)
+      // A readable bracket can hold its old ceiling briefly and then decelerate.
+      // The total drop can exceed .15 m/s over a long retained interval.
+      if(exit>fa.time+.1&&selfA>=ceiling-.1&&selfA<=normal.max+modeBase*(multiplier-1)+downBonus+skillContext.targetStart+.1)
         merge(pace,modeledInterval(preceding.kind,preceding.label,fa.time,exit,detail+' Exit includes a partial plateau-to-normal reference-deceleration fit inside this retained bracket; section-wit changes and exact native exit time remain unreported.',{...model,speedMultiplier:multiplier,speedDelta:modeBase*(multiplier-1)}));
     }
-    const near=proximityPressure(race,runner.id,a)===true||proximityPressure(race,runner.id,b)===true;
     const extended=pace.at(-1)?.end===fb.time;
     if(!label&&!extended){
       const prior=pace.at(-1);

@@ -19,13 +19,14 @@ const substantialDeficit = 0.15;
 const explainedSlowdown = new Set(['front-block', 'hp-empty']);
 /** Use the target including inferred modes and resolved skills/debuffs. Near
  * can coexist with a pace or downhill mode: traffic can hide its speed gain. */
-export function substantialNearIntervals(intervals: StatusInterval[], samples: (Pick<MotionSample, 'time' | 'actual' | 'targetActive' | 'hpEmpty' | 'startDash'> & Partial<Pick<MotionSample,'currentSpeedDelta'>>)[]): StatusInterval[] {
+export function substantialNearIntervals(intervals: StatusInterval[], samples: (Pick<MotionSample, 'time' | 'actual' | 'targetActive' | 'hpEmpty' | 'startDash'> & Partial<Pick<MotionSample,'currentSpeedDelta'|'trafficTargetActive'>>)[]): StatusInterval[] {
   const ordered = [...samples].sort((a, b) => a.time - b.time);
   const explained = (time: number) => intervals.some(interval => explainedSlowdown.has(baseKind(interval.kind)) && time >= interval.start && time < (interval.end ?? interval.observedUntil ?? Number.POSITIVE_INFINITY));
   return intervals.flatMap(interval => {
     if (baseKind(interval.kind) !== 'near-slowdown') return [interval];
     const end = interval.end ?? interval.observedUntil ?? interval.start;
-    const hits = ordered.filter(sample => sample.time >= interval.start - 1e-6 && sample.time < end - 1e-9 && sample.actual != null && sample.targetActive != null && sample.hpEmpty !== true && sample.startDash !== true && sample.targetActive.mid + (sample.currentSpeedDelta??0) - sample.actual > substantialDeficit + 1e-9 && !explained(sample.time));
+    const hits = ordered.filter(sample => {const target=sample.trafficTargetActive===undefined?sample.targetActive:sample.trafficTargetActive;
+      return sample.time >= interval.start - 1e-6 && sample.time < end - 1e-9 && sample.actual != null && target != null && sample.hpEmpty !== true && sample.startDash !== true && target.mid + (sample.currentSpeedDelta??0) - sample.actual > substantialDeficit + 1e-9 && !explained(sample.time);});
     if (!hits.length) return [];
     const groups: typeof hits[] = [];
     for (const hit of hits) {
