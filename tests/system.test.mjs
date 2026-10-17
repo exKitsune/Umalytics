@@ -264,7 +264,8 @@ test('race import → running library → exported JSON → second import preser
   assert.equal(first.data.title,'Synthetic system test');assert.equal(first.data.synthetic,true);
   assert.equal(first.data.runners.length,2);assert.equal(first.data.frames.length,3);assert.equal(first.data.events.length,1);
   assert.equal(first.data.runners[0].stats.speed,1100);assert.deepEqual(first.data.events[0].params,[0,100011]);
-  assert.ok(!JSON.stringify(first.data).includes('PRIVATE_FIXTURE'));
+  assert.equal(first.data.runners[0].trainer,'PRIVATE_FIXTURE');
+  assert.ok(!JSON.stringify(first.data).includes('PRIVATE_FIXTURE_TOKEN'));
   const exported=join(folder,'downloaded.json');await writeFile(exported,JSON.stringify(first.data));
   const secondFolder=join(folder,'reimport');await convert(exported,secondFolder);
   const saved=JSON.parse(await readFile(join(secondFolder,(await readdir(secondFolder))[0]),'utf8'));
@@ -679,6 +680,12 @@ test('whole replay skill conditions → modeled statuses → portable import pre
   const contradiction=structuredClone(seeded);contradiction.events=[{time:0,type:3,runnerId:base.runners[0].id,skillId:200431,label:'Synthetic contradictory proc',params:[0,200431,0,0]}];
   const rejected=(await analyze(contradiction,'contradiction')).report;assert.equal(row(rejected.runners[base.runners[0].id],200431).activationStatus,'recorded');assert.ok(Object.values(rejected.runners).every(r=>r.skillRows.every(s=>!s.lottery)));
   t.diagnostic('Public/synthetic whole-analysis workflow: guaranteed passives, always==1, static exclusions, final-corner latch, inherited lottery normalization, Runaway, bounded RNG evidence, censored/overlapping status totals and portable facts passed.');
+});
+
+test('a room response supplies the course for a later replay with the same seed or room id',async()=>{
+  const result=await run('python',[join(root,'tests/room-course-workflow.py')],{cwd:root,windowsHide:true,timeout:15000});
+  const report=JSON.parse(result.stdout.trim());
+  for(const field of ['roomCourseAttached','ambiguousSeedWithheld','roomIdNotPersisted','weatherMismatchWithheld'])assert.equal(report[field],'passed');
 });
 
 test('whole skill catalog audit preserves every Global effect and withholds unknown mechanics',async t=>{

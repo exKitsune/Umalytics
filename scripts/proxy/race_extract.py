@@ -1,6 +1,7 @@
 """Bounded copy of race-adjacent objects. Auth/session envelopes are never serialized."""
-import math
 import base64
+import json
+import math
 import struct
 import zlib
 
@@ -185,6 +186,154 @@ def _metadata(value):
     return result
 
 
+def _int(value):
+    number = _number(value)
+    return number if type(number) is int else None
+
+
+def _join_keys(value):
+    """Public room/race identifiers only. Player and viewer ids are never keys."""
+    if not isinstance(value, dict):
+        return {}
+    aliases = {'savedRoomId': 'saved_room_id', 'registerId': 'register_id', 'roomId': 'room_id', 'randomSeed': 'random_seed'}
+    keys = {}
+    sources = [value]
+    for name in ('room_info', 'race_start_info', 'race_result'):
+        child = value.get(name)
+        if isinstance(child, dict):
+            sources.append(child)
+    for source in sources:
+        for key in ('saved_room_id', 'register_id', 'room_id', 'random_seed'):
+            if key in keys:
+                continue
+            raw = source.get(key)
+            if raw is None:
+                raw = next((source[alias] for alias, canonical in aliases.items() if canonical == key and alias in source), None)
+            number = _int(raw)
+            if number is None or number <= 0:
+                continue
+            keys[key] = number
+    return keys
+
+
+def _course_fields(value):
+    if not isinstance(value, dict):
+        return {}
+    meta = _metadata(value)
+    course = {}
+    instance = _int(meta.get('race_instance_id'))
+    if instance is not None and instance > 0:
+        course['race_instance_id'] = instance
+    raw_course = meta.get('race_course_set')
+    if isinstance(raw_course, dict) or _int(raw_course) is not None:
+        course['race_course_set'] = raw_course
+    for key in ('distance', 'race_distance'):
+        number = _int(meta.get(key))
+        if number is not None and number > 0 and 'distance' not in course:
+            course['distance'] = number
+    for key in CONDITIONS:
+        condition = meta.get(key)
+        if _number(condition) is not None or isinstance(condition, str) and len(condition) <= 32:
+            course[key] = condition
+    return course
+
+
+def collect_room_bindings(payload):
+    """Course context from a room or race-start response, keyed by an explicit shared id."""
+    found = []
+    visits = 0
+
+    def walk(value, depth=0):
+        nonlocal visits
+        visits += 1
+        if visits > 10000 or depth > 16:
+            raise ValueError('envelope_limit')
+        if isinstance(value, list):
+            if len(value) > 1000:
+                raise ValueError('array_limit')
+            for item in value:
+                walk(item, depth + 1)
+            return
+        if not isinstance(value, dict):
+            return
+        course = _course_fields(value)
+        join = _join_keys(value)
+        if 'race_instance_id' not in course and 'race_course_set' not in course:
+            join.pop('random_seed', None)
+        elif 'random_seed' not in join:
+            seed = _int(value.get('random_seed', value.get('randomSeed')))
+            if seed is not None and seed > 0:
+                join['random_seed'] = seed
+        if join and ('race_instance_id' in course or 'race_course_set' in course):
+            found.append({'join': join, 'course': {key: course[key] for key in course if key in ('race_instance_id', 'race_course_set', 'distance', *CONDITIONS)}})
+        for key, nested in value.items():
+            if key in ENVELOPE:
+                continue
+            if isinstance(nested, (dict, list)):
+                walk(nested, depth + 1)
+
+    walk(payload)
+    return found
+
+
+def _binding_matches(race, binding):
+    join = race.get('_room_join') or {}
+    other = binding['join']
+    course = binding['course']
+    if 'random_seed' in join and 'random_seed' in other and join['random_seed'] != other['random_seed']:
+        return False
+    for key in ('saved_room_id', 'register_id', 'room_id'):
+        if key in join and key in other and join[key] != other[key]:
+            return False
+    for key in CONDITIONS:
+        if key in race and key in course and race[key] != course[key]:
+            return False
+    for key in ('saved_room_id', 'register_id', 'room_id'):
+        if key in join and key in other and join[key] == other[key]:
+            return True
+    return 'random_seed' in join and join['random_seed'] == other.get('random_seed')
+
+
+def remember_room_bindings(memory, bindings, limit=64):
+    for binding in bindings:
+        instance = binding['course'].get('race_instance_id')
+        memory[:] = [item for item in memory if item['course'].get('race_instance_id') != instance or not any(item['join'].get(key) == binding['join'].get(key) for key in ('saved_room_id', 'register_id', 'room_id', 'random_seed') if key in item['join'] and key in binding['join'])]
+        memory.append(binding)
+    if len(memory) > limit:
+        del memory[:-limit]
+
+
+def apply_room_bindings(races, memory):
+    """Copy course fields from a room response that shares a room id or random seed."""
+    for race in races:
+        if race.get('race_instance_id') or race.get('race_course_set'):
+            race.pop('_room_join', None)
+            continue
+        matches = [binding for binding in memory if _binding_matches(race, binding)]
+        race.pop('_room_join', None)
+        instances = {binding['course'].get('race_instance_id') for binding in matches if binding['course'].get('race_instance_id')}
+        courses = {json.dumps(binding['course'].get('race_course_set'), sort_keys=True) for binding in matches if binding['course'].get('race_course_set') is not None}
+        if len(instances) > 1 or len(courses) > 1 or not matches:
+            continue
+        course = matches[-1]['course']
+        copied = False
+        if 'race_instance_id' not in race and course.get('race_instance_id'):
+            race['race_instance_id'] = course['race_instance_id']
+            copied = True
+        if 'race_course_set' not in race and course.get('race_course_set') is not None:
+            race['race_course_set'] = course['race_course_set']
+            copied = True
+        if 'distance' not in race and course.get('distance'):
+            race['distance'] = course['distance']
+            copied = True
+        for key in CONDITIONS:
+            if key not in race and key in course:
+                race[key] = course[key]
+                copied = True
+        if copied:
+            race.setdefault('metadata', {}).setdefault('umaTrace', {})['courseSource'] = 'room-response'
+
+
 def extract_races(payload, endpoint='', captured_at=None, settings=None):
     """Keep local metadata only. No cross-response or history/chart joins.
 
@@ -231,6 +380,9 @@ def extract_races(payload, endpoint='', captured_at=None, settings=None):
                 race = {'race_scenario': scenario, 'title': 'Observed game replay',
                     'race_category': category, 'metadata': {'umaTrace': {
                         'endpointGroup': endpoint_category, 'categorySource': source}}}
+                join = _join_keys(value)
+                if join:
+                    race['_room_join'] = join
                 if isinstance(captured_at, str) and len(captured_at) <= 64:
                     race['captured_at'] = captured_at
                 for key in RACE_NUMBERS:

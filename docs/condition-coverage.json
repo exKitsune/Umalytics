@@ -3427,7 +3427,7 @@
       "expressions": [
         "is_overtake==1"
       ],
-      "meaning": "Having an overtake target: a visible runner up to 20 m ahead, catchable within 15 seconds at current actual speeds.",
+      "meaning": "Having an overtake target: a visible runner up to 20 m ahead that this runner is currently faster than.",
       "mechanics": "understood",
       "observation": "position-proxy",
       "required": [
@@ -3435,7 +3435,7 @@
         "vision",
         "lane fractions"
       ],
-      "limitation": "Visible faster-approach candidates are modeled; the selected target and timers are not recorded.",
+      "limitation": "The visible slower runner is modeled from recorded positions; the game's chosen target is not recorded.",
       "simulator": {
         "file": "ActivationConditions.ts",
         "line": 737,
@@ -4895,7 +4895,7 @@
       "expressions": [
         "overtake_target_no_order_up_time>=2"
       ],
-      "meaning": "Having an overtake target: a visible runner up to 20 m ahead, catchable within 15 seconds at current actual speeds.",
+      "meaning": "Having an overtake target: a visible runner up to 20 m ahead that this runner is currently faster than.",
       "mechanics": "understood",
       "observation": "position-proxy",
       "required": [
@@ -4903,7 +4903,7 @@
         "vision",
         "lane fractions"
       ],
-      "limitation": "Visible faster-approach candidates are modeled; the selected target and timers are not recorded.",
+      "limitation": "The visible slower runner is modeled from recorded positions; the game's chosen target is not recorded.",
       "simulator": {
         "file": "ActivationConditions.ts",
         "line": 778,

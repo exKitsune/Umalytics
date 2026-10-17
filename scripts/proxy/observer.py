@@ -19,7 +19,7 @@ import zlib
 from mitmproxy import ctx, exceptions
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from race_extract import extract_races, classify_race
+from race_extract import apply_room_bindings, collect_room_bindings, extract_races, remember_room_bindings, classify_race
 from uma_envelope import extract_request_context, decode_response_body, EnvelopeDecodeError
 
 API_HOST = 'api.games.\x75mamusume.com'
@@ -46,6 +46,7 @@ class RaceObserver:
     def __init__(self):
         self.stage = 'probe'
         self.contexts = {}
+        self.room_bindings = []
         self.lock = threading.Lock()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='uma-race-export')
         self.pending = set()
@@ -287,6 +288,9 @@ class RaceObserver:
                       'practice': 'room_match', 'champions-meeting': 'champions'}
             endpoint = '/\x75mamusume/' + groups.get(category, 'unknown') + '/'
             races = extract_races(payload, endpoint=endpoint, captured_at=captured_at)
+            bindings = collect_room_bindings(payload)
+            remember_room_bindings(self.room_bindings, bindings)
+            apply_room_bindings(races, self.room_bindings)
             if not races:
                 self._count('responses_without_race')
                 return

@@ -16,5 +16,6 @@
     {"time":120,"runners":[{"runnerId":"fixture-1","distance":2400,"speed":22,"hp":100,"lane":0.3},{"runnerId":"fixture-2","distance":2378,"speed":21.8,"hp":90,"lane":0.4}]}
   ],
   "events": [{"time":60,"type":3,"runnerId":"fixture-1","skillId":100011,"label":"Shooting Star","params":[0,100011]}],
-  "warnings": ["Synthetic fixture. No captured user data."]
+  "warnings": ["Synthetic fixture. No captured user data."],
+  "auth": {"token": "PRIVATE_FIXTURE_TOKEN"}
 }
