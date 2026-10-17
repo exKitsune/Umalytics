@@ -2,6 +2,7 @@
 import base64
 import json
 import math
+import re
 import struct
 import zlib
 
@@ -189,6 +190,82 @@ def _metadata(value):
 def _int(value):
     number = _number(value)
     return number if type(number) is int else None
+
+
+TRACE_NUMBERS = ('race_instance_id', 'race_course_id', 'course_id', 'distance', 'race_distance')
+TRACE_FLAGS = ('random_seed', 'saved_room_id', 'register_id', 'room_id', 'race_scenario', 'race_course_set', *CONDITIONS, 'start_time_type')
+TRACE_ALIASES = {'raceInstanceId': 'race_instance_id', 'RaceInstanceId': 'race_instance_id',
+    'raceCourseId': 'race_course_id', 'courseId': 'course_id', 'CourseId': 'course_id',
+    'raceCourseSet': 'race_course_set', 'RaceCourseSet': 'race_course_set',
+    'raceDistance': 'race_distance', 'randomSeed': 'random_seed', 'savedRoomId': 'saved_room_id',
+    'registerId': 'register_id', 'roomId': 'room_id', 'startTimeType': 'start_time_type'}
+
+
+def api_route(path):
+    """Keep a static API route. Drop the query string and any long numeric segment."""
+    if not isinstance(path, str):
+        return None
+    route = path.split('?', 1)[0]
+    if len(route) > 160 or not re.fullmatch(r'/[A-Za-z0-9_./-]{1,160}', route):
+        return None
+    return '/'.join(':n' if part.isdigit() and len(part) > 4 else part for part in route.split('/'))
+
+
+def trace_api_payload(payload):
+    """Names and public course numbers only. Room, player, and auth values stay out."""
+    numbers = {key: [] for key in TRACE_NUMBERS}
+    flags = set()
+    course_sets = []
+    visits = 0
+
+    def add_number(name, value):
+        parsed = _int(value)
+        if parsed is None or parsed <= 0 or parsed in numbers[name] or len(numbers[name]) >= 8:
+            return
+        numbers[name].append(parsed)
+
+    def walk(value, depth=0):
+        nonlocal visits
+        visits += 1
+        if visits > 10000 or depth > 16:
+            return
+        if isinstance(value, list):
+            if len(value) > 1000:
+                return
+            for item in value:
+                walk(item, depth + 1)
+            return
+        if not isinstance(value, dict):
+            return
+        for key, child in value.items():
+            if key in ENVELOPE:
+                continue
+            canonical = TRACE_ALIASES.get(key, key)
+            if canonical in TRACE_FLAGS:
+                flags.add(canonical)
+            if canonical in numbers:
+                add_number(canonical, child)
+            if canonical == 'race_course_set' and isinstance(child, dict):
+                item = {}
+                ident = _int(child.get('id', child.get('Id', child.get('course_id'))))
+                distance = _int(child.get('distance', child.get('Distance')))
+                if ident is not None and ident > 0:
+                    item['id'] = ident
+                if distance is not None and distance > 0:
+                    item['distance'] = distance
+                if item and item not in course_sets and len(course_sets) < 8:
+                    course_sets.append(item)
+            if isinstance(child, (dict, list)):
+                walk(child, depth + 1)
+
+    walk(payload)
+    result = {'fields': sorted(flags)}
+    for key, values in numbers.items():
+        if values:
+            result[key] = values
+    if course_sets:
+        result['race_course_set'] = course_sets
+    return result
 
 
 def _join_keys(value):

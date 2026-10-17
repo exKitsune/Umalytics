@@ -980,17 +980,40 @@ def health(port=PORT):
         return None
 
 
-def launch_game(arguments, port=PORT):
+def game_arguments(values):
+    if values[:1] == ['--']:
+        values = values[1:]
+    for index, value in enumerate(values):
+        if isinstance(value, str) and value.lower().endswith('.exe') and Path(value).is_file():
+            return values[index:]
+    return values
+
+
+def capture_ready(status):
+    proxy = status.get('proxy') if isinstance(status, dict) else None
+    return isinstance(proxy, dict) and proxy.get('running') and proxy.get('state') == 'running'
+
+
+def launch_game(arguments, port=PORT, data_dir=None):
+    arguments = game_arguments(arguments)
     if not arguments or not Path(arguments[0]).is_file():
         raise ValueError('The game executable must follow --launch-game --.')
-    status = None
-    for _ in range(30):
-        status = health(port)
-        if status and status['proxy'].get('running') and status['proxy'].get('state') == 'running':
-            break
-        time.sleep(0.5)
-    else:
-        raise ValueError('Open UmaTrace, trust its certificate, and enable collection before launching from Steam.')
+    status = health(port)
+    if not capture_ready(status):
+        flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0) | NO_WINDOW
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--data-dir', str(data_dir or default_data_directory())],
+            cwd=str(Path(__file__).resolve().parents[1]), creationflags=flags,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        for _ in range(40):
+            status = health(port)
+            if capture_ready(status):
+                break
+            time.sleep(0.25)
+        else:
+            raise ValueError('Capture did not start. Exit the installed app from the tray and try this launch again.')
+    runtime = Path(str(status.get('runtimeExecutable') or ''))
+    if runtime.name.lower() not in ('python.exe', 'pythonw.exe'):
+        raise ValueError('The installed app is holding the capture port. Exit Umalytics from the tray, then launch the game again.')
     env = {k: v for k, v in os.environ.items() if k.lower() not in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'sslkeylogfile')}
     proxy_port = status['proxy'].get('port', PROXY_PORT)
     for name in ('http_proxy', 'https_proxy', 'all_proxy'):
@@ -1004,9 +1027,13 @@ def launch_game(arguments, port=PORT):
         request = Request(origin + '/api/game/launch-state', data=json.dumps({'pid': os.getpid(), 'active': active}).encode(), headers=headers)
         with opener.open(request, timeout=3):
             pass
-    mark(True)
     try:
-        game = subprocess.Popen(arguments, cwd=str(Path(arguments[0]).resolve().parent), env=env, creationflags=NO_WINDOW)
+        mark(True)
+    except Exception as error:
+        raise ValueError('Capture rejected this launcher. Exit Umalytics from the tray and launch again.') from error
+    try:
+        # The game is a windowed program. Hiding it leaves this launcher looking stuck.
+        game = subprocess.Popen(arguments, cwd=str(Path(arguments[0]).resolve().parent), env=env)
         return game.wait()
     finally:
         try:
@@ -1038,7 +1065,7 @@ def main():
         return 0
     if args.launch_game:
         try:
-            return launch_game(args.game[1:] if args.game[:1] == ['--'] else args.game, args.port)
+            return launch_game(args.game, args.port, args.data_dir)
         except ValueError as error:
             if os.name == 'nt':
                 ctypes.windll.user32.MessageBoxW(None, str(error), 'UmaTrace', 0x40)

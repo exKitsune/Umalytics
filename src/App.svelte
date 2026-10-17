@@ -7,7 +7,7 @@
   import { buildUmalatorExport, jsonDownloadName, umaDownloadName } from './data/umalator';
   import { categories, categoryInfo, runnerColors, saveRace, savedRaces, deleteSavedRace, createLibraryCaptionHydrator, type LibraryEntry } from './library';
   import { api, saveDesktopExport, revealDesktop, defaultSettings, type Health, type CollectionSettings, type CertificateStatus } from './api';
-  import { browserPreferences, migrateBrowserStorage, saveDesktopRace, THEME_KEY, COURSE_KEY } from './desktop-storage';
+  import { browserPreferences, migrateBrowserStorage, saveDesktopRace, THEME_KEY } from './desktop-storage';
   import AppUpdates from './components/AppUpdates.svelte';
   import { rankSamples, runnerGap } from './view-model';
   import RaceTrack from './components/RaceTrack.svelte';
@@ -35,7 +35,6 @@
   import { resolveCourseIdentity } from './data/course-detection';
   let skillDetail:number|null=null;
   const browserSettings=browserPreferences();
-  let courseAssignments:Record<string,number>=browserSettings.courseAssignments;
   let desktopSession=location.port==='4317'||'__TAURI_INTERNALS__' in window;
   let storageReady=!desktopSession;
   let migrationRunning=false;
@@ -72,10 +71,7 @@
   let polling = false;
   let nextOffset: number|null = null;
   let totalRemote = 0;
-  let courseOverride = '';
   let detailTab = 'skills';
-  let courseSearch = '';
-  let showCoursePicker = false;
   let exportDraft = '';
   let previousFocus: HTMLElement|null = null;
   let selectionRequest = 0;
@@ -90,7 +86,7 @@
     ready:(value,id)=>{if(activeId!==id)return;race=value.race;analysis=value.analysis;if(!selected)selected=race.runners[0]?.id??'';},
     state:value=>analysisState=value,cache:value=>cacheStatus=value,error:value=>error=value,
   });
-  $: analysisClient.setLibrary(library,courseAssignments);
+  $: analysisClient.setLibrary(library,{});
   $: analysisClient.setPaused(playing);
   $: selectedReady=!!analysis&&!!preparedFor(analysis)?.runners[selected];
   $: allTags=[...new Set(Object.values(raceTags).flat())].sort((a,b)=>a.localeCompare(b));
@@ -113,16 +109,12 @@
   }
   $: document.documentElement.dataset.theme = theme;
   $: document.documentElement.style.setProperty('--font-scale',String(fontScale/100));
-  $: visible = library.filter(entry => (filter==='all'||(entry.category??'other')===filter) && withinDateRange(entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference,courseAssignments[entry.id])} ${conditionsCaption(entry.race??entry)} ${categoryInfo(entry.category).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term))).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
+  $: visible = library.filter(entry => (filter==='all'||(entry.category??'other')===filter) && withinDateRange(entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference)} ${conditionsCaption(entry.race??entry)} ${categoryInfo(entry.category).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term))).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
   $: identityRace = race ? resolveCourseIdentity(race,reference) : null;
   $: inferredCourse = identityRace ? inferCourse(identityRace,reference) : null;
-  $: candidateCourse = getCourse(reference,courseOverride?Number(courseOverride):identityRace?.courseId??inferredCourse?.courseId??null);
-  $: course = !courseOverride && candidateCourse && race?.distance && candidateCourse.distance!==race.distance ? null : candidateCourse;
+  $: candidateCourse = getCourse(reference,identityRace?.courseId??inferredCourse?.courseId??null);
+  $: course = candidateCourse && race?.distance && candidateCourse.distance!==race.distance ? null : candidateCourse;
   $: analysisRace = race;
-  $: inferredLabel = !courseOverride && (analysisRace?.courseIdentity?.source==='skill-conditions'||!!inferredCourse?.trackId||!!inferredCourse?.courseId);
-  $: inferenceTooltip = inferredCourse?.evidence.join('\n')??'This imported race records a course inferred from skill conditions.';
-  $: courseButton = course?.name??(inferredCourse?.candidateCourseIds.length ? `${inferredCourse.trackId?'Choose surface':'Choose course'} · ${inferredCourse.candidateCourseIds.length} candidates` : `Course ${identityRace?.courseId??'not identified'}`);
-  $: courseDefaultLabel = inferredCourse?.courseId||race?.courseIdentity?.source==='skill-conditions'?'Use inferred course':inferredCourse?.trackId?'Keep surface unassigned':race?.courseIdentity?.source==='manual'?'Use imported manual course':'Use captured course';
   $: samples = analysisRace ? sampleAt(analysisRace,time,reference) : [];
   $: ranks = race ? rankSamples(race,samples,time) : new Map<string,number>();
   $: runner = race?.runners.find(r=>r.id===selected) ?? null;
@@ -130,9 +122,6 @@
   $: selectedGap = analysisRace ? runnerGap(analysisRace,samples,selected) : null;
   $: selectedEvents = race?.events.filter(e=>e.runnerId===selected) ?? [];
   $: uma = runner && analysisRace ? buildUmalatorExport(runner,analysisRace,reference) : null;
-  $: courses = reference ? Object.values(reference.courses).filter(c=>courseSearch.toLowerCase().trim().split(/\s+/).every(term=>c.name.toLowerCase().includes(term))) : [];
-  $: inferredCandidates = courses.filter(c=>inferredCourse?.candidateCourseIds.includes(c.id));
-  $: otherCourses = courses.filter(c=>!inferredCourse?.candidateCourseIds.includes(c.id));
   const fmt = (n:number|null|undefined, decimals=0) => n==null?'—':n.toFixed(decimals);
   const date = (s:string) => new Date(s).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const tell = (text:string) => {message=text;error='';};
@@ -148,15 +137,15 @@
     } catch(e){error=String(e);}
   }
   async function selectEntry(entry:LibraryEntry) {
-    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;analysis=null;selected='';time=0;playing=false;courseOverride=courseAssignments[entry.id]?String(courseAssignments[entry.id]):'';skillDetail=null;
-    try {if(referenceReady)await analysisClient.open(entry,courseAssignments[entry.id]);}catch(e){if(request===selectionRequest)error=String(e);}
+    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;analysis=null;selected='';time=0;playing=false;skillDetail=null;
+    try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
   }
   async function saveTags(){
     const tags=normalizeTags(tagDraft),next={...raceTags};if(tags.length)next[activeId]=tags;else delete next[activeId];
     try{if(desktopSession){if(!health?.csrfToken)throw new Error('Desktop settings are unavailable.');await api('preferences',{raceTags:next},health.csrfToken);}else localStorage.setItem('umalytics-race-tags',JSON.stringify(next));raceTags=next;tagDraft=tags.join(', ');}catch(e){error=String(e);}
   }
-  function sidebarCourse(entry:LibraryEntry){const caption=courseCaption(entry.race??entry,reference,courseAssignments[entry.id]);return caption.replace(/\s*[·]?\s*\d[\d,]*\s*m\b/i,'').replace(/^[\s·]+|[\s·]+$/g,'');}
-  function sidebarDistance(entry:LibraryEntry){const id=courseAssignments[entry.id]??entry.race?.courseId??entry.courseId;return (id?reference?.courses[id]?.distance:null)??entry.race?.distance??entry.distance;}
+  function sidebarCourse(entry:LibraryEntry){const caption=courseCaption(entry.race??entry,reference);return caption.replace(/\s*[·]?\s*\d[\d,]*\s*m\b/i,'').replace(/^[\s·]+|[\s·]+$/g,'');}
+  function sidebarDistance(entry:LibraryEntry){const id=entry.race?.courseId??entry.courseId;return (id?reference?.courses[id]?.distance:null)??entry.race?.distance??entry.distance;}
   async function importFiles(files:FileList|File[]|null) {
     if(!files||!files.length)return;
     const picked=Array.from(files).filter(file=>/\.(json|jsonl|msgpack|mpk|har)$/i.test(file.name));
@@ -199,12 +188,6 @@
     const current=health;if(!current?.csrfToken)return;openSettings();busy=true;
     try{health={...current,update:await api('update/install',{},current.csrfToken)};tell('Installing update…');}catch(e){error=String(e)}finally{busy=false}
   }
-  let courseQuery:HTMLInputElement|undefined;
-  function toggleCoursePicker(){showCoursePicker=!showCoursePicker;if(showCoursePicker)queueMicrotask(()=>courseQuery?.focus());}
-  async function saveCourseChoice(){
-    const assignments={...courseAssignments};if(courseOverride)assignments[activeId]=Number(courseOverride);else delete assignments[activeId];
-    try {if(desktopSession){if(!storageReady||!health?.csrfToken)throw new Error('Desktop preferences are unavailable. Try again when it reconnects.');const result=await api<{courseAssignments:Record<string,number>}>('preferences',{courseAssignments:assignments},health.csrfToken);courseAssignments=result.courseAssignments;}else{localStorage.setItem(COURSE_KEY,JSON.stringify(assignments));courseAssignments=assignments;}showCoursePicker=false;const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry);tell(courseOverride?'Course saved. Exports include this selection.':inferredCourse?.courseId?'Using inferred course.':inferredCourse?.trackId?'Surface remains unassigned.':'Using captured course.');}catch(e){error=String(e);}
-  }
   async function setTheme(value:'dark'|'light') {try{if(desktopSession){if(!storageReady||!health?.csrfToken)throw new Error('Desktop preferences are unavailable. Try again when it reconnects.');const result=await api<{theme:'dark'|'light'}>('preferences',{theme:value},health.csrfToken);theme=result.theme;}else{localStorage.setItem(THEME_KEY,value);theme=value;}}catch(e){error=String(e);}}
   async function saveFontScale(value=fontScale) {
     fontScale=normalizeFontScale(value);
@@ -228,7 +211,7 @@
   }
   async function loadHistory(){historyLoading=true;try{while(nextOffset!==null&&!disposed){const offset=nextOffset;await loadPage(offset);await new Promise(resolve=>setTimeout(resolve,30));}historyLoaded=true;}catch(e){error=`History could not be loaded: ${e}`;}finally{historyLoading=false;}}
   let healthPolling=false;
-  async function prepareDesktopStorage(){if(storageReady||migrationRunning||importing||!health?.csrfToken||Date.now()-migrationAttemptAt<5000)return;migrationRunning=true;migrationAttemptAt=Date.now();try{const preferences=await migrateBrowserStorage(health.csrfToken);theme=preferences.theme;fontScale=normalizeFontScale(preferences.fontScale);courseAssignments=preferences.courseAssignments;raceTags=preferences.raceTags??{};library=library.filter(entry=>!entry.id.startsWith('local-')||entry.remoteId);storageReady=true;migrationError='';}catch{migrationError='Your browser library is still being moved to Umalytics. Originals are saved; retrying shortly.';}finally{migrationRunning=false;}}
+  async function prepareDesktopStorage(){if(storageReady||migrationRunning||importing||!health?.csrfToken||Date.now()-migrationAttemptAt<5000)return;migrationRunning=true;migrationAttemptAt=Date.now();try{const preferences=await migrateBrowserStorage(health.csrfToken);theme=preferences.theme;fontScale=normalizeFontScale(preferences.fontScale);raceTags=preferences.raceTags??{};library=library.filter(entry=>!entry.id.startsWith('local-')||entry.remoteId);storageReady=true;migrationError='';}catch{migrationError='Your browser library is still being moved to Umalytics. Originals are saved; retrying shortly.';}finally{migrationRunning=false;}}
   async function pollHealth(){if(!['localhost','127.0.0.1'].includes(location.hostname)||healthPolling)return;healthPolling=true;try{health=await api<Health>('health');certificate=health.certificate??null;if(health.mode==='desktop'&&desktopSession)await prepareDesktopStorage();}catch{health=null;}finally{healthPolling=false;}}
   async function poll() {
     if(!['localhost','127.0.0.1'].includes(location.hostname))return;
@@ -241,7 +224,7 @@
   function seek(t:number) {time=Math.max(0,Math.min(race?.duration??0,t));}
   function togglePlay(){if(!race)return;if(time>=race.duration)time=0;playing=!playing;}
   function keydown(e:KeyboardEvent){if(downloadPromptOpen){if(e.key==='Escape')downloadPromptOpen=false;return;}if(e.defaultPrevented||settingsOpen||skillDetail!==null||(e.target instanceof HTMLElement&&['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)))return;if(e.code==='Space'){e.preventDefault();togglePlay();}else if(e.code==='ArrowRight'){seek(time+1)}else if(e.code==='ArrowLeft'){seek(time-1)}}
-  function dismissPopups(event:PointerEvent){analysisClient.interacting();const node=event.target as HTMLElement|null;if(!node)return;if(pendingRemoval&&!node.closest('.race-delete'))pendingRemoval='';if(showCoursePicker&&!node.closest('.course-choice,.course-picker'))showCoursePicker=false;}
+  function dismissPopups(event:PointerEvent){analysisClient.interacting();const node=event.target as HTMLElement|null;if(!node)return;if(pendingRemoval&&!node.closest('.race-delete'))pendingRemoval='';}
   onMount(()=>{
     let cancelled=false;
     loadReferenceData().then(async data=>{if(!cancelled){reference=data;await analysisClient.configure(data);if(cancelled)return;referenceReady=true;void hydrateCaptions(library,reference);const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry);}}).catch(e=>error=String(e));
@@ -267,9 +250,9 @@
       {#each visible as entry (entry.id)}
         {@const category=categoryInfo(entry.category)}
         {@const inference=captionInference(entry.race??entry,reference)}
-        {@const manuallySelected=!!courseAssignments[entry.id]||(entry.race?.courseIdentity??entry.courseIdentity)?.source==='manual'}
+        {@const manuallySelected=(entry.race?.courseIdentity??entry.courseIdentity)?.source==='manual'}
         {@const entryInferred=!manuallySelected&&((entry.race?.courseIdentity??entry.courseIdentity)?.source==='skill-conditions'||!!inference?.trackId||!!inference?.courseId)}
-        <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span>{date(entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title={inference?.evidence.join('\n')??'Course inferred from skills in the imported race.'}>Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" aria-label={`Remove ${courseCaption(entry.race??entry,reference,courseAssignments[entry.id])}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>
+        <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span>{date(entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title={inference?.evidence.join('\n')??'Course inferred from skills in the imported race.'}>Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" aria-label={`Remove ${courseCaption(entry.race??entry,reference)}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>
       {/each}
       {#if !visible.length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
       {#if historyLoading}<small role="status">Loading history…</small>{:else if nextOffset!==null}<button class="load-more" onclick={loadHistory}>Load older races</button>{/if}
@@ -283,8 +266,7 @@
     {#if race && analysisRace}
       <div class="workspace">
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
-        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${categoryInfo(race.category).color}`}></i>{race.synthetic?'SAMPLE RACE':categoryInfo(race.category).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/><div class="course-choice"><button class="course-select" class:open={showCoursePicker} onclick={toggleCoursePicker}>{courseButton} <span class="caret">⌄</span></button>{#if courseOverride||analysisRace.courseIdentity?.source==='manual'}<span class="tag">Course selected</span>{:else if inferredLabel}<span class="tag" title={inferenceTooltip}>Inferred from skills</span>{/if}</div></div><RaceTeams race={analysisRace} {reference} {selected} onSelect={id=>selected=id}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" onclick={exportRace}>↓ Export JSON</button></form>
-        {#if showCoursePicker}<div class="course-picker panel"><div><strong>Racecourse</strong><small>Saved for this race and included in exports.</small></div><input placeholder="Find a course…" aria-label="Find a course" bind:this={courseQuery} bind:value={courseSearch}/><select size="8" aria-label="Course override" bind:value={courseOverride} onchange={saveCourseChoice}><option value="">{courseDefaultLabel}</option>{#if inferredCandidates.length}<optgroup label="Inferred candidates">{#each inferredCandidates as c}<option value={String(c.id)}>Candidate · {c.name}</option>{/each}</optgroup>{/if}<optgroup label="All courses">{#each otherCourses as c}<option value={String(c.id)}>{c.name}</option>{/each}</optgroup></select></div>{/if}
+        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${categoryInfo(race.category).color}`}></i>{race.synthetic?'SAMPLE RACE':categoryInfo(race.category).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></div><RaceTeams race={analysisRace} {reference} {selected} onSelect={id=>selected=id}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button></form>
         <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={id=>selected=id}/>
         <div class="primary-replay">
           <CurveReplay race={analysisRace} {course} {reference} {selected} {time} {analysis} {fontScale} onSelect={id=>selected=id} onSeek={seek}>
@@ -294,7 +276,7 @@
         </div>
           {#if selectedReady}<DeferredPanel identity={activeId} label="Telemetry"><Telemetry race={analysisRace} {course} {reference} {analysis} {selected} {time} sample={selectedSample} gap={selectedGap} onSeek={seek}/></DeferredPanel>
           <DeferredPanel identity={activeId} label="Runner skills"><SkillMatrix race={analysisRace} {reference} {analysis} {selected} onSeek={seek} onSkill={(id,runnerId)=>{selected=runnerId;playing=false;skillDetail=id}}/></DeferredPanel>{:else}<AnalysisSkeleton part="details" message={analysisState.message}/>{/if}
-          <details class="panel race-data-notes"><summary>Race data notes · {race.frames.length} frames · {race.events.length} events</summary>{#each race.warnings as warning}<p>{warning}</p>{/each}<p>{analysisRace.courseIdentity?.source==='manual'?'Course selected manually.':analysisRace.courseIdentity?.source==='skill-conditions'?'Course inferred from recorded skill activations.':`Course source: ${analysisRace.courseIdentity?.source??(race.courseId?'recorded':'unknown')}.`}</p>{#if inferredCourse}<p>{inferredCourse.courseId?'Skill evidence identifies one compatible course.':inferredCourse.trackId?'Skill evidence identifies the venue; choose a surface to use course geometry.':'Course candidates from recorded skill evidence.'}</p>{#each inferredCourse.evidence as evidence}<p>{evidence}</p>{/each}{#if inferredCourse.candidateCourseIds.length}<p>Compatible candidates:</p><ul>{#each inferredCourse.candidateCourseIds as id}<li>{reference?.courses[id]?.name??`Course ${id}`}</li>{/each}</ul>{/if}{/if}</details>
+          <details class="panel race-data-notes"><summary>Race data notes · {race.frames.length} frames · {race.events.length} events</summary>{#each race.warnings as warning}<p>{warning}</p>{/each}<p>{analysisRace.courseIdentity?.source==='manual'?'Course selected manually.':analysisRace.courseIdentity?.source==='skill-conditions'?'Course inferred from recorded skill activations.':`Course source: ${analysisRace.courseIdentity?.source??(race.courseId?'recorded':'unknown')}.`}</p>{#if inferredCourse}<p>{inferredCourse.courseId?'Skill evidence identifies one compatible course.':inferredCourse.trackId?'Skill evidence identifies the venue. The surface is still unassigned.':'Course candidates from recorded skill evidence.'}</p>{#each inferredCourse.evidence as evidence}<p>{evidence}</p>{/each}{#if inferredCourse.candidateCourseIds.length}<p>Compatible candidates:</p><ul>{#each inferredCourse.candidateCourseIds as id}<li>{reference?.courses[id]?.name??`Course ${id}`}</li>{/each}</ul>{/if}{/if}</details>
         </div>
         {#if runner&&selectedReady}<div class="analysis-side"><RunnerPanel {runner} race={analysisRace} {course} {reference} {analysis} {time} sample={selectedSample} gap={selectedGap} onSkill={id=>{playing=false;skillDetail=id}} onSeek={seek} onDownload={()=>void downloadUmaJson()}/></div>{:else}<div class="analysis-side"><AnalysisSkeleton part="runner" message="Preparing runner…"/></div>{/if}
         </div>{:else}<AnalysisSkeleton title={courseCaption(analysisRace,reference)} conditions={race.conditions} runners={race.runners.length}/>{/if}

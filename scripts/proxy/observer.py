@@ -19,7 +19,7 @@ import zlib
 from mitmproxy import ctx, exceptions
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from race_extract import apply_room_bindings, collect_room_bindings, extract_races, remember_room_bindings, classify_race
+from race_extract import api_route, apply_room_bindings, collect_room_bindings, extract_races, remember_room_bindings, trace_api_payload, classify_race
 from uma_envelope import extract_request_context, decode_response_body, EnvelopeDecodeError
 
 API_HOST = 'api.games.\x75mamusume.com'
@@ -238,23 +238,25 @@ class RaceObserver:
         if not self._eligible(flow):
             return
         self._count('eligible_responses')
+        route = api_route(flow.request.path)
         if not 200 <= flow.response.status_code < 300:
+            self._trace(route, flow.response.status_code, None)
             self._write_status(force=True)
             return
         raw = flow.response.raw_content
         if not isinstance(raw, bytes) or len(raw) > MAX_BODY:
             self._count('decode_failed')
+            self._trace(route, flow.response.status_code, None)
             return
         self.pending = {f for f in self.pending if not f.done()}
         if len(self.pending) >= 8:
             self._count('backlog_dropped')
             return
-        # Only a finite endpoint category crosses the hook, never a raw route/query.
         category, category_source = classify_race(flow.request.path)
         captured_at = datetime.now(timezone.utc).isoformat()
-        # Copy only body/encoding/context. No flow, headers, URL, cookie, or auth objects
-        # leave the hook; the game response is not held while export finishes.
-        self.pending.add(self.pool.submit(self._export, raw, flow.response.headers.get('content-encoding', '').lower(), context, category, category_source, captured_at))
+        # The race file still receives only a category. The local trace keeps the route.
+        # No flow, headers, URL query, cookie, or auth objects leave the hook.
+        self.pending.add(self.pool.submit(self._export, raw, flow.response.headers.get('content-encoding', '').lower(), context, category, category_source, captured_at, route))
 
     def _settings(self):
         if not self.settings_path:
@@ -270,11 +272,38 @@ class RaceObserver:
             # Atomic settings replacement may briefly leave no file. Default on.
             return {}
 
-    def _export(self, raw, encoding, context, category='other', category_source='unknown', captured_at=None):
+    def _trace(self, route, status, payload):
+        """Local route log. Course numbers and field names only; never a body or identifier."""
+        if not self.output_path or not route:
+            return
+        record = {'at': datetime.now(timezone.utc).isoformat(), 'route': route, 'status': status}
+        if payload is not None:
+            record.update(trace_api_payload(payload))
+        try:
+            line = json.dumps(record, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+        except (TypeError, ValueError):
+            return
+        if len(line) > 4000:
+            return
+        folder = Path(self.output_path).parent / 'cache'
+        path = folder / 'api-trace.jsonl'
+        with self.lock:
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                if path.exists() and path.stat().st_size > 512 * 1024:
+                    kept = path.read_text(encoding='utf-8').splitlines()[-200:]
+                    path.write_text('\n'.join(kept) + '\n', encoding='utf-8')
+                with path.open('a', encoding='utf-8') as stream:
+                    stream.write(line + '\n')
+            except OSError:
+                return
+
+    def _export(self, raw, encoding, context, category='other', category_source='unknown', captured_at=None, route=None):
         settings = self._settings()
         if settings.get('collectionEnabled') is False:
             self._count('collection_paused')
             return
+        traced = False
         try:
             body = decode_http_body(raw, encoding)
             if body.lstrip().startswith(b'{'):
@@ -287,6 +316,8 @@ class RaceObserver:
             groups = {'career': 'single_mode', 'team-trials': 'team_stadium',
                       'practice': 'room_match', 'champions-meeting': 'champions'}
             endpoint = '/\x75mamusume/' + groups.get(category, 'unknown') + '/'
+            self._trace(route, 200, payload)
+            traced = True
             races = extract_races(payload, endpoint=endpoint, captured_at=captured_at)
             bindings = collect_room_bindings(payload)
             remember_room_bindings(self.room_bindings, bindings)
@@ -308,6 +339,8 @@ class RaceObserver:
                 raise ValueError('output_limit')
         except Exception:
             self._count('decode_failed')
+            if not traced:
+                self._trace(route, 200, None)
             return
         folder = Path(self.output_path)
         for output in documents:
