@@ -105,6 +105,25 @@ fn start_service(path: &PathBuf, data: &PathBuf) -> Result<(), String> {
     })
 }
 
+fn follow_service(path: &PathBuf, data: &PathBuf) -> bool {
+    for _ in 0..120 {
+        if health().is_some_and(|status| ServiceEndpoint::matches_instance(&status, path, data)) { return true; }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    false
+}
+
+fn wait_for_exit(child: &mut std::process::Child, timeout_ms: u64) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) if std::time::Instant::now() >= deadline => return,
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(200)),
+        }
+    }
+}
+
 fn migrate_webview(data: &std::path::Path) -> Result<(), String> {
     let old = data.join("webview");
     if !old.exists() { return Ok(()); }
@@ -198,16 +217,26 @@ fn main() {
     if let Err(error) = updater::wait_replacement_turn(&data) { show_error(&error); std::process::exit(1); }
     let path = data.join("runtime").join("UmalyticsCollector.exe");
     if let Err(error) = migrate_webview(&data) { show_error(&error); std::process::exit(1); }
-    if let Err(error) = start_service(&path, &data) { show_error(&error); std::process::exit(1); }
+    let launch_game = arguments.first().map(String::as_str) == Some("--launch-game");
+    let stop_after_game = launch_game
+        && !health().is_some_and(|status| ServiceEndpoint::matches_instance(&status, &path, &data));
+    if std::env::var_os("UMALYTICS_FOLLOW_SERVICE").is_some() {
+        if !follow_service(&path, &data) { std::process::exit(0); }
+    } else if let Err(error) = start_service(&path, &data) { show_error(&error); std::process::exit(1); }
     let _ = updater::cleanup(&data);
     cleanup_legacy_runtimes(&data);
-    if arguments.first().map(String::as_str) == Some("--launch-game") {
-        // Steam waits on this launcher, while the resident desktop process
-        // owns the tray. Single-instance handling reuses an existing tray.
-        if let Ok(executable) = std::env::current_exe() {
-            let _ = hidden(Command::new(executable).arg("--background")).spawn();
-        }
+    if launch_game {
+        // Steam waits on this wrapper. A tray started for this session follows
+        // the collector and must not start another one, so closing Uma can stop
+        // an app that Steam itself launched. An already-running tray is reused.
+        let mut tray = std::env::current_exe().ok().and_then(|executable| {
+            hidden(Command::new(executable).arg("--background").env("UMALYTICS_FOLLOW_SERVICE", "1")).spawn().ok()
+        });
         let code = hidden(Command::new(&path).args(&arguments)).status().ok().and_then(|s| s.code()).unwrap_or(1);
+        if stop_after_game {
+            ServiceEndpoint { port: 4317 }.stop_owned(&path, &data);
+            if let Some(child) = tray.as_mut() { wait_for_exit(child, 40000); }
+        }
         std::process::exit(code);
     }
     let background = arguments.first().map(String::as_str) == Some("--background");

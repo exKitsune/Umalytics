@@ -26,7 +26,7 @@ The supplied notes combine several eras, including fifth-anniversary changes, an
 
 The inspected simulator also differs from these checks: its full-spurt HP test retains the entire late-leg length during a recalculation, and its recovery guard can exclude already-started spurts. Neither detail has been established from native bodies. Do not adopt a rule solely to force a single replay to fit, or convert a contradictory budget into a luck score. Exact recovery triggers, budget inputs, candidate enumeration, and regional patch applicability remain verification requirements.
 
-Exhaustion appears under HP finish / start, with onset bounds, distance remaining and local modeled distance/equivalent time lost after HP runs out. It uses the existing healthy-HP comparison, retaining traffic and skill timing. These figures do not measure earlier spurt waiting, different target selection or changed skill timing, and are not presented as total last-spurt loss.
+Exhaustion appears under HP, with onset bounds, distance remaining and local modeled distance/equivalent time lost after HP runs out. It uses the existing healthy-HP comparison, retaining traffic and skill timing. These figures do not measure earlier spurt waiting, different target selection or changed skill timing, and are not presented as total last-spurt loss.
 
 ## Decision budget versus finishing HP
 

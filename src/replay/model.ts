@@ -10,6 +10,13 @@ import { replayCards, layoutReplayCards, CARD_DWELL } from './cards';
 
 export interface ReplayInterval { kind:string; label:string; start:number; end:number|null; evidence:string; skillId?:number|null; detail?:string }
 export const DEFAULT_REPLAY_WINDOW=50;
+export const CLIP_SIZE_MIN=320;
+export const CLIP_SIZE_MAX=3840;
+/** Compact course-map reservation used by the live overlay and silent clip encoder. */
+export function replayMinimapObstacle(width:number){
+  const compact=width<=650;
+  return {x:width-(compact?198:222),y:38,width:compact?190:210,height:compact?95:100};
+}
 export interface ReplayOptions {
   race:Race; course:CourseReference|null; reference:ReferenceData|null; selected:string;
   fontScale?:number;
@@ -20,8 +27,10 @@ export interface ReplayOptions {
   visionDistance?:(runnerId:string,time:number)=>{metres:number|null;detail:string};
   intervals?: (runnerId:string) => readonly ReplayInterval[];
   analysis?:RaceAnalysis|null;
-  /** Live-only screen overlays. Clip renderers omit the DOM minimap. */
+  /** Live DOM overlay reservation. Clips keep the same gap and paint the map when `paintMinimap` is set. */
   cardObstacles?:{x:number;y:number;width:number;height:number}[];
+  /** Draw the compact course map into `cardObstacles`. The live viewer uses a DOM overlay instead. */
+  paintMinimap?:boolean;
 }
 export interface ReplayPoint { x:number; y:number; height:number; angle:number }
 export interface ReplayCard {

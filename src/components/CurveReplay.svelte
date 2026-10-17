@@ -4,7 +4,7 @@
   import type { CourseReference, ReferenceData } from '../data/reference';
   import { drawReplay,replayPalette } from '../replay/draw';
   import type { ReplayOptions,ReplayScene,ReplayInterval } from '../replay/model';
-  import { DEFAULT_REPLAY_WINDOW } from '../replay/model';
+  import { DEFAULT_REPLAY_WINDOW, replayMinimapObstacle } from '../replay/model';
   import ReplayClip from './ReplayClip.svelte';
   import type { RaceAnalysis } from '../data/analytics';
   import { preloadPortraits } from '../data/portraits';
@@ -25,7 +25,7 @@
   let canvas:HTMLCanvasElement,scene:ReplayScene|null=null,frame:number|null=null;
   let canvasWidth=1280,canvasHeight=780;
   let mounted=false,portraitRace:Race|null=null,iconReference:ReferenceData|null|undefined=undefined,iconAnalysis:RaceAnalysis|null|undefined=undefined,cardTitle='';
-  $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,intervals,analysis,courseMarkers:{phases:phaseMarkers,sections:sectionMarkers,slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[{x:canvasWidth-(canvasWidth<=650?198:222),y:38,width:canvasWidth<=650?190:210,height:canvasWidth<=650?95:100}]:[]} satisfies ReplayOptions;
+  $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,intervals,analysis,courseMarkers:{phases:phaseMarkers,sections:sectionMarkers,slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[replayMinimapObstacle(canvasWidth)]:[]} satisfies ReplayOptions;
   // Include every visual dependency explicitly; playback time does not rebuild data.
   $: if(canvas){options;time;schedule();}
   $: if(mounted&&race!==portraitRace){portraitRace=race;Promise.all([preloadPortraits(race.runners)]).then(()=>{if(mounted)schedule();});}
@@ -64,7 +64,7 @@
     resize.observe(canvas);return()=>{observer.disconnect();resize.disconnect();};
   });
 </script>
-<section class="panel curve-replay">
+<section class="panel curve-replay" class:clips-open={showClips}>
   <div class="panel-heading"><div><strong>Race replay</strong><span class="subtitle">Follow the field</span></div><button class:active={showClips} onclick={()=>showClips=!showClips}>Create clip</button></div>
   <div class="replay-tools">
     <label>Follow <select aria-label="Zoomed replay camera" bind:value={follow}><option value="selected">Selected runner</option><option value="leader">Leader</option></select></label>
@@ -87,10 +87,10 @@
   </div>
   <slot/>
   <div class="runner-status-description" id="curve-replay-statuses">{#each scene?.markers??[] as marker}{marker.name}: {marker.cards.map(card=>`${card.label}: ${replayCardHelp(options,card)}`).join(', ')||'No active status recorded'}. {/each}{#each scene?.debuffs??[] as debuff}{debuff.label}. {/each}{#each scene?.vision??[] as vision}{vision.label}. {/each}</div>
-  {#if showClips}<ReplayClip {options} {time}/>{/if}
+  <ReplayClip {options} {time} liveWidth={canvasWidth} liveHeight={canvasHeight} bind:open={showClips}/>
 </section>
 <style>
-  .curve-replay{overflow:hidden}.subtitle{display:block;color:var(--muted);font-size:var(--font-10);margin-top:4px}.replay-tools{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11)}.replay-tools label{display:flex;align-items:center;gap:7px}.replay-tools select{font-size:var(--font-11)}.replay-tools input[type=range]{width:135px;padding:0}.replay-tools output{min-width:44px;color:var(--text);font-variant-numeric:tabular-nums}.curve-replay canvas{display:block;width:100%;cursor:pointer}.curve-replay canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}.course-marker-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11);color:var(--muted)}.course-marker-tools label{display:flex;align-items:center;gap:5px;color:var(--text)}
+  .curve-replay{overflow:hidden}.curve-replay.clips-open{overflow:visible}.subtitle{display:block;color:var(--muted);font-size:var(--font-10);margin-top:4px}.replay-tools{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11)}.replay-tools label{display:flex;align-items:center;gap:7px}.replay-tools select{font-size:var(--font-11)}.replay-tools input[type=range]{width:135px;padding:0}.replay-tools output{min-width:44px;color:var(--text);font-variant-numeric:tabular-nums}.curve-replay canvas{display:block;width:100%;cursor:pointer}.curve-replay canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}.course-marker-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11);color:var(--muted)}.course-marker-tools label{display:flex;align-items:center;gap:5px;color:var(--text)}
   .replay-stage{position:relative}.replay-minimap{position:absolute;right:12px;top:38px;width:210px;height:100px;border:1px solid var(--border);border-radius:8px;background:color-mix(in srgb,var(--panel) 82%,transparent);overflow:hidden;box-shadow:0 2px 12px #0002}@media(max-width:650px){.replay-minimap{width:190px;right:8px;top:38px;height:95px}}
 .runner-status-description{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 </style>

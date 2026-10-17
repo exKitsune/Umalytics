@@ -205,6 +205,19 @@ def workflows(temporary):
         for invalid in (True, 0, 74, 205, 122, '125', None):
             assert instance.request('/api/preferences', {'fontScale': invalid})[0] == 400
         assert instance.request('/api/preferences')[1]['fontScale'] == 125
+        settings = instance.request('/api/settings')[1]
+        assert Path(settings['exportDirectory']) == desktop.default_downloads()
+        export_dir = data / 'json-out'
+        assert Path(instance.request('/api/settings', {'exportDirectory': str(export_dir)})[1]['exportDirectory']) == export_dir
+        exported = instance.request('/api/exports', {'filename': 'portable-export.json', 'content': '{"ok":true}'})[1]
+        assert Path(exported['path']).parent == export_dir.resolve()
+        assert Path(exported['path']).read_text(encoding='utf-8') == '{"ok":true}'
+        assert instance.request('/api/settings', {'exportDirectory': None})[1]['exportDirectory'] == str(desktop.default_downloads())
+        assert instance.request('/api/settings', {'exportDirectory': str(data / 'capture')})[0] == 400
+        cert = instance.request('/api/certificate')[1]
+        assert cert['exists'] and not cert['trusted']
+        assert instance.request('/api/certificate/uninstall', {'sha256': cert['sha256']})[1]['trusted'] is False
+        assert instance.request('/api/certificate/uninstall', {'sha256': '0' * 64})[0] == 400
         assert instance.request('/api/races/' + race_id)[1]['data'] == race
         listed = instance.request('/api/races?summary=1')[1]['races']
         assert next(item for item in listed if item['id'] == race_id)['courseId'] == 101

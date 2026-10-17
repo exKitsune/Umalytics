@@ -28,7 +28,8 @@ The directory contains:
 
 - `settings.json`: preferences and collection settings.
 - `races/`: captured races and imported JSON files.
-- `exports/`: exported JSON files, selected in Explorer after saving.
+- `exports/`: older exported JSON files. New race and Uma JSON files go to the
+  user's Downloads folder unless a different folder is chosen in Settings.
 - `data/`: one active set of reference files, replaced together during an update.
 - `runtime/UmalyticsCollector.exe`: one extracted collector, replaced when idle.
 - `capture/`: this installation's certificate and **private key**, with
@@ -49,9 +50,10 @@ migration. Never remove the profile before migration completes.
 Closing the window hides it to the system tray. Both normal launch and
 `--background` keep a native Umalytics process and tray icon alive. Double-click
 the icon to open the window; **Exit Umalytics and stop collection** stops the
-collector too. Steam's launch wrapper also starts the tray if needed. The
-**Start at login** toggle changes only this user's Run entry. There is no
-administrator Windows service or scheduled task.
+collector too. Steam's launch wrapper starts the tray if needed, then stops that
+Steam-started session when the game exits. A tray that was already running stays
+open. The **Start at login** toggle changes only this user's Run entry. There is
+no administrator Windows service or scheduled task.
 
 ## Certificate and game setup
 
@@ -60,8 +62,11 @@ runs with encrypted TLS passthrough while that CA is untrusted, so the Steam
 wrapper can still launch the game. Race inspection starts when the exact CA is
 trusted in the Windows CurrentUser Root store and collection is enabled.
 The settings page shows its status and fingerprint. Clicking **Install
-certificate** explicitly requests that exact certificate; Windows manages its
-CurrentUser Root security confirmation. Administrator rights are not required.
+certificate** explicitly requests that exact certificate; **Remove certificate**
+uninstalls that same CurrentUser Root entry. Windows manages the security
+confirmation. Administrator rights are not required. Settings also includes
+uninstall steps for the app, Steam launch option, login item, certificate and
+optional data folder.
 Disabling collection pauses race exports while keeping the proxy available to
 the running game. Installing trust changes the proxy from passthrough to
 inspection, so perform that one-time setup before launching the game.
@@ -76,7 +81,9 @@ The user sets this in Steam explicitly. Umalytics never edits Steam settings.
 The wrapper waits for collector readiness, forwards the executable and all
 arguments, sets `http_proxy`, `https_proxy`, and `all_proxy` only in the game's
 copied child environment, and waits for the game to exit so Steam tracks its
-lifetime. It does not log the game arguments or change Windows proxy settings.
+lifetime. If Steam had to start Umalytics for that launch, the wrapper stops
+collection and the tray after the game exits. It does not log the game arguments
+or change Windows proxy settings.
 The regular proxy binds only `127.0.0.1:4327`; the app API binds only
 `127.0.0.1:4317`. The observer inspects the specific game API host and passes other
 TLS traffic through encrypted.
@@ -158,7 +165,9 @@ These tests do not install a certificate, change startup settings, or launch Uma
 The native smoke copies the distributable to an isolated installation and AppData,
 verifies its extracted service hash and bundled frontend, forwards a harmless
 launcher fixture through the native EXE, checks compact race metadata and
-Explorer selection, and verifies that its resident tray exits with the owned service. `--headless`
+Explorer selection, and verifies that its resident tray survives a Steam launch
+then exits with the owned service, while a Steam-owned session stops after the
+fixture. `--headless`
 skips only the Explorer selection assertion on CI. It requires the normal app
 ports 4317/4327 to be free and refuses to stop an existing installation.
 
@@ -180,10 +189,11 @@ and reference status use `/api/settings`, `/api/certificate`, and
 `/api/data/status`. Desktop imports use `POST /api/races/import`; preferences use `GET`/`POST
 /api/preferences`. Release endpoints are `/api/update/status`, `/api/update/check`
 and `/api/update/install`. Other POST routes are `/api/settings`, `/api/certificate/install`,
-`/api/data/update`, `/api/exports`, and `/api/app/exit`. The export endpoint accepts
-`{filename, content}` with a safe `.json` filename and a bounded JSON string,
-then returns `{filename, path, revealed}`. Existing filenames receive a numeric
-suffix; no user-supplied directory is accepted.
+`/api/certificate/uninstall`, `/api/reveal`, `/api/data/update`, `/api/exports`, and
+`/api/app/exit`. The export endpoint accepts `{filename, content}` with a safe
+`.json` filename and a bounded JSON string, then writes to the configured
+Downloads folder and returns `{filename, path, revealed}`. Existing filenames
+receive a numeric suffix. The folder is a setting, not part of the filename.
 
 Every mutation requires the exact local Host and Origin, JSON content type,
 bounded body, and `X-UmaTrace-CSRF` from health. Cross-site origins and requests

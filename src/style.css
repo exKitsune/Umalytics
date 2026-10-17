@@ -70,3 +70,14 @@ footer{height:auto;max-height:none;flex-basis:auto;line-height:1.4;flex-wrap:wra
 .race-tags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}.race-tags>span{border-radius:4px;background:var(--panel-raised);border:1px solid var(--border);padding:2px 6px;font-size:var(--font-10)}
 .library-filters{font-size:var(--font-11);margin:8px 0}.library-filters summary{cursor:pointer;padding:6px 0}.library-filters label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0}.library-filters input,.library-filters select{min-width:0;width:170px;padding:5px}.library-filters button{font-size:var(--font-10)}
 .race-tag-editor{display:flex;align-items:center;gap:8px;font-size:var(--font-11);margin-top:-8px}.race-tag-editor input{min-width:0;max-width:450px;flex:1}.loading-analysis{padding:24px;color:var(--muted)}.loading-runners{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}.loading-runners span{padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:6px}
+.sidebar-update{width:100%;margin:8px 0 0;justify-content:center}
+.saved-data-path{display:block;width:100%;text-align:left;padding:0;border:0;background:transparent}
+.saved-data-path .launch-option{margin-bottom:0}
+.saved-data-path:hover .launch-option{border-color:var(--accent);color:var(--text)}
+.export-folder{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.export-folder input{width:100%}
+.settings-body details{margin-top:4px}
+.settings-body summary{cursor:pointer;font-size:var(--font-12);font-weight:550}
+.settings-body details ol{margin:10px 0 0;padding-left:18px;font-size:var(--font-11);color:var(--muted);line-height:1.7}
+.settings-body details li{margin:0 0 8px}
+.settings-body details code{font-size:var(--font-10)}

@@ -177,14 +177,17 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         result = subprocess.run([str(executable), '--launch-game', '--', str(fixture), *forwarded],
                                 creationflags=no_window, timeout=30, env=environment)
         assert result.returncode == 37
+        assert resident.poll() is None, 'Steam launch closed a tray that was already running.'
+        assert own_health(data)['proxy']['listening']
         record = json.loads(output.read_text(encoding='utf-8'))
         assert record['args'] == forwarded, 'Launcher arguments changed: ' + repr(record['args'])
         assert not record['console_attached'], 'Launcher attached a console.'
         assert all(record[key] == 'http://127.0.0.1:4327' for key in ('http_proxy','https_proxy','all_proxy'))
         assert record['no_proxy'] == 'localhost,127.0.0.1,::1'
+        post('/api/settings', {'exportDirectory': str(data / 'exports')}, health)
         exported = post('/api/exports', {'filename':'native-export.json', 'content':json.dumps([race])}, health)
         export_path = Path(exported['path'])
-        assert export_path.parent == data / 'exports'
+        assert export_path.parent == (data / 'exports').resolve()
         if not args.headless:
             assert exported['revealed']
         assert json.loads(export_path.read_text(encoding='utf-8')) == [race]
@@ -211,12 +214,24 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
             raise AssertionError('Native service/proxy did not release their ports.')
         wait_for_owned_runtime(data)
         assert resident.wait(timeout=15) == 0, 'Native tray stayed alive after the collector was stopped.'
+        steam = subprocess.run([str(executable), '--launch-game', '--', str(fixture), *forwarded],
+                               creationflags=no_window, timeout=90, env=environment)
+        assert steam.returncode == 37
+        for _ in range(80):
+            if all(port_available(port) for port in (4317, 4327)):
+                break
+            time.sleep(.25)
+        else:
+            started = True
+            raise AssertionError('Steam-owned launch left collection running after the game fixture exited.')
+        wait_for_owned_runtime(data)
         print(json.dumps({'nativeExecutable':'passed', 'appDataInstallation':'passed', 'adjacentDataMigration':'passed',
                           'embeddedRuntimeHash':'passed', 'nativeLauncherFixture':'passed',
                           'desktopExportExplorerSelection':'skipped (headless)' if args.headless else 'passed', 'courseSummary':'passed',
                           'residentTrayLifetime':'passed', 'singleInstanceBackground':'passed',
                           'nativeFrontendStorage':'passed', 'legacyProfileMigration':'passed',
                           'repeatedBackgroundWrites':'none', 'ownedShutdown':'passed',
+                          'steamOwnedSessionShutdown':'passed',
                           'certificateTrustChanged':False, 'actualGameLaunched':False}))
     finally:
         if export_path and not args.headless:

@@ -259,12 +259,14 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
         with opener.open(Request(url + '/api/settings', data=b'{"categories":{"career":false}}', headers=headers), timeout=3) as response:
             assert json.load(response)['categories']['career'] is False
         assert (data / 'settings.json').stat().st_mtime_ns == settings_mtime
+        with opener.open(Request(url + '/api/settings', data=json.dumps({'exportDirectory': str(data / 'exports')}).encode(), headers=headers), timeout=3) as response:
+            assert Path(json.load(response)['exportDirectory']) == data / 'exports'
         export_content = json.dumps({'title': 'System export fixture', 'races': race}, ensure_ascii=False)
         export_body = json.dumps({'filename': 'system-export.json', 'content': export_content}).encode()
         with opener.open(Request(url + '/api/exports', data=export_body, headers=headers), timeout=10) as response:
             exported = json.load(response)
         assert Path(exported['path']).read_text(encoding='utf-8') == export_content
-        assert Path(exported['path']).parent == data / 'exports'
+        assert Path(exported['path']).parent == (data / 'exports').resolve()
         if not args.headless:
             assert exported['revealed']
         with opener.open(Request(url + '/api/exports', data=export_body, headers=headers), timeout=10) as response:

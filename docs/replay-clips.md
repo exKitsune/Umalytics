@@ -22,6 +22,8 @@ selector is needed. The starting grid does not slide as the visible window grows
 Truncated track segments use flat caps; round caps appear only at an actual
 race start or known finish. The parent can supply a compact minimap via the
 named `minimap` slot, overlaid in the upper-right of the live canvas.
+Clips keep that same reserved gap and paint the compact course map into the
+exported frames.
 Independent marker toggles show phase changes, corner/straight boundaries,
 slope changes and **777m left**. Coincident markers share one sign. Course
 boundaries and grades require a known reference course, and phase/remaining
@@ -40,7 +42,12 @@ portrait/telemetry color and uses dark text for contrast in either theme. Indivi
 game skill icons, shared status colors and duration bars. The drawn track and lateral visual spacing are twice
 the previous thickness (70–180px) without changing longitudinal course scale. Card sides
 are fixed by runner identity; they never switch during playback (including within
-0.75seconds). A symmetric soft layout follows the current owner anchors, so
+0.75seconds). When the field is bunched at the start, boxes sit on two fixed
+shelves: odd gates above the cluster and even gates below, both in gate order
+left to right. Inner edges share a line with a light chevron so portraits stay
+visible in the middle. The above shelf yields to the minimap, and a shelf that
+cannot fit in one row wraps to two staggered rows. After the
+field spreads, a symmetric soft layout follows the current owner anchors, so
 boxes can exchange horizontal order as runners pass. Box separation yields to
 owner proximity; crowded fields may overlap rather than hiding effects.
 Every active skill/status retains its own icon, label and duration row. There
@@ -55,7 +62,7 @@ requires only nearby target samples, rather than solving the race from its
 start. Seeking, playback and clip rendering therefore agree without depending
 on the order in which frames were requested. The selected runner receives
 less repulsion so its box stays closer. Portraits and the live minimap are
-soft layout obstacles; clips omit the DOM-only minimap reservation.
+soft layout obstacles; clips keep that reservation and draw the compact map.
 Race result rows provide keyboard selection; the canvas describes current cards
 to screen readers. Arrows seek1second, Shift-arrows5; Home/End seek endpoints.
 
@@ -117,12 +124,16 @@ and arbitrary seeks give identical layouts. Overlaps are measured rather than
 eliminated by suppressing rows. Countdowns, received cards and one runner header
 per group remain checked through the shared canvas renderer.
 
-**Create clip** lets the user choose recorded start/end seconds and playback
-rate. The browser renders this same view into a canvas and encodes a real WebM
-video, with course curve, markers, labels, phase, clock and elevation. It requests
-no screen capture, microphone or audio permissions. Encoding takes the selected
-clip's playback time; it can be cancelled. The result has an inline preview and
-a download link. Browsers without canvas WebM encoding show the limitation.
+**Create clip** opens the recorder in view and flashes the panel. The user
+chooses recorded start/end seconds, playback rate and an output size. A hidden
+canvas draws the same view — course curve, markers, labels, phase, clock,
+elevation and compact minimap — at that size (default 1920×1080) without
+changing the on-screen viewer, then encodes MP4. 1080p, 720p and match-viewer
+presets are available. It requests no screen capture, microphone or audio
+permissions. Encoding takes the selected clip's playback time; it can be
+cancelled. Closing the recorder keeps the last preview and download available.
+The result has an inline preview and a download link. Browsers
+without canvas MP4 encoding show the limitation.
 Synthetic races retain a visible SYNTHETIC label in the exported video. Portraits and bundled skill icons
 load before recording, preserving offline operation and
 keeping the canvas exportable. Their provenance is in `public/portraits/NOTICE.txt`.
@@ -142,4 +153,5 @@ keeping the canvas exportable. Their provenance is in `public/portraits/NOTICE.t
 camera/window/overlay and clip controls; the parent owns replay time and runner
 selection. `src/replay/draw.ts` is shared by the live canvas and video encoder.
 `ReplayClip.svelte` owns the encoder stream and revokes generated preview URLs
-when replaced, the race changes or the component is destroyed.
+when a new clip replaces them, the race changes or the component is destroyed.
+Collapsing the recorder does not revoke the last clip.

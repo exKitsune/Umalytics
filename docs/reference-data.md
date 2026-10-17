@@ -84,7 +84,7 @@ compares one selected route per Global venue with GameTora; [Tokyo 2,400 m](toky
 has a detailed independent check. These are visual cross-checks, not calibration
 of game units against screenshot pixels.
 
-Lane spacing on the map is still a display estimate. The separate Outer corners
+Lane spacing on the map is still a display estimate. The separate Corner loss
 result uses a declared reference conversion of decoded lane × 11.25 m and game
 path heading changes; it never uses map width or pixel spacing. The metadata
 confirms `LaneAccuracy = 10000` and `COURSE_WIDTH = 11.25`, with corroborating

@@ -1,14 +1,15 @@
 import { fontPixels, replayTextMetrics } from '../typography';
 import type { ReplayOptions, ReplayScene } from './model';
-import { replayScene } from './model';
+import { estimatedLaneOffset, replayScene } from './model';
+import { coursePath, coursePoint } from '../data/reference';
 import { runnerColors } from '../library';
 import { portraitImage } from '../data/portraits';
 import { replayIcon } from './cards';
-export interface ReplayPalette {bg:string;panel:string;track:string;edge:string;text:string;muted:string;accent:string;accentText?:string}
-export const fallbackPalette:ReplayPalette={bg:'#101610',panel:'#1a2418',track:'#34482a',edge:'#6c795f',text:'#e7eedb',muted:'#9ba793',accent:'#79ca0b'};
+export interface ReplayPalette {bg:string;panel:string;track:string;edge:string;text:string;muted:string;accent:string;accentText?:string;border?:string}
+export const fallbackPalette:ReplayPalette={bg:'#101610',panel:'#1a2418',track:'#34482a',edge:'#6c795f',text:'#e7eedb',muted:'#9ba793',accent:'#79ca0b',border:'#32383a'};
 export function replayPalette():ReplayPalette {
   const styles=getComputedStyle(document.documentElement),get=(name:string,fallback:string)=>styles.getPropertyValue(name).trim()||fallback;
-  return {bg:get('--bg',fallbackPalette.bg),panel:get('--panel',fallbackPalette.panel),track:get('--track-fill',fallbackPalette.track),edge:get('--track-edge',fallbackPalette.edge),text:get('--text',fallbackPalette.text),muted:get('--muted',fallbackPalette.muted),accent:get('--accent',fallbackPalette.accent),accentText:get('--accent-text',fallbackPalette.accent)};
+  return {bg:get('--bg',fallbackPalette.bg),panel:get('--panel',fallbackPalette.panel),track:get('--track-fill',fallbackPalette.track),edge:get('--track-edge',fallbackPalette.edge),text:get('--text',fallbackPalette.text),muted:get('--muted',fallbackPalette.muted),accent:get('--accent',fallbackPalette.accent),accentText:get('--accent-text',fallbackPalette.accent),border:get('--border',fallbackPalette.border??'#32383a')};
 }
 function route(ctx:CanvasRenderingContext2D,scene:ReplayScene){ctx.beginPath();for(const [i,p]of scene.route.entries()){if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}}
 function clipRoute(route:ReplayScene['route'],start:number,end:number):{x:number;y:number}[]{
@@ -78,13 +79,50 @@ function courseLabelRect(marker:{x:number;y:number;angle:number},labelWidth:numb
   const extent=labelWidth/2*Math.abs(nx)+labelHeight/2*Math.abs(ny),dist=trackHalf+22+extent;
   return {x:marker.x+nx*outerSign*dist-labelWidth/2,y:marker.y+ny*outerSign*dist-labelHeight/2,width:labelWidth,height:labelHeight};
 }
+function roundRectPath(ctx:CanvasRenderingContext2D,x:number,y:number,w:number,h:number,r:number){
+  const radius=Math.min(r,w/2,h/2);
+  ctx.beginPath();ctx.moveTo(x+radius,y);ctx.arcTo(x+w,y,x+w,y+h,radius);ctx.arcTo(x+w,y+h,x,y+h,radius);ctx.arcTo(x,y+h,x,y,radius);ctx.arcTo(x,y,x+w,y,radius);ctx.closePath();
+}
+/** Compact course map matching the live DOM overlay. Only painted for clip encoding. */
+function drawMinimap(ctx:CanvasRenderingContext2D,options:ReplayOptions,scene:ReplayScene,palette:ReplayPalette){
+  const rect=options.cardObstacles?.[0];if(!options.paintMinimap||!rect)return;
+  const {x,y,width,height}=rect,viewW=1000,viewH=440,mapped=options.course&&(options.race.distance===null||options.race.distance===options.course.distance)?options.course:null;
+  const d=mapped?coursePath(mapped):'M70,220 L930,220',path=typeof Path2D==='function'?new Path2D(d):null;
+  const scale=Math.min(width/viewW,height/viewH);
+  ctx.save();
+  roundRectPath(ctx,x,y,width,height,8);ctx.fillStyle=palette.panel;ctx.globalAlpha=.82;ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle=palette.border??palette.muted;ctx.lineWidth=1;ctx.stroke();ctx.clip();
+  ctx.translate(x+(width-viewW*scale)/2,y+(height-viewH*scale)/2);ctx.scale(scale,scale);
+  ctx.lineJoin='round';ctx.lineCap='round';
+  if(path){ctx.strokeStyle=palette.edge;ctx.lineWidth=38;ctx.stroke(path);ctx.strokeStyle=palette.muted;ctx.globalAlpha=.65;ctx.lineWidth=24;ctx.stroke(path);ctx.globalAlpha=1;}
+  ctx.font='600 38px system-ui,sans-serif';ctx.fillStyle=palette.text;ctx.textAlign='center';
+  if(mapped){
+    const start=coursePoint(mapped,0),finish=coursePoint(mapped,mapped.distance);
+    ctx.fillText('S',Math.max(75,Math.min(925,start.x)),Math.max(45,Math.min(395,start.y-48)));
+    ctx.strokeStyle=palette.text;ctx.lineWidth=4;ctx.setLineDash([5,4]);ctx.beginPath();
+    ctx.moveTo(finish.x-Math.sin(finish.angle)*34,finish.y+Math.cos(finish.angle)*34);
+    ctx.lineTo(finish.x+Math.sin(finish.angle)*34,finish.y-Math.cos(finish.angle)*34);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillText('F',Math.max(75,Math.min(925,finish.x)),Math.max(45,Math.min(410,finish.y+62)));
+  }else{
+    const extent=options.race.distance||1;ctx.fillText('0 m',70,335);ctx.fillText(`${Math.round(extent)} m`,855,335);
+  }
+  for(const marker of scene.markers){
+    const distance=marker.sample.distance;if(distance===null||!Number.isFinite(distance))continue;
+    const point=mapped?coursePoint(mapped,distance,estimatedLaneOffset(options.race,marker.sample.lane,48)):{x:70+Math.max(0,Math.min(1,distance/(options.race.distance||1)))*860,y:220+estimatedLaneOffset(options.race,marker.sample.lane,48)};
+    const focus=marker.runner.id===options.selected,radius=focus?17:13;
+    ctx.beginPath();ctx.arc(point.x,point.y,radius,0,Math.PI*2);ctx.fillStyle=runnerColors[marker.runner.index%runnerColors.length];ctx.fill();
+    ctx.lineWidth=focus?3:2;ctx.strokeStyle=focus?palette.text:palette.panel;ctx.stroke();
+  }
+  ctx.restore();
+}
 /** Viewer and exported video share this exact draw function. */
 export function drawReplay(ctx:CanvasRenderingContext2D,options:ReplayOptions,time:number,width:number,height:number,palette:ReplayPalette=fallbackPalette):ReplayScene {
   const scene=replayScene(options,time,width,height),text=replayTextMetrics(options.fontScale);
   const font=(size:number,bold=false)=>`${bold?'bold ':''}${fontPixels(size,options.fontScale)}px system-ui,sans-serif`;
   ctx.clearRect(0,0,width,height);ctx.fillStyle=palette.bg;ctx.fillRect(0,0,width,height);
   const headingY=Math.max(26,fontPixels(13,options.fontScale)+8);
-  ctx.font=font(13);ctx.fillStyle=palette.text;ctx.fillText(fittedText(ctx,`${options.race.synthetic?'SYNTHETIC · ':''}${scene.geometry==='Game-extracted course curve'?'Game course path':scene.geometry}`,width*.42),20,headingY);
+  ctx.font=font(13);
+  const heading=[options.race.synthetic?'SYNTHETIC':null,scene.geometry==='Game-extracted course curve'?null:scene.geometry].filter(Boolean).join(' · ');
+  if(heading){ctx.fillStyle=palette.text;ctx.fillText(fittedText(ctx,heading,width*.42),20,headingY);}
   ctx.textAlign='right';ctx.fillStyle=palette.accentText??palette.accent;ctx.fillText(fittedText(ctx,`${scene.phase} · ${scene.distance.toFixed(1)} m · ${time.toFixed(2)} s`,width*.5),width-20,headingY);ctx.textAlign='left';
   route(ctx,scene);ctx.strokeStyle=palette.edge;ctx.lineWidth=scene.trackWidth+8;ctx.lineCap='butt';ctx.lineJoin='round';ctx.stroke();courseEnds(ctx,scene,(scene.trackWidth+8)/2,palette.edge);
   route(ctx,scene);ctx.strokeStyle=palette.track;ctx.lineWidth=scene.trackWidth;ctx.stroke();courseEnds(ctx,scene,scene.trackWidth/2,palette.track);
@@ -175,17 +213,17 @@ export function drawReplay(ctx:CanvasRenderingContext2D,options:ReplayOptions,ti
     if(options.labels&&focus&&!marker.cards.length){ctx.font=font(11);ctx.fillStyle=palette.text;ctx.textAlign='center';ctx.fillText(fittedText(ctx,marker.name,150),marker.x,marker.y+34);ctx.textAlign='left';}
   }
   if(options.elevation&&scene.elevation.length){
-    let min=0,max=0;for(const p of scene.elevation){min=Math.min(min,p.height);max=Math.max(max,p.height);}
+    let min=0,max=0,current=scene.elevation[0].height;for(const p of scene.elevation){min=Math.min(min,p.height);max=Math.max(max,p.height);if(p.distance<=scene.distance)current=p.height;}
     const span=Math.max(.1,max-min);
     const plotX=(distance:number)=>24+(distance-scene.from)/Math.max(1,scene.to-scene.from)*(width-48);
     const plotY=(heightValue:number)=>height-43-(heightValue-min)/span*27;
     ctx.fillStyle=palette.panel;ctx.globalAlpha=.6;ctx.fillRect(16,height-86,width-32,54);ctx.globalAlpha=1;
     ctx.beginPath();ctx.moveTo(24,plotY(0));ctx.lineTo(width-24,plotY(0));ctx.strokeStyle=palette.muted;ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
     ctx.beginPath();for(const [i,p]of scene.elevation.entries()){const x=plotX(p.distance),y=plotY(p.height);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);}
-    ctx.strokeStyle=palette.accent;ctx.lineWidth=1.5;ctx.stroke();ctx.font=font(11);ctx.fillStyle=palette.muted;ctx.fillText(`Elevation vs 0 · ${min.toFixed(2)} to ${max.toFixed(2)} m`,24,height-72);
+    ctx.strokeStyle=palette.accent;ctx.lineWidth=1.5;ctx.stroke();ctx.font=font(11);ctx.fillStyle=palette.muted;ctx.fillText(`Current elevation · ${current.toFixed(2)} m`,24,height-72);
   }
-  ctx.font=font(11);ctx.fillStyle=palette.muted;ctx.fillText(fittedText(ctx,'Solid bars: duration · Dotted bars: timing unknown / display dwell · Dashed rings: vision candidates',width-40),20,height-12);
   // The complete selected stack stays above other labels and portraits.
   if(options.labels){const selectedGroup=scene.cardGroups.find(g=>g.runnerId===options.selected);if(selectedGroup)drawGroup(selectedGroup);}
+  drawMinimap(ctx,options,scene,palette);
   return scene;
 }

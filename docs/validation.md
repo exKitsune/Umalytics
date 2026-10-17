@@ -19,7 +19,7 @@ Checked the Svelte UI with a previously captured Room Match:
 - Nine runners, 113 frames, and 71 events in the exported JSON.
 - Runner names, stats, skill names, and skill activation markers.
 - Playback, pause, and seeking to a skill activation.
-- Copy Uma JSON and clear reporting of fields missing for Umalator.
+- Download Uma JSON and clear reporting of fields missing for Umalator.
 - Dark and light themes, settings, and the layout at 1440 × 1000.
 - Tokyo 2400 m demo at the start, back straight, and finish: a closed oval, distinct start/finish positions, and all runners aligned with the finish line at 2400 m.
 

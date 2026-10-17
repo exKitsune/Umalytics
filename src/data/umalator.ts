@@ -1,5 +1,5 @@
 import type { Race, Runner, RunnerAptitudes } from './types';
-import { getCourse, type ReferenceData } from './reference';
+import { getCourse, runnerName, runnerOutfit, type ReferenceData } from './reference';
 
 export const UMALATOR_URL = 'https://umalator.app/umalator-global/';
 export const UMALATOR_SCHEMA_SOURCE = 'https://github.com/TheCing/uma-tools/blob/5ce95905fef753a33f7519b5559a86e92f5d56cc/umalator-global/v2/storage.ts';
@@ -75,7 +75,7 @@ export function buildUmalatorExport(runner: Runner, race: Race, reference: Refer
   const unsupported = reference ? skills.filter(id => !reference.simulatorSkillIds.has(id)) : [];
   if (unsupported.length) warnings.push(`Umalator will skip these skill IDs: ${unsupported.join(', ')}.`);
   if (runner.skills?.some(s => s.level !== null && s.level > 1 && String(s.id) !== uniqueId))
-    warnings.push('Umalator keeps the outfit unique level. Copy Uma JSON to keep all skill levels.');
+    warnings.push('Umalator keeps the outfit unique level.');
   warnings.push('Set the course and conditions in Umalator.');
   if (missing.length) return { payload: null, json: null, missing, warnings };
   const payload: UmalatorUma = { outfitId, starCount: runner.starCount!,
@@ -85,6 +85,21 @@ export function buildUmalatorExport(runner: Runner, race: Race, reference: Refer
     strategy: strategy.name, distanceAptitude: distanceAptitude!, surfaceAptitude: surfaceAptitude!,
     strategyAptitude: strategyAptitude!, mood: mood! - 3, skills, forcedSkillPositions: {} };
   return { payload, json: JSON.stringify(payload, null, 2), missing, warnings };
+}
+export function jsonDownloadName(...parts: string[]): string {
+  const stem = parts.map(part => {
+    const cleaned = part.replace(/[<>:"/\\|?*\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '');
+    return cleaned || 'file';
+  }).join('_').slice(0, 120).replace(/[. ]+$/g, '');
+  return `${stem || 'export'}.json`;
+}
+export function umaDownloadName(runner: Runner, race: Race, reference: ReferenceData | null): string {
+  return jsonDownloadName(
+    runnerName(reference, runner),
+    runnerOutfit(reference, runner) ?? (runner.cardId == null ? 'outfit' : String(runner.cardId)),
+    String(runner.gate ?? runner.index + 1),
+    (race.capturedAt ?? '').replace(/[:.]/g, '-') || 'race',
+  );
 }
 /** Lossless runner build transfer independent of any simulator's narrower schema.
  * Account/trainer identity and recorded race samples are deliberately excluded. */

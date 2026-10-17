@@ -14,6 +14,7 @@
   import ModeImpactSummary from './ModeImpactSummary.svelte';
   import SpurtSpeed from './SpurtSpeed.svelte';
   import HillStats from './HillStats.svelte';
+  import PodiumTrophy from './PodiumTrophy.svelte';
   import { atTime } from '../data/effect-sampling';
   export let race:Race, reference:ReferenceData|null, analysis:RaceAnalysis, selected:string;
   export let onSelect:(id:string)=>void;
@@ -60,6 +61,25 @@
       modeled:rows.some(r=>r.evidence==='estimated'),
       title:rows.length?statusHelp(kind):modelBlock(id)??'No active interval found.'};
   }
+  function hpView(s:{hpStart:number|null;hpFinish:number|null;hpUsed:number|null;hpRecovered:number|null}|undefined,stolenHp:number|null|undefined){
+    if(!s)return null;
+    const whole=(v:number|null|undefined)=>v==null?'—':String(Math.round(v));
+    return {
+      finish:whole(s.hpFinish),
+      start:whole(s.hpStart),
+      percent:s.hpStart&&s.hpFinish!=null?(s.hpFinish/s.hpStart*100).toFixed(1):null,
+      spent:whole(s.hpUsed),
+      gained:s.hpRecovered==null?'—':`+${Math.round(s.hpRecovered)}`,
+      stolen:stolenHp==null?'—':stolenHp===0?'0':`${stolenHp>0?'−':'+'}${Math.round(Math.abs(stolenHp))}`,
+    };
+  }
+  function startQuality(delay:number|null|undefined){
+    if(delay==null)return null;
+    if(delay<.02)return {label:'Great start',tone:'great'};
+    if(delay<=.04)return {label:'Good start',tone:'good'};
+    if(delay>.08)return {label:'Late start',tone:'late'};
+    return {label:'Poor start',tone:'poor'};
+  }
   function modelBlock(id:string){
     const stats=analysis.runners[id]?.statBreakdown.stats;
     if(!stats)return null;
@@ -75,7 +95,7 @@
 <section class="panel field-stats" class:compact>
   <div class="panel-heading"><strong>Race results</strong><span class="muted">Select a runner · dotted values use models</span></div>
   <div class="field-scroll"><table data-col={hoverColumn}>
-    <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP finish / start','Dueling','Uphill','Downhill','Outer corners','PU / SU','PD / OT','Spot struggle','Rushed','Debuffs received','Blocked / Near','Top / mean speed','HP spent / gained'] as heading,index}<th class:column-hot={hoverColumn===index} title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':undefined} onmouseenter={()=>hoverColumn=index} onmouseleave={()=>hoverColumn=-1}>{heading}</th>{/each}</tr></thead>
+    <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Rushed','Debuffs received','Blocked / Near'] as heading,index}<th class:column-hot={hoverColumn===index} title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Recorded gate delay versus the 0–100 ms draw.':undefined} onmouseenter={()=>hoverColumn=index} onmouseleave={()=>hoverColumn=-1}>{heading}</th>{/each}</tr></thead>
     <tbody>{#each sorted as r}
       {@const s=analysis.runners[r.id]?.summary}
       {@const duel=duration(r.id,'dueling')}
@@ -92,13 +112,14 @@
       {@const corners=analysis.runners[r.id]?.cornerPath}
       {@const motion=motions[r.id]}{@const hole=blockHole(motion)}
       {@const exhausted=exhaustion(r.id)}
+      {@const hp=hpView(s,debuffs?.modeledHpDelta)}
       <tr class:row-selected={selected===r.id} onclick={()=>onSelect(r.id)} onmouseover={e=>{const cell=(e.target as HTMLElement).closest('td');hoverColumn=cell?cell.cellIndex:-1;}} onfocusin={e=>{const cell=(e.target as HTMLElement).closest('td');hoverColumn=cell?cell.cellIndex:-1;}} onmouseleave={()=>hoverColumn=-1}>
-        <td class="finish" class:column-hot={hoverColumn===0}>{r.finishOrder??'—'}</td>
+        <td class="finish" class:column-hot={hoverColumn===0}><span class="finish-mark"><span class="finish-place">{r.finishOrder??'—'}</span>{#if r.finishOrder===1||r.finishOrder===2||r.finishOrder===3}<PodiumTrophy place={r.finishOrder} size={15}/>{/if}</span></td>
         <td><button class="result-runner" onclick={()=>onSelect(r.id)}><UmaPortrait runner={r} size={38}/><span><strong><span class="result-gate" title="Starting gate">{r.gate??r.index+1}</span>{runnerName(reference,r)}</strong><small class="result-badges"><StrategyBadge runner={{...r,strategyCode:style}}/>{#if r.mood!=null}<GameIcon name={`mood-${r.mood}`} label={`${mood(r.mood)} mood`} size={19}/>{/if}</small></span></button></td>
         <td>{f(s?.rawTime,3)}s<small>+{f(s?.finishGapDistance)}m</small></td>
-        <td>{f(s?.startDelay==null?null:s.startDelay*1000,1)}ms</td>
+        <td>{#if s?.startDelay==null}—{:else}{@const quality=startQuality(s.startDelay)}<span title="Recorded gate delay versus the 0–100 ms draw.">{f(s.startDelay*1000,1)} / 100 ms</span>{#if quality}<small class={`start-${quality.tone}`}>{quality.label}</small>{/if}{/if}</td>
         <td>{s?.spurtDistance===-1?'None':`${f(s?.spurtDistance)}m`}<SpurtSpeed value={prepared?.runners[r.id]?.spurt} name={runnerName(reference,r)}/></td>
-        <td class:empty-hp={s?.hpFinish!=null&&s.hpFinish<=0}>{f(s?.hpFinish)} / {f(s?.hpStart,0)}<small>{s?.hpStart&&s.hpFinish!=null?`${(s.hpFinish/s.hpStart*100).toFixed(1)}%`:''}</small>{#if exhausted}<small title="When HP first reaches zero; ranges reflect the gap between replay samples.">Exhausted at {range(exhausted.onset,2)} s</small>{#if exhausted.remaining}<small>{range(exhausted.remaining,1)} m left</small>{/if}{#if exhausted.loss?.distanceLoss&&exhausted.loss.timeLoss}<small class="modeled" title="Distance lost after HP runs out, keeping traffic and skill timings the same. Earlier spurt delay is excluded.">{range(exhausted.loss.distanceLoss)} m lost{#if exhausted.partial} · partial{/if}</small><small class="modeled" title="Equivalent time for the distance lost to exhaustion; not a predicted finish-time change.">{range(exhausted.loss.timeLoss,3)} s lost</small>{:else}<small>{motion?'Loss unavailable':'Calculating loss…'}</small>{/if}{/if}</td>
+        <td class="hp-cell" class:empty-hp={s?.hpFinish!=null&&s.hpFinish<=0}>{#if hp}<div class="hp-final"><strong>{hp.finish}</strong><span class="hp-max">/ {hp.start}</span>{#if hp.percent}<small>{hp.percent}%</small>{/if}</div><div class="hp-flow" title="HP spent, gained from recoveries, and stolen by incoming debuffs."><span>{hp.spent}</span><span class="hp-gain">{hp.gained}</span><span class="hp-loss">{hp.stolen}</span></div><div class="hp-legend"><span>spent</span><span>gained</span><span>stolen</span></div>{/if}{#if exhausted}<small title="When HP first reaches zero; ranges reflect the gap between replay samples.">Empty {range(exhausted.onset,1)}s{#if exhausted.remaining} · {range(exhausted.remaining,0)} m left{/if}</small>{#if exhausted.loss?.distanceLoss&&exhausted.loss.timeLoss}<small class="modeled" title="Distance lost after HP runs out, keeping traffic and skill timings the same. Earlier spurt delay is excluded.">{range(exhausted.loss.distanceLoss)} m · {range(exhausted.loss.timeLoss,3)} s lost{#if exhausted.partial} · partial{/if}</small>{:else}<small>{motion?'Loss unavailable':'Calculating loss…'}</small>{/if}{/if}</td>
         <td><span class:modeled={duel.modeled} title={duel.title}>{duel.text}</span>{#if speedBit(r.id,'dueling')}{@const gain=speedBit(r.id,'dueling')!}<small title={gain.title}>{gain.text}</small>{/if}{#if impact(r.id,'dueling')}{@const value=impact(r.id,'dueling')!}<small class="modeled" title={modelHelp}>{value.modeledExtraDistance==null?'— m':`${value.modeledExtraDistance>=0?'+':''}${f(value.modeledExtraDistance)} m`}</small><small class="modeled" title={modelHelp}>{gainTime(value.modeledExtraTime)??'— s'}</small>{#if value.modeledExtraHp!==null}<small class="modeled" title={modelHelp}>{f(Math.abs(value.modeledExtraHp))} extra HP {value.modeledExtraHp<0?'saved':'spent'}</small>{/if}{/if}</td>
         <td><HillStats kind="uphill" hills={analysis.runners[r.id]?.hillImpacts??[]} total={uphill} name={runnerName(reference,r)}/></td>
         <td><HillStats kind="downhill" hills={analysis.runners[r.id]?.hillImpacts??[]} total={downhill} mode={mode(r.id,'downhill-mode')} name={runnerName(reference,r)}/></td>
@@ -109,8 +130,6 @@
         <td>{f(s?.rushedDuration)}s{#if impact(r.id,'rushed')}{@const value=impact(r.id,'rushed')!}<small class="modeled" title={modelHelp}>{value.modeledExtraDistance==null?'— m':`${value.modeledExtraDistance>=0?'+':''}${f(value.modeledExtraDistance)} m`}</small><small class="modeled" title={modelHelp}>{gainTime(value.modeledExtraTime)??'— s'}</small>{#if value.modeledExtraHp!==null}<small class="modeled" title={modelHelp}>{f(Math.abs(value.modeledExtraHp))} extra HP {value.modeledExtraHp<0?'saved':'spent'}</small>{/if}{/if}</td>
         <td>{#if debuffs?.intervals}<span class="modeled" title={debuffHelp}>{debuffs.modeledHpDelta===null?'—':`${f(debuffs.modeledHpDelta)} HP`}</span><small class="modeled" title={debuffHelp}>{debuffs.modeledDistanceDelta==null?'— m':`${f(Math.abs(debuffs.modeledDistanceDelta))} m ${debuffs.modeledDistanceDelta<=0?'lost':'gained'}`}</small><small class="modeled" title={debuffHelp}>{debuffs.modeledTimeDelta==null?'— s':`${f(Math.abs(debuffs.modeledTimeDelta),3)} s ${debuffs.modeledTimeDelta>=0?'lost':'saved'}`}</small>{:else}—{/if}</td>
         <td><span title="Time with a recorded blocker. Speed loss is measured separately.">{f(s?.blockedDuration)}s blocked</span>{#if duration(r.id,'near-slowdown').text!=='—'}<small title={duration(r.id,'near-slowdown').title}>{duration(r.id,'near-slowdown').text} near</small>{/if}{#if motion?.trafficLoss?.duration}<small title="Time assessed around traffic, including approach and recovery.">{f(motion.trafficLoss.duration)}s with recovery</small>{/if}{#if hole}<small class="modeled" title="Distance lost around traffic, including recovery. Pace modes, skills and slopes are kept the same.">{range(hole.distance)} m lost{#if hole.partial} · partial{/if}</small><small class="modeled" title="Equivalent time for the lost distance, not a finish-time prediction.">{range(hole.time,3)} s lost</small>{:else}<small>{motion?'Loss unavailable':'Calculating loss…'}</small>{/if}</td>
-        <td>{f(s?.maxSpeed,2)} / {f(s?.meanSpeed,2)}<small>m/s</small></td>
-        <td>{f(s?.hpUsed)} / +{f(s?.hpRecovered)}</td>
       </tr>
     {/each}</tbody>
   </table></div>
@@ -121,15 +140,24 @@
   table{width:max-content;min-width:100%}th{font-size:var(--font-9)}td{font-size:var(--font-11);padding:9px 10px;vertical-align:middle}
   tbody tr{cursor:pointer}tbody tr:hover td{background:color-mix(in srgb,#000 14%,var(--panel))}
   th:hover{background:color-mix(in srgb,#000 12%,var(--panel))}
-  table[data-col="0"] :is(th,td):nth-child(1),table[data-col="1"] :is(th,td):nth-child(2),table[data-col="2"] :is(th,td):nth-child(3),table[data-col="3"] :is(th,td):nth-child(4),table[data-col="4"] :is(th,td):nth-child(5),table[data-col="5"] :is(th,td):nth-child(6),table[data-col="6"] :is(th,td):nth-child(7),table[data-col="7"] :is(th,td):nth-child(8),table[data-col="8"] :is(th,td):nth-child(9),table[data-col="9"] :is(th,td):nth-child(10),table[data-col="10"] :is(th,td):nth-child(11),table[data-col="11"] :is(th,td):nth-child(12),table[data-col="12"] :is(th,td):nth-child(13),table[data-col="13"] :is(th,td):nth-child(14),table[data-col="14"] :is(th,td):nth-child(15),table[data-col="15"] :is(th,td):nth-child(16),table[data-col="16"] :is(th,td):nth-child(17),table[data-col="17"] :is(th,td):nth-child(18){background:color-mix(in srgb,#000 10%,var(--panel))}
+  table[data-col="0"] :is(th,td):nth-child(1),table[data-col="1"] :is(th,td):nth-child(2),table[data-col="2"] :is(th,td):nth-child(3),table[data-col="3"] :is(th,td):nth-child(4),table[data-col="4"] :is(th,td):nth-child(5),table[data-col="5"] :is(th,td):nth-child(6),table[data-col="6"] :is(th,td):nth-child(7),table[data-col="7"] :is(th,td):nth-child(8),table[data-col="8"] :is(th,td):nth-child(9),table[data-col="9"] :is(th,td):nth-child(10),table[data-col="10"] :is(th,td):nth-child(11),table[data-col="11"] :is(th,td):nth-child(12),table[data-col="12"] :is(th,td):nth-child(13),table[data-col="13"] :is(th,td):nth-child(14),table[data-col="14"] :is(th,td):nth-child(15),table[data-col="15"] :is(th,td):nth-child(16){background:color-mix(in srgb,#000 10%,var(--panel))}
   td:nth-child(2){position:sticky;left:0;background:var(--panel);z-index:1;min-width:200px;border-right:1px solid var(--border)}
   th:nth-child(2){position:sticky;left:0;z-index:3}tbody tr:hover td:nth-child(2){background:color-mix(in srgb,#000 14%,var(--panel))}
   tr.row-selected td,tr.row-selected td:nth-child(2),table[data-col] tr.row-selected td{background:var(--accent-soft)}
   tr.row-selected:hover td,tr.row-selected:hover td:nth-child(2),table[data-col] tr.row-selected:hover td{background:color-mix(in srgb,#000 12%,var(--accent-soft))}
   .mode-name{display:block;font-weight:700;color:var(--text);font-size:var(--font-12);letter-spacing:.02em}
   .result-runner{display:flex;gap:10px;justify-content:flex-start;width:100%;background:none;border:0;padding:0;text-align:left}
-  .result-runner strong{display:flex;align-items:center;gap:6px;font-size:var(--font-12);font-weight:550}.result-gate{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border:1px solid var(--border);border-radius:4px;background:var(--panel-raised);color:var(--text);font-size:var(--font-11);font-variant-numeric:tabular-nums}.result-runner small{font-size:var(--font-9)}.finish{font-size:var(--font-14);font-weight:650}
-  .empty-hp{color:#e28f7f}.muted{font-size:var(--font-9)}td small{font-size:var(--font-9);line-height:1.5}
+  .result-runner strong{display:flex;align-items:center;gap:6px;font-size:var(--font-12);font-weight:550}.result-gate{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border:1px solid var(--border);border-radius:4px;background:var(--panel-raised);color:var(--text);font-size:var(--font-11);font-variant-numeric:tabular-nums}.result-runner small{font-size:var(--font-9)}.finish{font-size:var(--font-14);font-weight:650;white-space:nowrap}
+  .finish-mark{display:inline-flex;align-items:center;gap:5px;min-height:18px}
+  .finish-place{display:inline-block;min-width:1.15em;text-align:right;font-variant-numeric:tabular-nums}
+  .finish :global(.podium-trophy){width:15px;height:16px}
+  .empty-hp .hp-final strong{color:#e28f7f}.muted{font-size:var(--font-9)}td small{font-size:var(--font-9);line-height:1.5}
+  .hp-cell{min-width:9em}  .hp-final{display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums}
+  .hp-final strong{font-size:var(--font-14);font-weight:600}.hp-max{color:var(--muted);font-weight:550}.hp-final small{color:var(--muted);margin-left:2px}
+  .hp-flow,.hp-legend{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .hp-flow{font-weight:550}.hp-gain{color:#6dce86}.hp-loss{color:#e28f7f}
+  .hp-legend{color:var(--muted);font-size:var(--font-8);line-height:1.2}
+  .start-great{color:#6dce86;font-weight:650}.start-good{color:var(--text);font-weight:650}.start-poor{color:#e2c04a;font-weight:650}.start-late{color:#ef7474;font-weight:650}
   .modeled{text-decoration:underline dotted var(--muted);text-underline-offset:4px;cursor:help}
   td :global(small.mode-figure){font-size:var(--font-11);color:var(--text);line-height:1.4}
   td span.modeled{display:block;font-size:var(--font-11);line-height:1.5}

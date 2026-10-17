@@ -54,6 +54,18 @@ impl ServiceEndpoint {
             && (proxy["running"].as_bool() == Some(false) || proxy["listening"].as_bool() == Some(true))
     }
 
+    pub fn stop_owned(&self, runtime: &Path, data: &Path) {
+        if let Some(status) = self.health() {
+            if Self::matches_instance(&status, runtime, data) {
+                let _ = self.request("POST", "/api/app/exit", Some("{}"), status["csrfToken"].as_str());
+            }
+        }
+        for _ in 0..80 {
+            if !self.listening() { return; }
+            thread::sleep(Duration::from_millis(250));
+        }
+    }
+
     pub fn stop_for_migration(&self, data: &Path) -> Result<(), String> {
         if let Some(status) = self.health() {
             if !Self::matching_data(&status, data) {

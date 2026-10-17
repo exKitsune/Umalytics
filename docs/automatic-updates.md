@@ -135,11 +135,11 @@ Metadata, executable size, socket waits and total download duration are bounded.
 ## Installation behavior
 
 The background service checks at startup, every hour, and on the next wake if a
-check became overdue during system sleep. Checking does not download an EXE.
-The Settings **Update Umalytics** action checks the newest release again,
-downloads its executable, and verifies the exact signed size and SHA-256 before
-preparing a restart. Active game connections and launcher activity defer the
-restart. The app downloads the executable and its bundled reference data as one
+check became overdue during system sleep. Checking does not download an EXE and
+never installs it. When a newer version is available, Settings and the sidebar
+show **Update**. That button checks the newest release again, downloads its
+executable, and verifies the exact signed size and SHA-256 before preparing a
+restart. Active game connections and launcher activity defer the restart. The app downloads the executable and its bundled reference data as one
 version; there is no separate reference-data update action.
 
 The AppData `cache/update/` folder holds downloads and recovery files. The current

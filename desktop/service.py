@@ -51,6 +51,34 @@ def settings_default():
             'preferences': {'theme': 'dark', 'fontScale': 100, 'courseAssignments': {}, 'browserMigrationComplete': False}}
 
 
+def default_downloads():
+    if os.name == 'nt':
+        class GUID(ctypes.Structure):
+            _fields_ = [('Data1', ctypes.c_uint32), ('Data2', ctypes.c_uint16),
+                        ('Data3', ctypes.c_uint16), ('Data4', ctypes.c_ubyte * 8)]
+        folderid = GUID(0x374DE290, 0x123F, 0x4565, (ctypes.c_ubyte * 8)(0x91, 0x64, 0x39, 0xC4, 0x92, 0x5E, 0x46, 0x7B))
+        path, shell, ole = ctypes.c_wchar_p(), ctypes.WinDLL('shell32'), ctypes.WinDLL('ole32')
+        shell.SHGetKnownFolderPath.argtypes = [ctypes.POINTER(GUID), ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
+        ole.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        if shell.SHGetKnownFolderPath(ctypes.byref(folderid), 0, None, ctypes.byref(path)) == 0:
+            try:
+                if path.value:
+                    return Path(path.value)
+            finally:
+                ole.CoTaskMemFree(path)
+    return Path.home() / 'Downloads'
+
+
+def reveal_folder(path):
+    if os.name != 'nt':
+        return False
+    try:
+        os.startfile(path)
+        return True
+    except OSError:
+        return False
+
+
 def reveal_file(path):
     """Select an app-owned exported file using the native Explorer shell API."""
     if os.name != 'nt':
@@ -81,9 +109,9 @@ def command(*args):
     return [sys.executable, *args] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).resolve()), *args]
 
 
-def current_user_trust(der, install=False):
+def current_user_trust(der, install=False, uninstall=False):
     """Open only CurrentUser ROOT, compare the exact certificate bytes."""
-    if os.name != 'nt':
+    if os.name != 'nt' or (install and uninstall):
         return False
     crypt = ctypes.WinDLL('crypt32', use_last_error=True)
     crypt.CertOpenStore.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
@@ -93,10 +121,13 @@ def current_user_trust(der, install=False):
     crypt.CertFindCertificateInStore.restype = ctypes.c_void_p
     crypt.CertFreeCertificateContext.argtypes = [ctypes.c_void_p]
     crypt.CertAddEncodedCertificateToStore.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+    crypt.CertDeleteCertificateFromStore.argtypes = [ctypes.c_void_p]
+    crypt.CertDeleteCertificateFromStore.restype = ctypes.c_int
     # CERT_STORE_PROV_SYSTEM_W=10; CURRENT_USER=0x10000, READONLY=0x8000.
-    store = crypt.CertOpenStore(ctypes.c_void_p(10), 0, None, 0x10000 | (0 if install else 0x8000), ctypes.c_wchar_p('ROOT'))
+    store = crypt.CertOpenStore(ctypes.c_void_p(10), 0, None, 0x10000 | (0 if install or uninstall else 0x8000), ctypes.c_wchar_p('ROOT'))
     if not store:
         return False
+    context = None
     try:
         if install:
             return bool(crypt.CertAddEncodedCertificateToStore(store, 1, der, len(der), 4, None))
@@ -105,11 +136,16 @@ def current_user_trust(der, install=False):
         digest = ctypes.create_string_buffer(hashlib.sha1(der).digest())
         blob = Blob(20, ctypes.cast(digest, ctypes.c_void_p))
         context = crypt.CertFindCertificateInStore(store, 1, 0, 0x10000, ctypes.byref(blob), None)
+        if not context:
+            return False
+        if uninstall:
+            deleted = bool(crypt.CertDeleteCertificateFromStore(context))
+            context = None
+            return deleted
+        return True
+    finally:
         if context:
             crypt.CertFreeCertificateContext(context)
-            return True
-        return False
-    finally:
         crypt.CertCloseStore(store, 0)
 
 
@@ -217,7 +253,7 @@ class Service:
         return {'ok': True}
 
     def update_settings(self, patch, persist=True):
-        if not isinstance(patch, dict) or set(patch) - {'schemaVersion', 'collectionEnabled', 'startAtLogin', 'categories', 'preferences'}:
+        if not isinstance(patch, dict) or set(patch) - {'schemaVersion', 'collectionEnabled', 'startAtLogin', 'categories', 'preferences', 'exportDirectory'}:
             raise ValueError('Unknown setting.')
         if 'schemaVersion' in patch and patch['schemaVersion'] != 1:
             raise ValueError('Unsupported settings version.')
@@ -248,9 +284,50 @@ class Service:
             self.settings['collectionEnabled'] = patch['collectionEnabled']
         self.settings['categories'].update(categories)
         self.settings['preferences'].update(preferences)
+        if 'exportDirectory' in patch:
+            self.settings.pop('exportDirectory', None)
+            if patch['exportDirectory'] not in (None, ''):
+                self.settings['exportDirectory'] = str(self.validate_export_directory(patch['exportDirectory']))
         if persist:
             atomic_json(self.settings_path, self.settings)
-        return dict(self.settings, categories=dict(self.settings['categories']))
+        return self.public_settings()
+
+    def public_settings(self):
+        return dict(self.settings, categories=dict(self.settings['categories']),
+                    exportDirectory=str(self.export_directory()), downloadsDirectory=str(default_downloads()))
+
+    def validate_export_directory(self, value):
+        if not isinstance(value, str) or not value.strip() or len(value) > 240:
+            raise ValueError('Export folder path is invalid.')
+        folder = Path(value)
+        if not folder.is_absolute() or '..' in folder.parts:
+            raise ValueError('Export folder must be an absolute path.')
+        try:
+            resolved, capture = folder.resolve(), self.ca_dir.resolve()
+            if resolved == capture or capture in resolved.parents:
+                raise ValueError('Export folder cannot be the capture certificate folder.')
+        except OSError as error:
+            raise ValueError('Export folder path is invalid.') from error
+        return folder
+
+    def export_directory(self):
+        configured = self.settings.get('exportDirectory')
+        try:
+            return self.validate_export_directory(configured) if configured else default_downloads()
+        except ValueError:
+            return default_downloads()
+
+    def prepared_export_directory(self):
+        folder = self.export_directory().resolve()
+        capture = self.ca_dir.resolve()
+        if folder == capture or capture in folder.parents:
+            raise ValueError('Export folder cannot be the capture certificate folder.')
+        if folder.exists() and (folder.is_symlink() or not folder.is_dir()):
+            raise ValueError('Export folder must be a regular directory.')
+        folder.mkdir(parents=True, exist_ok=True)
+        if folder.is_symlink():
+            raise ValueError('Export folder must belong to this user.')
+        return folder
 
     def validate_preferences(self, patch):
         if not isinstance(patch, dict) or set(patch) - {'theme', 'fontScale', 'courseAssignments', 'browserMigrationComplete', 'raceTags'}:
@@ -372,6 +449,31 @@ class Service:
                 raise ValueError('Windows could not install the reviewed certificate.')
             return self.certificate(force=True)
 
+    def uninstall_certificate(self, expected_hash):
+        with self.install_lock:
+            status = self.certificate(force=True)
+            if not status['exists'] or not secrets.compare_digest(str(expected_hash), status['sha256']):
+                raise ValueError('Certificate changed. Review its current fingerprint first.')
+            if not status['trusted']:
+                return status
+            if os.name != 'nt':
+                raise ValueError('Windows CurrentUser certificate store is required.')
+            from cryptography import x509
+            from cryptography.hazmat.primitives import serialization
+            der = x509.load_pem_x509_certificate((self.ca_dir / 'umalytics-ca-cert.pem').read_bytes()).public_bytes(serialization.Encoding.DER)
+            if hashlib.sha256(der).hexdigest().upper() != expected_hash or not current_user_trust(der, uninstall=True):
+                raise ValueError('Windows could not remove the capture certificate. Approve the Windows prompt if it appears.')
+            return self.certificate(force=True)
+
+    def reveal_target(self, body):
+        target = body.get('target')
+        if set(body) != {'target'} or target not in ('data', 'exports'):
+            raise ValueError('Reveal target is invalid.')
+        folder = self.data_dir if target == 'data' else self.prepared_export_directory()
+        if not folder.is_dir() or folder.is_symlink():
+            raise ValueError('That folder is unavailable.')
+        return {'path': str(folder), 'revealed': reveal_folder(folder)}
+
     def receive_status(self):
         while not self.closed.is_set():
             try:
@@ -429,10 +531,7 @@ class Service:
         if not isinstance(strict_json(raw), (dict, list)):
             raise ValueError('Export must contain a JSON object or array.')
         with self.export_lock:
-            folder = self.data_dir / 'exports'
-            if folder.is_symlink():
-                raise ValueError('Export folder must belong to this installation.')
-            folder.mkdir(exist_ok=True)
+            folder = self.prepared_export_directory()
             target = folder / filename
             index = 1
             while target.exists():
@@ -735,7 +834,7 @@ def make_handler(service):
                                     'storageNotices': service.storage_notices,
                                     'runtimeExecutable': str(Path(sys.executable).resolve())})
                 elif path == '/api/settings':
-                    self.send(200, service.settings)
+                    self.send(200, service.public_settings())
                 elif path == '/api/preferences':
                     self.send(200, service.settings['preferences'])
                 elif path == '/api/analysis-cache' or path.startswith('/api/analysis-cache/'):
@@ -821,6 +920,10 @@ def make_handler(service):
                     self.send(200, result)
                 elif self.path == '/api/certificate/install':
                     self.send(200, service.install_certificate(body.get('sha256')))
+                elif self.path == '/api/certificate/uninstall':
+                    self.send(200, service.uninstall_certificate(body.get('sha256')))
+                elif self.path == '/api/reveal':
+                    self.send(200, service.reveal_target(body))
                 elif self.path == '/api/data/update':
                     with service.update_lock:
                         result = service.reference_data.update()
