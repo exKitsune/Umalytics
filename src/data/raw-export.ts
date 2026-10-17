@@ -75,16 +75,20 @@ function attachTrained(horses: unknown[], trained: unknown[]): unknown[] {
   });
 }
 
+function writeRaw(target: RaceRaw): RecordValue {
+  return target as unknown as RecordValue;
+}
+
 function copyScalar(target: RaceRaw, obj: RecordValue, key: keyof RaceRaw, ...aliases: string[]) {
   const raw = pick(obj, key, ...aliases);
   if (raw === undefined) return;
   if (key === 'weather' || key === 'groundCondition' || key === 'season' || key === 'raceType' || key === 'horseACT_version') {
     const text = string(raw) ?? (number(raw) === null ? null : String(raw));
-    if (text && text.length <= 64) (target as RecordValue)[key] = text;
+    if (text && text.length <= 64) writeRaw(target)[key] = text;
     return;
   }
   const n = number(raw);
-  if (n !== null) (target as RecordValue)[key] = n;
+  if (n !== null) writeRaw(target)[key] = n;
 }
 
 function wrapHorse(member: unknown, result?: RawFinish): RecordValue {
@@ -113,7 +117,7 @@ export function sanitizeRaceRaw(raw: RaceRaw): RaceRaw | undefined {
   if (obj.raceCourseSet !== undefined) result.raceCourseSet = obj.raceCourseSet;
   if (Array.isArray(obj.trainedCharaArray)) result.trainedCharaArray = obj.trainedCharaArray.slice(0, MAX_HORSES);
   for (const key of RAW_KEYS) {
-    if (obj[key] !== undefined) (result as RecordValue)[key] = obj[key];
+    if (obj[key] !== undefined) writeRaw(result)[key] = obj[key];
   }
   return result;
 }
