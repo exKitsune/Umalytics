@@ -64,14 +64,41 @@ function parseAptitudes(obj: RecordValue, normalized = false): RunnerAptitudes |
   return values.length ? Object.fromEntries(values) : undefined;
 }
 
-function captureFields(obj: RecordValue): Pick<Race, 'category' | 'capturedAt' | 'capture'> {
+function raceClock(value: unknown) {
+  const text = string(value);
+  if (!text || text.length > 40) return undefined;
+  const utc = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})Z$/.exec(text);
+  if (utc && Number.isFinite(Date.parse(`${utc[1]}T${utc[2]}Z`))) return `${utc[1]}T${utc[2]}Z`;
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/.exec(text);
+  return match && Number.isFinite(Date.parse(`${match[1]}T${match[2]}`)) ? `${match[1]}T${match[2]}` : undefined;
+}
+
+function raceDesignation(mode: unknown, saved: boolean, explicit: unknown): Race['raceDesignation'] {
+  const named = explicit === 'practice-live' || explicit === 'practice-saved' || explicit === 'room-live' || explicit === 'room-saved' ? explicit : undefined;
+  if (named) return named;
+  if (mode === 'practice') return saved ? 'practice-saved' : 'practice-live';
+  if (mode === 'room') return saved ? 'room-saved' : 'room-live';
+  return undefined;
+}
+
+function captureFields(obj: RecordValue): Pick<Race, 'category' | 'capturedAt' | 'racedAt' | 'racedAtSource' | 'savedReplay' | 'raceMode' | 'raceDesignation' | 'capture'> {
   const provenance = record(obj.capture ?? record(obj.metadata).umaTrace);
   const endpointGroup = category(provenance.endpointGroup);
   const categorySource = provenance.categorySource;
   const capturedAt = string(obj.capturedAt ?? obj.captured_at);
+  const racedAt = raceClock(obj.racedAt ?? obj.raced_at);
+  const racedAtSource = obj.racedAtSource ?? obj.raced_at_source;
+  const raceMode = obj.raceMode ?? obj.race_mode;
+  const savedReplay = obj.savedReplay === true || obj.saved_replay === true;
+  const designation = raceDesignation(raceMode, savedReplay, obj.raceDesignation ?? obj.race_designation);
   return {
     ...(category(obj.category ?? obj.race_category) ? { category: category(obj.category ?? obj.race_category) } : {}),
     ...(capturedAt && capturedAt.length <= 64 && /^\d{4}-\d\d-\d\dT/.test(capturedAt) && Number.isFinite(Date.parse(capturedAt)) ? { capturedAt } : {}),
+    ...(racedAt ? { racedAt } : {}),
+    ...(racedAtSource === 'game' || racedAtSource === 'capture' ? { racedAtSource } : {}),
+    ...(savedReplay || designation ? { savedReplay } : {}),
+    ...(raceMode === 'practice' || raceMode === 'room' ? { raceMode } : {}),
+    ...(designation ? { raceDesignation: designation } : {}),
     ...(endpointGroup && (categorySource === 'endpoint' || categorySource === 'content' || categorySource === 'unknown') ? { capture: { endpointGroup, categorySource } } : {}),
   };
 }

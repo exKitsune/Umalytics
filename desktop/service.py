@@ -371,7 +371,7 @@ class Service:
                 or any(not isinstance(item, dict) for name in ('runners', 'frames', 'events') for item in race[name])):
             raise ValueError('A portable race document is required.')
         allowed = {'schemaVersion', 'id', 'title', 'synthetic', 'distance', 'courseId', 'conditions', 'laneDistanceMax',
-                   'runners', 'frames', 'events', 'warnings', 'category', 'capturedAt', 'courseIdentity', 'distanceEvidence',
+                   'runners', 'frames', 'events', 'warnings', 'category', 'capturedAt', 'racedAt', 'racedAtSource', 'savedReplay', 'raceMode', 'raceDesignation', 'courseIdentity', 'distanceEvidence',
                    'grade', 'conditionEvidence', 'capture', 'randomSeed', 'simDataBase64', 'raceHorse', 'raceCourseSet',
                    'weather', 'groundCondition', 'season', 'raceType', 'raceGrade', 'startTimeType', 'raceInstanceId',
                    'horseACT_version', 'trainedCharaArray'}
@@ -720,6 +720,19 @@ class Service:
                     if isinstance(category, str):
                         item['category'] = category[:200]
                     item.update(self.summary_course(entry, reference))
+                    raced_at = entry.get('raced_at', entry.get('racedAt'))
+                    if isinstance(raced_at, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?', raced_at):
+                        item['racedAt'] = raced_at
+                    mode = entry.get('race_mode', entry.get('raceMode'))
+                    if mode in ('practice', 'room'):
+                        item['raceMode'] = mode
+                    if entry.get('saved_replay') is True or entry.get('savedReplay') is True:
+                        item['savedReplay'] = True
+                    elif entry.get('saved_replay') is False or entry.get('savedReplay') is False:
+                        item['savedReplay'] = False
+                    designation = entry.get('race_designation', entry.get('raceDesignation'))
+                    if designation in ('practice-live', 'practice-saved', 'room-live', 'room-saved'):
+                        item['raceDesignation'] = designation
                     metadata.append(item)
                 self._race_metadata[path.name] = (cache_key, metadata)
                 if summary:

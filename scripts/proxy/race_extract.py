@@ -5,6 +5,7 @@ import math
 import re
 import struct
 import zlib
+from datetime import datetime, timezone
 
 MAX_RACES = 100
 MAX_SCENARIO_CHARS = 16 * 1024 * 1024
@@ -192,13 +193,45 @@ def _int(value):
     return number if type(number) is int else None
 
 
-TRACE_NUMBERS = ('race_instance_id', 'race_course_id', 'course_id', 'distance', 'race_distance')
-TRACE_FLAGS = ('random_seed', 'saved_room_id', 'register_id', 'room_id', 'race_scenario', 'race_course_set', *CONDITIONS, 'start_time_type')
-TRACE_ALIASES = {'raceInstanceId': 'race_instance_id', 'RaceInstanceId': 'race_instance_id',
-    'raceCourseId': 'race_course_id', 'courseId': 'course_id', 'CourseId': 'course_id',
-    'raceCourseSet': 'race_course_set', 'RaceCourseSet': 'race_course_set',
-    'raceDistance': 'race_distance', 'randomSeed': 'random_seed', 'savedRoomId': 'saved_room_id',
-    'registerId': 'register_id', 'roomId': 'room_id', 'startTimeType': 'start_time_type'}
+CLOCK_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$')
+CLOCK_KEYS = ('start_time', 'race_start_time', 'raced_time', 'race_time', 'result_time', 'saved_time', 'played_time', 'entry_time', 'create_time')
+CLOCK_ALIASES = {'startTime': 'start_time', 'raceStartTime': 'race_start_time', 'createTime': 'create_time', 'savedTime': 'saved_time'}
+RUNNER_BRANCHES = frozenset(('race_horse_data', 'race_horse_data_array', 'trained_chara_array', 'trainedCharaArray',
+    'trained_chara_data_array', 'trained_chara_data', 'skill_array', 'chara_info'))
+
+
+def _clock(value):
+    """Game menu clock. A date string keeps its wall time; a unix time is UTC."""
+    if isinstance(value, str) and len(value) <= 32:
+        match = CLOCK_RE.fullmatch(value.strip())
+        return f'{match.group(1)}T{match.group(2)}' if match else None
+    if type(value) is int and 1577836800 <= value <= 2051222400:
+        return datetime.fromtimestamp(value, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+    return None
+
+
+def _time_key(key):
+    name = str(key).lower()
+    return ('time' in name or 'date' in name) and 'type' not in name and not name.endswith('_id')
+
+
+def _object_clock(value):
+    """A race object's own run time. Trained-character creation times are not race times."""
+    if not isinstance(value, dict):
+        return None
+    markers = ('race_instance_id', 'raceInstanceId', 'race_scenario', 'saved_room_id', 'savedRoomId', 'race_course_set', 'raceCourseSet')
+    if not any(key in value for key in markers):
+        return None
+    for key in (*CLOCK_KEYS, *CLOCK_ALIASES):
+        clock = _clock(value.get(key))
+        if clock:
+            return CLOCK_ALIASES.get(key, key), clock
+    for key, child in value.items():
+        if _time_key(key):
+            clock = _clock(child)
+            if clock:
+                return str(key)[:64], clock
+    return None
 
 
 def api_route(path):
@@ -211,61 +244,139 @@ def api_route(path):
     return '/'.join(':n' if part.isdigit() and len(part) > 4 else part for part in route.split('/'))
 
 
-def trace_api_payload(payload):
-    """Names and public course numbers only. Room, player, and auth values stay out."""
-    numbers = {key: [] for key in TRACE_NUMBERS}
-    flags = set()
-    course_sets = []
-    visits = 0
+SECRET_KEYS = ENVELOPE | frozenset(('token', 'access_token', 'refresh_token', 'password', 'cookie', 'cookies', 'authorization'))
+REPLAY_ROUTES = frozenset(('race_replay', 'get_saved_race_result', 'get_saved_race'))
 
-    def add_number(name, value):
-        parsed = _int(value)
-        if parsed is None or parsed <= 0 or parsed in numbers[name] or len(numbers[name]) >= 8:
-            return
-        numbers[name].append(parsed)
+
+def archive_payload(value):
+    """Keep the response body. Auth, session, device, and credential keys are removed at every level."""
+    if isinstance(value, list):
+        return [archive_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {key: archive_payload(child) for key, child in value.items() if key not in SECRET_KEYS}
+    return value
+
+
+def trace_api_payload(payload):
+    """Full sanitized response. Credential envelopes stay out; every other field is kept."""
+    return {'body': archive_payload(payload)}
+
+
+def saved_replay_route(route):
+    if not isinstance(route, str):
+        return False
+    return route.rstrip('/').rsplit('/', 1)[-1] in REPLAY_ROUTES
+
+
+def race_mode(route):
+    """Practice and room matches share one analysis category. The route keeps them distinct."""
+    if not isinstance(route, str):
+        return None
+    parts = route.split('?', 1)[0].split('/')
+    group = parts[2] if len(parts) > 2 and parts[1] == '\x75mamusume' else ''
+    if group in ('practice', 'practice_race'):
+        return 'practice'
+    if group == 'room_match':
+        return 'room'
+    return None
+
+
+def capture_clock(value):
+    """UTC capture instant, second resolution, marked with Z."""
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def race_designation(mode, saved_replay):
+    if mode == 'practice':
+        return 'practice-saved' if saved_replay else 'practice-live'
+    if mode == 'room':
+        return 'room-saved' if saved_replay else 'room-live'
+    return None
+
+
+def stamp_race_clocks(races, captured_at, saved_replay):
+    """A saved replay keeps the game clock. A live race with no clock uses the capture instant."""
+    for race in races:
+        race['saved_replay'] = bool(saved_replay)
+        designation = race_designation(race.get('race_mode'), saved_replay)
+        if designation:
+            race['race_designation'] = designation
+        if race.get('raced_at'):
+            race['raced_at_source'] = 'game'
+            continue
+        if saved_replay:
+            continue
+        clock = capture_clock(captured_at)
+        if clock:
+            race['raced_at'] = clock
+            race['raced_at_source'] = 'capture'
+
+
+def collect_race_times(payload):
+    """Run times from a saved-race list, keyed so the later replay can reuse one unambiguous clock."""
+    found = []
+    visits = 0
 
     def walk(value, depth=0):
         nonlocal visits
         visits += 1
         if visits > 10000 or depth > 16:
-            return
+            raise ValueError('envelope_limit')
         if isinstance(value, list):
             if len(value) > 1000:
-                return
+                raise ValueError('array_limit')
             for item in value:
                 walk(item, depth + 1)
             return
         if not isinstance(value, dict):
             return
-        for key, child in value.items():
-            if key in ENVELOPE:
+        clock = _object_clock(value)
+        join = _join_keys(value)
+        instance = _int(value.get('race_instance_id') or value.get('raceInstanceId'))
+        if clock and clock[0] == 'save_time' and instance:
+            found.append({'join': join, 'at': clock[1], 'field': 'save_time', 'instance': instance})
+        elif clock and join:
+            found.append({'join': join, 'at': clock[1]})
+        for key, nested in value.items():
+            if key in ENVELOPE or key in RUNNER_BRANCHES:
                 continue
-            canonical = TRACE_ALIASES.get(key, key)
-            if canonical in TRACE_FLAGS:
-                flags.add(canonical)
-            if canonical in numbers:
-                add_number(canonical, child)
-            if canonical == 'race_course_set' and isinstance(child, dict):
-                item = {}
-                ident = _int(child.get('id', child.get('Id', child.get('course_id'))))
-                distance = _int(child.get('distance', child.get('Distance')))
-                if ident is not None and ident > 0:
-                    item['id'] = ident
-                if distance is not None and distance > 0:
-                    item['distance'] = distance
-                if item and item not in course_sets and len(course_sets) < 8:
-                    course_sets.append(item)
-            if isinstance(child, (dict, list)):
-                walk(child, depth + 1)
+            if isinstance(nested, (dict, list)):
+                walk(nested, depth + 1)
 
     walk(payload)
-    result = {'fields': sorted(flags)}
-    for key, values in numbers.items():
-        if values:
-            result[key] = values
-    if course_sets:
-        result['race_course_set'] = course_sets
-    return result
+    return found
+
+
+def remember_race_times(memory, times, limit=64):
+    for item in times:
+        memory.append(item)
+    if len(memory) > limit:
+        del memory[:-limit]
+
+
+def apply_race_times(races, memory):
+    """Copy one agreed run time onto a replay that did not carry its own clock."""
+    for race in races:
+        if race.get('raced_at'):
+            continue
+        if race.get('saved_replay') and race.get('race_mode') == 'practice':
+            instance = race.get('race_instance_id')
+            saved = {item['at'] for item in memory if item.get('field') == 'save_time' and item.get('instance') == instance}
+            if instance and len(saved) == 1:
+                race['raced_at'] = next(iter(saved))
+                continue
+        matches = [item for item in memory if item.get('field') != 'save_time' and _binding_matches(race, {'join': item['join'], 'course': {}})]
+        times = {item['at'] for item in matches}
+        if len(times) == 1:
+            race['raced_at'] = next(iter(times))
 
 
 def _join_keys(value):
@@ -457,11 +568,17 @@ def extract_races(payload, endpoint='', captured_at=None, settings=None):
                 race = {'race_scenario': scenario, 'title': 'Observed game replay',
                     'race_category': category, 'metadata': {'umaTrace': {
                         'endpointGroup': endpoint_category, 'categorySource': source}}}
+                mode = race_mode(endpoint)
+                if mode:
+                    race['race_mode'] = mode
                 join = _join_keys(value)
                 if join:
                     race['_room_join'] = join
                 if isinstance(captured_at, str) and len(captured_at) <= 64:
                     race['captured_at'] = captured_at
+                clock = _object_clock(value) or _object_clock(room) or _object_clock(value.get('race_result') if isinstance(value.get('race_result'), dict) else None)
+                if clock:
+                    race['raced_at'] = clock[1]
                 for key in RACE_NUMBERS:
                     n = _number(metadata.get(key))
                     if key == 'race_grade' and (type(n) is not int or not 0 <= n <= 10000):

@@ -685,7 +685,7 @@ test('whole replay skill conditions → modeled statuses → portable import pre
 test('a room response supplies the course for a later replay with the same seed or room id',async()=>{
   const result=await run('python',[join(root,'tests/room-course-workflow.py')],{cwd:root,windowsHide:true,timeout:15000});
   const report=JSON.parse(result.stdout.trim());
-  for(const field of ['roomCourseAttached','ambiguousSeedWithheld','roomIdNotPersisted','weatherMismatchWithheld','apiTraceRedacted'])assert.equal(report[field],'passed');
+  for(const field of ['roomCourseAttached','ambiguousSeedWithheld','roomIdNotPersisted','weatherMismatchWithheld','apiTraceRedacted','raceTimeAttached','liveCaptureClock','practiceSaveTime'])assert.equal(report[field],'passed');
 });
 
 test('whole skill catalog audit preserves every Global effect and withholds unknown mechanics',async t=>{

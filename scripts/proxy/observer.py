@@ -19,7 +19,7 @@ import zlib
 from mitmproxy import ctx, exceptions
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from race_extract import api_route, apply_room_bindings, collect_room_bindings, extract_races, remember_room_bindings, trace_api_payload, classify_race
+from race_extract import api_route, apply_race_times, apply_room_bindings, collect_race_times, collect_room_bindings, extract_races, remember_race_times, remember_room_bindings, saved_replay_route, stamp_race_clocks, trace_api_payload, classify_race
 from uma_envelope import extract_request_context, decode_response_body, EnvelopeDecodeError
 
 API_HOST = 'api.games.\x75mamusume.com'
@@ -47,6 +47,7 @@ class RaceObserver:
         self.stage = 'probe'
         self.contexts = {}
         self.room_bindings = []
+        self.race_times = []
         self.lock = threading.Lock()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='uma-race-export')
         self.pending = set()
@@ -273,29 +274,31 @@ class RaceObserver:
             return {}
 
     def _trace(self, route, status, payload):
-        """Local route log. Course numbers and field names only; never a body or identifier."""
+        """Local response archive. Auth and session envelopes are removed; every other field is kept."""
         if not self.output_path or not route:
             return
-        record = {'at': datetime.now(timezone.utc).isoformat(), 'route': route, 'status': status}
+        captured = datetime.now(timezone.utc)
+        record = {'at': captured.isoformat(), 'route': route, 'status': status}
+        body_name = None
         if payload is not None:
             record.update(trace_api_payload(payload))
-        try:
-            line = json.dumps(record, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
-        except (TypeError, ValueError):
-            return
-        if len(line) > 4000:
-            return
+            body_name = captured.strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8] + '.json'
         folder = Path(self.output_path).parent / 'cache'
         path = folder / 'api-trace.jsonl'
+        responses = folder / 'responses'
         with self.lock:
             try:
                 folder.mkdir(parents=True, exist_ok=True)
-                if path.exists() and path.stat().st_size > 512 * 1024:
-                    kept = path.read_text(encoding='utf-8').splitlines()[-200:]
-                    path.write_text('\n'.join(kept) + '\n', encoding='utf-8')
+                if body_name:
+                    responses.mkdir(parents=True, exist_ok=True)
+                    temporary = responses / (body_name + '.partial')
+                    temporary.write_text(json.dumps(record, ensure_ascii=False, allow_nan=False), encoding='utf-8')
+                    os.replace(temporary, responses / body_name)
+                    record = {'at': record['at'], 'route': route, 'status': status, 'file': body_name}
+                line = json.dumps(record, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
                 with path.open('a', encoding='utf-8') as stream:
                     stream.write(line + '\n')
-            except OSError:
+            except (OSError, TypeError, ValueError):
                 return
 
     def _export(self, raw, encoding, context, category='other', category_source='unknown', captured_at=None, route=None):
@@ -312,15 +315,19 @@ class RaceObserver:
                 payload = decode_response_body(body, context)
             else:
                 raise ValueError('missing_request_context')
-            # Rebuild a constant group route solely to reuse endpoint classification.
             groups = {'career': 'single_mode', 'team-trials': 'team_stadium',
                       'practice': 'room_match', 'champions-meeting': 'champions'}
-            endpoint = '/\x75mamusume/' + groups.get(category, 'unknown') + '/'
+            endpoint = route or '/\x75mamusume/' + groups.get(category, 'unknown') + '/'
             self._trace(route, 200, payload)
             traced = True
             races = extract_races(payload, endpoint=endpoint, captured_at=captured_at)
             bindings = collect_room_bindings(payload)
             remember_room_bindings(self.room_bindings, bindings)
+            remember_race_times(self.race_times, collect_race_times(payload))
+            replay = saved_replay_route(route)
+            stamp_race_clocks(races, None, replay)
+            apply_race_times(races, self.race_times)
+            stamp_race_clocks(races, captured_at, replay)
             apply_room_bindings(races, self.room_bindings)
             if not races:
                 self._count('responses_without_race')

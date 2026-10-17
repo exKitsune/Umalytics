@@ -9,13 +9,28 @@ export type { LibraryCaption };
 export const categories: { id: RaceCategory; label: string; short: string; color: string }[] = [
   { id: 'career', label: 'Career', short: 'Career', color: '#50b887' },
   { id: 'team-trials', label: 'Team Trials', short: 'Trials', color: '#67a9ec' },
-  { id: 'practice', label: 'Room & practice', short: 'Room', color: '#b998ed' },
+  { id: 'practice', label: 'Practice and room matches', short: 'Room', color: '#b998ed' },
   { id: 'champions-meeting', label: 'Champions Meeting', short: 'CM', color: '#e7b85d' },
   { id: 'other', label: 'Other races', short: 'Other', color: '#8e9ba6' },
 ];
+export const libraryFacets: { id: string; label: string; short: string; color: string }[] = [
+  categories[0], categories[1],
+  { id: 'practice', label: 'Practice', short: 'Practice', color: '#7d6bd6' },
+  { id: 'room', label: 'Room Match', short: 'Room Match', color: '#e15d5d' },
+  categories[3], categories[4],
+];
 export const categoryInfo = (category?: string) => categories.find(c => c.id === category) ?? categories[4];
+export const facetInfo = (id?: string) => libraryFacets.find(item => item.id === id) ?? categoryInfo(id);
+export function captureFacet(entry: { category?: string; raceMode?: 'practice' | 'room'; raceDesignation?: string; race?: { category?: string; raceMode?: 'practice' | 'room'; raceDesignation?: string } }) {
+  const mode = entry.raceMode ?? entry.race?.raceMode;
+  const named = entry.raceDesignation ?? entry.race?.raceDesignation;
+  if (mode === 'practice' || named === 'practice-live' || named === 'practice-saved') return 'practice';
+  if (mode === 'room' || named === 'room-live' || named === 'room-saved') return 'room';
+  if ((entry.category ?? entry.race?.category) === 'practice') return 'room';
+  return entry.category ?? entry.race?.category ?? 'other';
+}
 export const runnerColors = ['#4ac892','#65a9ef','#eaad5f','#ae90f1','#eb8099','#6fcbd0','#d1ce75','#df9dd0','#a2b7c5','#d48560','#83bd7b','#8c92de','#cb717c','#b7a985','#85b3ae','#c5a5e5','#9bbd62','#ccaaac'];
-export interface LibraryEntry { id: string; title: string; receivedAt: string; category?: RaceCategory; synthetic?: boolean; remoteId?: string; race?: Race; raceIndex?:number; courseId?:number|null; distance?:number|null; conditions?:Race['conditions']; raceInstanceId?:number; sha256?:string; courseIdentity?:Race['courseIdentity']; courseInference?:CourseInference|null }
+export interface LibraryEntry { id: string; title: string; receivedAt: string; racedAt?: string; category?: RaceCategory; raceMode?: 'practice' | 'room'; savedReplay?: boolean; raceDesignation?: Race['raceDesignation']; synthetic?: boolean; remoteId?: string; race?: Race; raceIndex?:number; courseId?:number|null; distance?:number|null; conditions?:Race['conditions']; raceInstanceId?:number; sha256?:string; courseIdentity?:Race['courseIdentity']; courseInference?:CourseInference|null }
 type CaptionEnvelope={data?:unknown;envelopeJson?:string;bytes:number};
 type CaptionFetcher=(id:string,limit:number)=>Promise<CaptionEnvelope>;
 function createCaptionDecoder() {

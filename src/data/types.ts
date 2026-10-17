@@ -92,6 +92,13 @@ export interface Race {
   laneDistanceMax?: number | null;
   category?: RaceCategory;
   capturedAt?: string;
+  /** When the race was run. A game clock has no timezone. A live capture fallback is UTC and ends with Z. */
+  racedAt?: string;
+  racedAtSource?: 'game' | 'capture';
+  savedReplay?: boolean;
+  /** Practice and room matches share the practice analysis category. */
+  raceMode?: 'practice' | 'room';
+  raceDesignation?: 'practice-live' | 'practice-saved' | 'room-live' | 'room-saved';
   capture?: { endpointGroup: RaceCategory; categorySource: 'endpoint' | 'content' | 'unknown' };
   courseIdentity?: { source: 'recorded' | 'race-instance' | 'filename-race-instance' | 'manual' | 'skill-conditions' | 'unknown'; raceInstanceId?: number };
   distanceEvidence?: 'recorded' | 'course-reference' | 'finish-derived';
