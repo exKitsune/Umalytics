@@ -5,7 +5,7 @@
   import SpeedTerm from './SpeedTerm.svelte';
   import GameIcon from './GameIcon.svelte';
   import { skillIconKey } from '../data/game-icons';
-  import { analyzeRace } from '../data/analytics';
+  import type { RaceAnalysis } from '../data/analytics';
   import { skillImpactSummary } from '../data/skill-impact';
   import SkillImpact from './SkillImpact.svelte';
   import { motionSkillImpact } from '../data/motion-skill-impact';
@@ -15,6 +15,7 @@
   export let skillId:number;
   export let reference:ReferenceData|null;
   export let race:Race;
+  export let analysis:RaceAnalysis;
   export let runner:Runner|null;
   export let onClose:()=>void;
   export let onSeek:(time:number)=>void;
@@ -22,7 +23,6 @@
   let showConditionCode=true;
   $: skill=getSkillReference(reference,skillId);
   $: levelLabel=runner?uniqueLevelLabel(reference,runner,skillId):null;
-  $: analysis=analyzeRace(race,reference);
   $: componentMetrics=runner?metricsForSkill(race,reference,analysis,runner.id,skillId):[];
   $: impact=runner?skillImpactSummary(analysis.runners[runner.id],skillId):null;
   $: row=runner?analysis.runners[runner.id]?.skillRows.find(r=>r.skillId===skillId):null;
@@ -38,7 +38,7 @@
     {#if skill?.description}<p class="description">{skill.description}</p>{/if}
     {#if row?.activations.length}<div class="activation-links">{#each row.activations as a}<button onclick={()=>onSeek(a.start)}>▶ {a.start.toFixed(2)} s{#if a.timingKind==='instant'}<small>Instant</small>{:else if a.effectiveDuration!=null}<small>{a.effectiveDuration.toFixed(2)} s</small>{/if}</button>{/each}</div>
     {:else if row}<p class="outcome" class:active={row.effectiveActive}>{row.effectiveActive?'✓':'×'} {nonProcLabel(row,reference)}</p>{/if}
-    {#if impact&&(!componentMetrics.length||skill?.branches.some(b=>b.effects.some(e=>[9,21,22,27,31].includes(e.type))))}<section><h3>Effectiveness <small class="calculated">Calculated</small></h3><SkillImpact {impact} expanded motion={runner?motionSkillImpact(race,reference,analysis,runner.id,skillId):null}/></section>{/if}
+    {#if impact&&row?.effectiveActive&&(!componentMetrics.length||skill?.branches.some(b=>b.effects.some(e=>[9,21,22,27,31].includes(e.type))))}<section><h3>Effectiveness <small class="calculated">Calculated</small></h3><SkillImpact {impact} expanded motion={runner?motionSkillImpact(race,reference,analysis,runner.id,skillId):null}/></section>{/if}
     {#if runner}<SkillMetrics expanded metrics={componentMetrics}/>{/if}
     {#if skill}
       <div class="activation-rule"><span>Activation</span><strong>{skill.activateLot===0?'Guaranteed if conditions are met':skill.activateLot===1?'Wit check':'Unknown'}</strong></div>

@@ -83,7 +83,7 @@
   .stage-buttons{display:flex;flex-wrap:nowrap;gap:3px;max-width:220px;min-height:22px;margin:0 0 5px}.stage-buttons.idle{visibility:hidden}.stage-buttons button,.stage-slot{padding:3px 5px;font-size:var(--font-9);border:1px solid var(--border);border-radius:4px;background:var(--panel);color:var(--muted)}.stage-buttons button.chosen{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
   .spurt-speed{display:block;text-align:left;background:none;border:0;padding:2px 0;color:inherit;font:inherit;cursor:help}
   .fact{display:flex;align-items:baseline;gap:6px;white-space:nowrap;font-variant-numeric:tabular-nums}
-  .fact strong{font-size:var(--font-14);font-weight:600}.unit,.aside,.note,.spurt-meta,.tag{color:var(--muted);font-size:var(--font-11);font-weight:550}
+  .fact strong{font-size:var(--font-14);font-weight:600}.unit,.aside,.spurt-meta,.tag{color:var(--muted);font-size:var(--font-11);font-weight:550}
   .tag{font-weight:700;letter-spacing:.04em}.target{text-decoration:underline dotted var(--muted);text-underline-offset:3px}
   .spurt-meta{display:flex;align-items:baseline;gap:16px;margin-top:4px;white-space:nowrap}
   .timing{min-width:4.6em}.timing:not(.on-time){color:#ef7474;font-weight:650}

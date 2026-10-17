@@ -18,6 +18,7 @@ export interface HpHitEvidence {time:number;skillId:number;start:number;end:numb
 const caches = new WeakMap<Race, Map<ReferenceData|null, Map<string, HpTimelinePoint[]>>>();
 const bridgeCaches = new WeakMap<Race, Map<ReferenceData|null, Map<string, HpSampledBridge[]>>>();
 const hitCaches = new WeakMap<Race, Map<ReferenceData|null, Map<string, HpHitEvidence[]>>>();
+const onsetCache = new WeakMap<Race, Map<string, number|null>>();
 const skillEvent = (event:RaceEvent) => (event.type === 3 || event.type === '3' || event.type === 'skill') && (event.params[2] !== -1 || event.time === 0);
 
 /** null means an HP effect may apply but its amount/recipient is unresolved. */
@@ -186,29 +187,40 @@ export function hpHitEvidence(race:Race,runnerId:string,reference:ReferenceData|
  * reached empty. Out-of-HP speed falls at 1.2 m/s², so the speed already lost
  * before that sample places the crossing inside the preceding bracket. */
 export function hpDepletionOnset(race:Race,runnerId:string):number|null {
+  let byRunner=onsetCache.get(race);if(!byRunner)onsetCache.set(race,byRunner=new Map());
+  if(byRunner.has(runnerId))return byRunner.get(runnerId)!;
   const rows=trace(race,runnerId).flatMap(point=>point.sample.hp==null||point.sample.speed==null?[]:[{t:point.time,hp:point.sample.hp,v:point.sample.speed}]);
   const zero=rows.findIndex(row=>row.hp===0);
-  if(zero<0)return null;if(zero===0)return rows[0].t;
-  let index=zero,onset=rows[zero].t;
-  while(index>0){
-    const previous=rows[index-1],current=rows[index],dt=current.t-previous.t;
-    if(dt<=0||dt>2)break;
-    const rate=(current.v-previous.v)/dt;
-    if(previous.hp===0){onset=previous.t;index--;continue;}
-    if(previous.hp<=40&&rate<=-.9&&rate>=-1.45&&previous.v>12){onset=previous.t;index--;continue;}
-    if(previous.hp>0&&current.hp===0&&previous.v>12&&previous.v>current.v){
-      const partial=current.t-Math.min(dt,(previous.v-current.v)/1.2);
-      if(partial>previous.t&&partial<current.t)onset=partial;
+  let onset:number|null=null;
+  if(zero<0)onset=null;
+  else if(zero===0)onset=rows[0].t;
+  else {
+    let index=zero;onset=rows[zero].t;
+    while(index>0){
+      const previous=rows[index-1],current=rows[index],dt=current.t-previous.t;
+      if(dt<=0||dt>2)break;
+      const rate=(current.v-previous.v)/dt;
+      if(previous.hp===0){onset=previous.t;index--;continue;}
+      if(previous.hp<=40&&rate<=-.9&&rate>=-1.45&&previous.v>12){onset=previous.t;index--;continue;}
+      if(previous.hp>0&&current.hp===0&&previous.v>12&&previous.v>current.v){
+        const partial=current.t-Math.min(dt,(previous.v-current.v)/1.2);
+        if(partial>previous.t&&partial<current.t)onset=partial;
+      }
+      break;
     }
-    break;
   }
-  return onset;
+  byRunner.set(runnerId,onset);return onset;
+}
+function bridgeAt(bridges:readonly HpSampledBridge[],time:number){
+  let lo=0,hi=bridges.length;
+  while(lo<hi){const mid=(lo+hi)>>>1;if(bridges[mid].start<time)lo=mid+1;else hi=mid;}
+  const b=bridges[lo-1];return b&&time>b.start&&time<b.end?b:undefined;
 }
 export function hpAt(race:Race,runnerId:string,time:number,reference:ReferenceData|null,maximumHp?:number|null):number|null {
   const points=hpTimeline(race,runnerId,reference,maximumHp);if(!points.length)return null;
   let frameLow=0,frameHigh=race.frames.length;while(frameLow<frameHigh){const mid=(frameLow+frameHigh)>>>1;if(race.frames[mid].time<time)frameLow=mid+1;else frameHigh=mid;}
   const frame=race.frames[frameLow];if(frame?.time===time)return frame.runners.find(r=>r.runnerId===runnerId)?.hp??null;
-  const bridge=hpSampledBridges(race,runnerId,reference,maximumHp).find(b=>time>b.start&&time<b.end);
+  const bridge=bridgeAt(hpSampledBridges(race,runnerId,reference,maximumHp),time);
   if(bridge){
     if(bridge.endHp===0&&bridge.startHp>0){const onset=hpDepletionOnset(race,runnerId);if(onset!=null&&time>=onset)return 0;}
     return bridge.startHp+(bridge.endHp-bridge.startHp)*(time-bridge.start)/(bridge.end-bridge.start);

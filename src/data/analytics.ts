@@ -413,7 +413,8 @@ export function analyzeRace(race:Race,reference:ReferenceData|null,courseIdOverr
 /** Install a worker/cache result under the exact immutable UI inputs. */
 export function rememberAnalysis(race:Race,reference:ReferenceData,analysis:RaceAnalysis) {
   let entry=analysisCache.get(race);if(!entry)analysisCache.set(race,entry={empty:new Map(),refs:new WeakMap()});
-  entry.refs.set(reference,new Map([[race.courseId??-1,analysis]]));
+  let values=entry.refs.get(reference);if(!values)entry.refs.set(reference,values=new Map());
+  values.set(race.courseId??-1,analysis);
 }
 export function analyticsAt(analysis: RaceAnalysis, runnerId: string, time: number): { statuses: StatusInterval[]; skills: SkillActivation[]; sample: AnalyticsSample | null } {
   const data = analysis.runners[runnerId];

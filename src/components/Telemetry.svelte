@@ -4,7 +4,7 @@
   import type { Race, RunnerSample } from '../data/types';
   import { coursePhases, courseSegments, elevationProfile, skillName, runnerName, type CourseReference, type ReferenceData } from '../data/reference';
   import { timeAtDistance, distanceAtTime, telemetryIndex, telemetryEndTime, metricPaths, timedPlotPath, type Metric } from '../telemetry';
-  import { analyzeRace, type StatusInterval, type SkillActivation } from '../data/analytics';
+  import type { RaceAnalysis, StatusInterval, SkillActivation } from '../data/analytics';
   import { combinedStatusIntervals, statusShortLabel, statusLabel, substantialNearIntervals } from '../data/status-presentation';
   import { effectsText, skillTone, skillToneColor } from '../data/skill-details';
   import { hpTimeline, hpSampledBridges } from '../data/hp-timeline';
@@ -13,7 +13,7 @@
   import { speedGapNote } from '../data/speed-gap';
   import { preparedFor } from '../analysis/prepared';
   import { positionKeepGuideTimeline, positionKeepMarkerGuides, positionKeepGuideSpans, type PositionKeepGuide } from '../data/position-keep-guides';
-  export let race:Race, course:CourseReference|null, reference:ReferenceData|null, selected:string, time:number;
+  export let race:Race, course:CourseReference|null, reference:ReferenceData|null, analysis:RaceAnalysis, selected:string, time:number;
   export let sample:RunnerSample|undefined=undefined;
   export let gap:number|null=null;
   export let onSeek:(time:number)=>void;
@@ -30,7 +30,6 @@
   const canvasWidth=1200,left=58,right=1178,top=18,bottom=400,elevationTop=bottom-58,elevationBottom=bottom,trackTop=bottom+28,phaseTop=trackTop+25,skillsTop=phaseTop+27;
   const ticks=(low:number,high:number,count:number)=>Array.from({length:count},(_,i)=>low+(high-low)*i/(count-1));
   $: index=telemetryIndex(race);
-  $: analysis=analyzeRace(race,reference,course?.id);
   $: detail=analysis.runners[selected];
   $: motion=motionFor(race,reference,analysis,selected,course?.id);
   $: compatibleCourse=course&&(race.distance===null||race.distance===course.distance)?course:null;

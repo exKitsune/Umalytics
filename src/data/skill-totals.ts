@@ -2,7 +2,7 @@ import type { Race } from './types';
 import type { RaceAnalysis } from './analytics';
 import type { ReferenceData } from './reference';
 import type { EffectUtilization } from './effect-types';
-import { motionSkillImpact } from './motion-skill-impact';
+import { motionSkillImpact, type MotionSkillImpact } from './motion-skill-impact';
 import { motionBenefitFor } from './motion-analysis';
 import { preparedFor } from '../analysis/prepared';
 
@@ -21,13 +21,15 @@ export function skillTotals(race:Race,reference:ReferenceData|null,analysis:Race
   const key=`${runnerId}/${courseId??race.courseId}`;
   let result=saved.get(key);if(!result){result=buildTotals(race,reference,analysis,runnerId,courseId);saved.set(key,result);}return result;
 }
+type SkillTotalRow = {skillId:number;motion:MotionSkillImpact|null;score:number|null;coverage:number;active:number;assessed:number};
 function buildTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null){
   const detail=analysis.runners[runnerId];
-  const skills=(detail?.skillRows??[]).flatMap(row=>{
-    if(!row.effectiveActive)return [{skillId:row.skillId,motion:null,score:0,coverage:1,active:0,assessed:0}];
+  const skills:SkillTotalRow[]=[];
+  for(const row of detail?.skillRows??[]){
+    if(!row.effectiveActive){skills.push({skillId:row.skillId,motion:null,score:0,coverage:1,active:0,assessed:0});continue;}
     const motion=motionSkillImpact(race,reference,analysis,runnerId,row.skillId,courseId);
-    return motion?[{skillId:row.skillId,motion,...movementUse(motion.effects)}]:[];
-  });
+    if(motion)skills.push({skillId:row.skillId,motion,...movementUse(motion.effects)});
+  }
   const active=skills.filter(row=>row.motion);
   const ids=new Set(active.map(row=>row.skillId));
   const activations=(detail?.skillActivations??[]).filter(a=>ids.has(a.referenceSkillId??a.skillId)&&a.effectiveEnd!==null&&a.effectiveEnd>a.start);

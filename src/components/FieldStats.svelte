@@ -12,7 +12,7 @@
   import type { MotionBand, RunnerMotion } from '../data/race-motion';
   import type { StatusModeImpact } from '../data/status-mode-impact';
   import ModeImpactSummary from './ModeImpactSummary.svelte';
-  import ImpactLine from './ImpactLine.svelte';
+  import ImpactLine, { type ImpactBit } from './ImpactLine.svelte';
   import SpurtSpeed from './SpurtSpeed.svelte';
   import HillStats from './HillStats.svelte';
   import PodiumTrophy from './PodiumTrophy.svelte';
@@ -24,7 +24,6 @@
   const f=(n:number|null|undefined,d=1)=>n==null?'—':n.toFixed(d);
   const mood=(m:number|null|undefined)=>m==null?'—':({1:'Awful',2:'Bad',3:'Normal',4:'Good',5:'Great'} as Record<number,string>)[m]??String(m);
   const range=(v:MotionBand,d=2)=>Math.abs(v.max-v.min)<10**-d?v.mid.toFixed(d):`${Math.min(v.min,v.mid,v.max).toFixed(d)} – ${Math.max(v.min,v.mid,v.max).toFixed(d)}`;
-  let hoverColumn=-1;
   $: prepared=preparedFor(analysis);
   $: motions=Object.fromEntries(Object.entries(prepared?.runners??{}).map(([id,r])=>[id,r.motion])) as Record<string,RunnerMotion>;
   $: modes=Object.fromEntries(Object.entries(prepared?.runners??{}).map(([id,r])=>[id,r.modes])) as Record<string,StatusModeImpact[]>;
@@ -80,12 +79,13 @@
     const d=duration(id,kind),gain=speedBit(id,kind);
     return {tag,duration:d.text,speed:gain?.text??null,empty:d.text==='—',modeled:d.modeled,title:gain?`${d.title} ${gain.title}`:d.title};
   }
+  const signTone=(n:number):NonNullable<ImpactBit['tone']>=>n>0?'gain':n<0?'loss':'';
   function extraBits(value:{modeledExtraDistance:number|null;modeledExtraTime:number|null;modeledExtraHp:number|null}|undefined){
     if(!value)return [];
-    const bits:{text:string;tone:'gain'|'loss'|''}[]=[];
-    if(value.modeledExtraDistance!=null&&Math.abs(value.modeledExtraDistance)>=.05)bits.push({text:`${signed(value.modeledExtraDistance,1)} m`,tone:value.modeledExtraDistance>0?'gain':value.modeledExtraDistance<0?'loss':''});
-    if(value.modeledExtraTime!=null&&Math.abs(value.modeledExtraTime)>=.0005)bits.push({text:`${Math.abs(value.modeledExtraTime).toFixed(3)} s`,tone:value.modeledExtraTime>0?'gain':value.modeledExtraTime<0?'loss':''});
-    if(value.modeledExtraHp!=null&&Math.abs(value.modeledExtraHp)>=.05)bits.push({text:`${Math.abs(value.modeledExtraHp).toFixed(1)} HP`,tone:value.modeledExtraHp<0?'gain':value.modeledExtraHp>0?'loss':''});
+    const bits:ImpactBit[]=[];
+    if(value.modeledExtraDistance!=null&&Math.abs(value.modeledExtraDistance)>=.05)bits.push({text:`${signed(value.modeledExtraDistance,1)} m`,tone:signTone(value.modeledExtraDistance)});
+    if(value.modeledExtraTime!=null&&Math.abs(value.modeledExtraTime)>=.0005)bits.push({text:`${Math.abs(value.modeledExtraTime).toFixed(3)} s`,tone:signTone(value.modeledExtraTime)});
+    if(value.modeledExtraHp!=null&&Math.abs(value.modeledExtraHp)>=.05)bits.push({text:`${Math.abs(value.modeledExtraHp).toFixed(1)} HP`,tone:signTone(-value.modeledExtraHp)});
     return bits;
   }
   function rushedBits(id:string){
@@ -140,6 +140,26 @@
     ro.observe(head);apply();
     return {destroy(){ro.disconnect();}};
   }
+  function hoverCol(node:HTMLTableElement){
+    const set=(event:Event)=>{
+      const cell=(event.target as HTMLElement).closest('th,td') as HTMLTableCellElement|null;
+      if(!cell||!node.contains(cell))return;
+      const index=String(cell.cellIndex);
+      if(node.dataset.col!==index)node.dataset.col=index;
+    };
+    const clear=()=>{if('col' in node.dataset)delete node.dataset.col;};
+    const blur=(event:FocusEvent)=>{if(!node.contains(event.relatedTarget as Node|null))clear();};
+    node.addEventListener('pointerover',set);
+    node.addEventListener('pointerleave',clear);
+    node.addEventListener('focusin',set);
+    node.addEventListener('focusout',blur);
+    return {destroy(){
+      node.removeEventListener('pointerover',set);
+      node.removeEventListener('pointerleave',clear);
+      node.removeEventListener('focusin',set);
+      node.removeEventListener('focusout',blur);
+    }};
+  }
 </script>
 {#snippet statusCell(row:{tag?:string;duration:string;speed:string|null;empty:boolean;modeled:boolean;title:string}, value:{modeledExtraDistance:number|null;modeledExtraTime:number|null;modeledExtraHp:number|null}|undefined)}
   <div class="fact" class:empty={row.empty} title={row.title}>{#if row.tag}<span class="tag">{row.tag}</span>{/if}<strong class:modeled={row.modeled}>{row.duration}</strong>{#if row.speed}<span class="aside">{row.speed}</span>{/if}</div>
@@ -151,8 +171,8 @@
 {/snippet}
 <section class="panel field-stats" class:compact>
   <div class="panel-heading"><strong>Race results</strong><span class="muted">Select a runner · dotted values use models</span></div>
-  <div class="field-scroll" use:pinFinish><table data-col={hoverColumn}>
-    <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Rushed','Debuffs received','Blocked / Near'] as heading,index}<th class:column-hot={hoverColumn===index} title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Recorded gate delay versus the 0–100 ms draw.':undefined} onmouseenter={()=>hoverColumn=index} onmouseleave={()=>hoverColumn=-1}>{heading}</th>{/each}</tr></thead>
+  <div class="field-scroll" use:pinFinish><table use:hoverCol data-col="">
+    <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Rushed','Debuffs received','Blocked / Near'] as heading}<th title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Recorded gate delay versus the 0–100 ms draw.':undefined}>{heading}</th>{/each}</tr></thead>
     <tbody>{#each sorted as r}
       {@const s=analysis.runners[r.id]?.summary}
       {@const duel=statusFact(r.id,'dueling')}
@@ -171,8 +191,8 @@
       {@const motion=motions[r.id]}{@const hole=blockHole(motion)}
       {@const hp=hpView(s,stolenTotal(r.id))}
       {@const empty=emptyHpView(r.id)}
-      <tr class:row-selected={selected===r.id} onclick={()=>onSelect(r.id)} onmouseover={e=>{const cell=(e.target as HTMLElement).closest('td');hoverColumn=cell?cell.cellIndex:-1;}} onfocusin={e=>{const cell=(e.target as HTMLElement).closest('td');hoverColumn=cell?cell.cellIndex:-1;}} onmouseleave={()=>hoverColumn=-1}>
-        <td class="finish" class:column-hot={hoverColumn===0}><span class="finish-mark"><span class="finish-place">{r.finishOrder??'—'}</span>{#if r.finishOrder===1||r.finishOrder===2||r.finishOrder===3}<PodiumTrophy place={r.finishOrder} size={15}/>{/if}</span></td>
+      <tr class:row-selected={selected===r.id} onclick={()=>onSelect(r.id)}>
+        <td class="finish"><span class="finish-mark"><span class="finish-place">{r.finishOrder??'—'}</span>{#if r.finishOrder===1||r.finishOrder===2||r.finishOrder===3}<PodiumTrophy place={r.finishOrder} size={15}/>{/if}</span></td>
         <td><button class="result-runner" onclick={()=>onSelect(r.id)}><UmaPortrait runner={r} size={38}/><span><strong><span class="result-gate" title="Starting gate">{r.gate??r.index+1}</span>{runnerName(reference,r)}</strong><small class="result-badges"><StrategyBadge runner={{...r,strategyCode:style}}/>{#if r.mood!=null}<GameIcon name={`mood-${r.mood}`} label={`${mood(r.mood)} mood`} size={19}/>{/if}</small></span></button></td>
         <td><div class="fact"><strong>{f(s?.rawTime,3)}</strong><span class="unit">s</span></div><span class="note">{s?.finishGapDistance==null?'':`${s.finishGapDistance>=0?'+':''}${f(s.finishGapDistance)} m`}</span></td>
         <td>{#if s?.startDelay==null}—{:else}{@const quality=startQuality(s.startDelay)}<div class="fact" title="Recorded gate delay versus the 0–100 ms draw."><strong>{f(s.startDelay*1000,1)}</strong><span class="unit">/ 100 ms</span></div>{#if quality}<span class={`verdict start-${quality.tone}`}>{quality.label}</span>{/if}{/if}</td>
@@ -186,8 +206,8 @@
         <td>{#if front}{@render modeCell(ot, r.id, 'overtake')}{:else}{@render modeCell(pd, r.id, 'pace-down')}{/if}</td>
         <td>{@render statusCell(ss, impact(r.id,'spot-struggle'))}</td>
         <td><div class="fact" class:empty={!s?.rushedDuration}><strong>{f(s?.rushedDuration)}</strong><span class="unit">s</span></div><ImpactLine bits={rushedBits(r.id)} modeled title={modelHelp}/></td>
-        <td>{#if debuffs?.intervals}<div class="fact"><strong class="modeled" title={debuffHelp}>{debuffs.modeledHpDelta==null?'—':f(debuffs.modeledHpDelta,0)}</strong><span class="unit">HP</span></div><ImpactLine bits={[...(debuffs.modeledDistanceDelta==null?[]:[{text:`${signed(debuffs.modeledDistanceDelta,1)} m`,tone:debuffs.modeledDistanceDelta>0?'gain':debuffs.modeledDistanceDelta<0?'loss':''}]),...(debuffs.modeledTimeDelta==null?[]:[{text:`${Math.abs(debuffs.modeledTimeDelta).toFixed(3)} s`,tone:debuffs.modeledTimeDelta<0?'gain':debuffs.modeledTimeDelta>0?'loss':''}])]} modeled title={debuffHelp}/>{:else}—{/if}</td>
-        <td><div class="fact" title="Time with a recorded blocker. Speed loss is measured separately."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss'},{text:`${range(hole.time,3)} s`,tone:'loss'},...(hole.partial?[{text:'partial',tone:''}]:[])]} modeled title="Distance lost around traffic, including recovery. Pace modes, skills and slopes are kept the same."/>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
+        <td>{#if debuffs?.intervals}<div class="fact"><strong class="modeled" title={debuffHelp}>{debuffs.modeledHpDelta==null?'—':f(debuffs.modeledHpDelta,0)}</strong><span class="unit">HP</span></div><ImpactLine bits={[...(debuffs.modeledDistanceDelta==null?[]:[{text:`${signed(debuffs.modeledDistanceDelta,1)} m`,tone:signTone(debuffs.modeledDistanceDelta)}]),...(debuffs.modeledTimeDelta==null?[]:[{text:`${Math.abs(debuffs.modeledTimeDelta).toFixed(3)} s`,tone:signTone(-debuffs.modeledTimeDelta)}])]} modeled title={debuffHelp}/>{:else}—{/if}</td>
+        <td><div class="fact" title="Time with a recorded blocker. Speed loss is measured separately."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss' as const},{text:`${range(hole.time,3)} s`,tone:'loss' as const},...(hole.partial?[{text:'partial',tone:'' as const}]:[])]} modeled title="Distance lost around traffic, including recovery. Pace modes, skills and slopes are kept the same."/>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
       </tr>
     {/each}</tbody>
   </table></div>
@@ -198,14 +218,14 @@
   table{width:max-content;min-width:100%}th{font-size:var(--font-10)}td{font-size:var(--font-12);padding:20px 10px;vertical-align:middle;height:auto}
   tbody tr{cursor:pointer}tbody tr:hover td{background:color-mix(in srgb,#000 14%,var(--panel))}
   th:hover{background:color-mix(in srgb,#000 12%,var(--panel))}
-  table[data-col="0"] :is(th,td):nth-child(1),table[data-col="1"] :is(th,td):nth-child(2),table[data-col="2"] :is(th,td):nth-child(3),table[data-col="3"] :is(th,td):nth-child(4),table[data-col="4"] :is(th,td):nth-child(5),table[data-col="5"] :is(th,td):nth-child(6),table[data-col="6"] :is(th,td):nth-child(7),table[data-col="7"] :is(th,td):nth-child(8),table[data-col="8"] :is(th,td):nth-child(9),table[data-col="9"] :is(th,td):nth-child(10),table[data-col="10"] :is(th,td):nth-child(11),table[data-col="11"] :is(th,td):nth-child(12),table[data-col="12"] :is(th,td):nth-child(13),table[data-col="13"] :is(th,td):nth-child(14),table[data-col="14"] :is(th,td):nth-child(15),table[data-col="15"] :is(th,td):nth-child(16){background:color-mix(in srgb,#000 10%,var(--panel))}
+  table:global([data-col="0"]) :is(th,td):nth-child(1),table:global([data-col="1"]) :is(th,td):nth-child(2),table:global([data-col="2"]) :is(th,td):nth-child(3),table:global([data-col="3"]) :is(th,td):nth-child(4),table:global([data-col="4"]) :is(th,td):nth-child(5),table:global([data-col="5"]) :is(th,td):nth-child(6),table:global([data-col="6"]) :is(th,td):nth-child(7),table:global([data-col="7"]) :is(th,td):nth-child(8),table:global([data-col="8"]) :is(th,td):nth-child(9),table:global([data-col="9"]) :is(th,td):nth-child(10),table:global([data-col="10"]) :is(th,td):nth-child(11),table:global([data-col="11"]) :is(th,td):nth-child(12),table:global([data-col="12"]) :is(th,td):nth-child(13),table:global([data-col="13"]) :is(th,td):nth-child(14),table:global([data-col="14"]) :is(th,td):nth-child(15),table:global([data-col="15"]) :is(th,td):nth-child(16){background:color-mix(in srgb,#000 10%,var(--panel))}
   td:nth-child(1),th:nth-child(1){position:sticky;left:0;background:var(--panel);z-index:2}
   th:nth-child(1){z-index:4}
   td:nth-child(2){position:sticky;left:var(--finish-w);background:var(--panel);z-index:2;min-width:175px;border-right:1px solid var(--border)}
   th:nth-child(2){position:sticky;left:var(--finish-w);z-index:4;background:var(--panel)}
   tbody tr:hover td:nth-child(1),tbody tr:hover td:nth-child(2){background:color-mix(in srgb,#000 14%,var(--panel))}
-  tr.row-selected td,tr.row-selected td:nth-child(1),tr.row-selected td:nth-child(2),table[data-col] tr.row-selected td{background:var(--accent-soft)}
-  tr.row-selected:hover td,tr.row-selected:hover td:nth-child(1),tr.row-selected:hover td:nth-child(2),table[data-col] tr.row-selected:hover td{background:color-mix(in srgb,#000 12%,var(--accent-soft))}
+  tr.row-selected td,tr.row-selected td:nth-child(1),tr.row-selected td:nth-child(2),table:global([data-col]) tr.row-selected td{background:var(--accent-soft)}
+  tr.row-selected:hover td,tr.row-selected:hover td:nth-child(1),tr.row-selected:hover td:nth-child(2),table:global([data-col]) tr.row-selected:hover td{background:color-mix(in srgb,#000 12%,var(--accent-soft))}
   .fact{display:flex;align-items:baseline;gap:6px;white-space:nowrap;font-variant-numeric:tabular-nums}
   .fact strong{font-size:var(--font-14);font-weight:600}
   .fact.empty strong{color:var(--muted);font-weight:500;font-size:var(--font-12)}

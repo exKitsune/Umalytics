@@ -1,8 +1,11 @@
+<script lang="ts" module>
+  export type ImpactBit = {text:string; tone?:'gain'|'loss'|''};
+</script>
 <script lang="ts">
-  export let bits:{text:string;tone?:'gain'|'loss'|''}[];
+  export let bits:ImpactBit[];
   export let title:string|undefined=undefined;
   export let modeled=false;
-  const signed=(bit:{text:string;tone?:'gain'|'loss'|''})=>{
+  const signed=(bit:ImpactBit)=>{
     if(!bit.tone||bit.text==='partial'||/^[+\-−]/.test(bit.text))return bit.text;
     return `${bit.tone==='gain'?'+':'−'}${bit.text}`;
   };

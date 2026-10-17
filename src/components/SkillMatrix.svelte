@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Race } from '../data/types';
-  import { analyzeRace, type SkillRow } from '../data/analytics';
+  import type { RaceAnalysis, SkillRow } from '../data/analytics';
   import { skillImpactSummary } from '../data/skill-impact';
   import SkillImpact from './SkillImpact.svelte';
   import { motionSkillImpact } from '../data/motion-skill-impact';
@@ -17,11 +17,11 @@
   import { skillIconKey } from '../data/game-icons';
   export let race:Race;
   export let reference:ReferenceData|null;
+  export let analysis:RaceAnalysis;
   export let selected:string;
   export let onSkill:(skillId:number,runnerId:string)=>void;
   export let onSeek:(time:number)=>void;
   let search='',filter='all',enrich=false,token=0,enrichKey='';
-  $: analysis=analyzeRace(race,reference);
   function verdictParts(row:SkillRow):{kind:'bad'|'good'|'plain';label:string;conditions:string}{
     const split=conditionSplit(row);
     if(row.activationStatus==='conditions-unmet')return {kind:'bad',label:'Conditions unmet',conditions:split.unmet.join(', ')};
@@ -47,17 +47,18 @@
       carryDistance:benefit?.carryoverDistance?.mid??null,carryTime:benefit?.carryoverTime?-benefit.carryoverTime.mid:null,
       carry:benefit?.carryoverEfficiency??null,complete:benefit?.carryoverComplete&&benefit.coverage>=.999};
   }
+  $: needle=search.toLowerCase();
   $: groups=race.runners.filter(runner=>runner.id===selected).map(runner=>({runner,rows:(analysis.runners[runner.id]?.skillRows??[])
-    .filter(row=>skillName(reference,row.skillId).toLowerCase().includes(search.toLowerCase())&&(filter==='all'||(filter==='procced'?row.effectiveActive:!row.effectiveActive)))
+    .filter(row=>skillName(reference,row.skillId).toLowerCase().includes(needle)&&(filter==='all'||(filter==='procced'?row.effectiveActive:!row.effectiveActive)))
     .sort((a,b)=>Number(b.effectiveActive)-Number(a.effectiveActive)||compareDisplayedSkills(reference,a.skillId,b.skillId))}))
     .filter(group=>group.rows.length);
+  $: totals=enrich&&groups[0]?combined(groups[0].runner.id):null;
+  $: hits=(analysis.debuffs??[]).filter(hit=>hit.targetRunnerIds.includes(selected));
 </script>
 <section class="panel runner-skills-panel">
   <div class="panel-heading"><div><strong>Runner skills</strong><span class="muted">Open a skill for conditions and effects</span></div><div class="toolbar"><input type="search" aria-label="Find a skill" placeholder="Find a skill…" bind:value={search}/><select aria-label="Skill activation filter" bind:value={filter}><option value="all">All skills</option><option value="procced">Active</option><option value="missed">Not confirmed active</option></select></div></div>
   <div class="runner-skill-groups">
     {#each groups as group (group.runner.id)}{@const runner=group.runner}
-      {@const totals=enrich?combined(runner.id):null}
-      {@const hits=(analysis.debuffs??[]).filter(hit=>hit.targetRunnerIds.includes(runner.id))}
       <section class="runner-skill-card" class:chosen={runner.id===selected} style={`--runner:${runnerColors[runner.index%runnerColors.length]}`} aria-label={`${runnerName(reference,runner)} skills`}>
         <div class="runner-skill-head"><UmaPortrait {runner} size={32}/><div><h3><span class="runner-gate">{runner.gate??runner.index+1}</span>{runnerName(reference,runner)}</h3><small title="Includes recorded activations and effects supported by replay evidence.">{group.rows.filter(r=>r.effectiveActive).length} / {group.rows.length} active</small></div></div>
         <div class="skill-totals">{#if !enrich}<span>Adding skill totals…</span>{:else if totals&&totals.counted}
@@ -74,7 +75,7 @@
               <div class="totals-row" class:missed={skill.missed}>
                 <span class="totals-name" title={skill.missed?`${skill.name} · did not activate`:skill.name}>{#if skill.missed}<span class="totals-x" aria-hidden="true">×</span>{/if}{skill.name}</span>
                 <span class="totals-bars"><i title="Individual skill removal; these rows do not add to the joint total." style:width={skill.distance===null?'0':`${Math.abs(skill.distance)/totals.scale*100}%`} style:background={skill.color}></i></span>
-                <span class="totals-score" title={skill.coverage<.999?`${Math.round(skill.coverage*100)}% assessed`:undefined}><span class="totals-meter"><i style:width={skill.score===null?'0':`${Math.round(Math.max(0,Math.min(1,skill.score))*100)}%`} style:background={skill.color}></i></span><strong>{skill.score===null?'—':`${Math.round(skill.score*100)}%`}</strong></span>
+                <span class="totals-score" title={skill.coverage<.999?`${Math.round(skill.coverage*100)}% assessed`:undefined}>{#if !skill.missed}<span class="totals-meter"><i style:width={skill.score===null?'0':`${Math.round(Math.max(0,Math.min(1,skill.score))*100)}%`} style:background={skill.color}></i></span>{/if}<strong>{skill.score===null?'—':`${Math.round(skill.score*100)}%`}</strong></span>
                 <span class="totals-figures"><span>{skill.distance===null?'—':`${skill.distance>=0?'+':''}${skill.distance.toFixed(2)} m`}</span><span>{skill.time===null?'—':`${skill.time.toFixed(3)} s`}</span><span class="carry-num">{skill.carryMeters===null?'—':`+${skill.carryMeters.toFixed(2)} m`}{skill.carry===null?'':` · +${Math.round(skill.carry*100)}%`}</span></span>
               </div>
             {/each}

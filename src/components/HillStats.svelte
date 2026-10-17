@@ -3,7 +3,7 @@
   import type { StatusModeImpact } from '../data/status-mode-impact';
   import { uphillHelp, downhillHelp } from '../data/analysis-copy';
   import ModeImpactSummary from './ModeImpactSummary.svelte';
-  import ImpactLine from './ImpactLine.svelte';
+  import ImpactLine, { type ImpactBit } from './ImpactLine.svelte';
   export let kind:'uphill'|'downhill',hills:HillImpact[],total:ContributionTotal|undefined;
   export let mode:StatusModeImpact|undefined=undefined;
   export let name:string;
@@ -13,10 +13,10 @@
   const signed=(value:number,digits=2)=>`${value>0?'+':value<0?'−':''}${Math.abs(value).toFixed(digits)}`;
   $: help=kind==='uphill'?uphillHelp:downhillHelp;
   $: speedText=speedRange?`${signed(speedRange[0])}${Math.abs(speedRange[1]-speedRange[0])<.005?'':`–${signed(speedRange[1])}`} m/s`:null;
-  $: costBits=kind==='downhill'&&mode?[]:[
+  $: costBits=(kind==='downhill'&&mode?[]:[
     ...(total?.modeledTimeDelta==null?[]:[{text:`${Math.abs(total.modeledTimeDelta).toFixed(3)} s`,tone:kind==='uphill'?'loss':'gain'}]),
     ...(kind==='downhill'&&total?.modeledHpDelta!=null?[{text:`${Math.abs(total.modeledHpDelta).toFixed(1)} HP`,tone:total.modeledHpDelta<=0?'gain':'loss'}]:[]),
-  ];
+  ]) as ImpactBit[];
 </script>
 {#if rows.length}
 <div class="hill-stats" data-hill-kind={kind} aria-label={`Combined ${kind} stats for ${name}`}>
