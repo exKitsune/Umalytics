@@ -95,12 +95,12 @@ race=fixture();race.events=[event(860007,50,1),event(860007,60,3)];value=await a
 race=fixture();race.events=[event(860002),event(860007,60,8)];for(const f of race.frames)if(f.time>=50&&f.time<=54)f.runners[0].speed=20.1;
 await analyze('joint-mixed-components',race,860002);
 let report=JSON.parse(await readFile(join(folder,'joint-mixed-components-report.json'),'utf8'))[0].runners[0],totals=report.totals;
-assert.ok(totals.score>.73&&totals.score<.77);near(totals.assessed,16);near(totals.benefit.speedPotentialDistance.mid,10);near(totals.benefit.carryoverEfficiency,totals.benefit.carryoverDistance.mid/10);near(totals.benefit.distance.mid,totals.benefit.activeDistance.mid+totals.benefit.carryoverDistance.mid);
+const missed=totals.skills.filter((s:any)=>s.score===0&&s.motion==null);assert.ok(missed.length>=13);const rated=totals.skills.filter((s:any)=>s.score!=null);near(totals.score,rated.reduce((n:number,s:any)=>n+s.score,0)/rated.length);assert.ok(totals.score<.2);near(totals.assessed,16);near(totals.benefit.speedPotentialDistance.mid,10);near(totals.benefit.carryoverEfficiency,totals.benefit.carryoverDistance.mid/10);near(totals.benefit.distance.mid,totals.benefit.activeDistance.mid+totals.benefit.carryoverDistance.mid);
 // Simultaneous expiring bonuses have a nonlinear joint decay. Do not sum marginals.
 race=fixture();race.events=[event(860014),event(860015,50,4)];await analyze('joint-overlapping-carryover',race,860014);
 report=JSON.parse(await readFile(join(folder,'joint-overlapping-carryover-report.json'),'utf8'))[0].runners[0];totals=report.totals;
 near(totals.benefit.activeDistance.mid,40,.000001);near(totals.benefit.carryoverEfficiency,totals.benefit.carryoverDistance.mid/40);
-const marginalSum=totals.skills.reduce((n:number,s:any)=>n+s.motion.distance.mid,0);assert.ok(Math.abs(marginalSum-totals.benefit.distance.mid)>.1,'Joint gain must not be a sum of overlapping removals.');
+const marginalSum=totals.skills.reduce((n:number,s:any)=>n+(s.motion?.distance?.mid??0),0);assert.ok(Math.abs(marginalSum-totals.benefit.distance.mid)>.1,'Joint gain must not be a sum of overlapping removals.');
 // First-arrival priority belongs to scoring only, not the joint distance model.
 race=fixture();race.events=[event(860001,50,6),event(860008,50.25,6),event(860009,50.5,6)];
 for(const f of race.frames)if(f.time>=50&&f.time<=56.5)f.runners[0].speed=19.6+Math.min(1.5,(f.time-50)*.5);

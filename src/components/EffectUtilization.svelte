@@ -9,9 +9,7 @@
   $: unknown=total===null?null:Math.max(0,total-effect.assessedDuration);
   $: full=effect.fullyEffectiveDuration??(scored?0:effect.usefulDuration??0);
   $: half=scored?effect.acceleratingDuration??0:0;
-  $: blocked=effect.blockedDuration??0;
   $: wasted=effect.wastedDuration??(scored?effect.belowBaselineDuration??0:0);
-  $: share=(seconds:number)=>total!==null&&total>0?Math.max(0,seconds)/total*100:0;
   $: score=effect.assessedDuration>0?effect.usefulAmongAssessed:null;
   $: carry=effect.carryoverEfficiency??0;
   $: carryMeters=effect.carryoverDistance??0;
@@ -21,12 +19,6 @@
 </script>
 <div class="effect-use" class:expanded data-effect-kind={effect.kind}>
   <div class="heading"><span title={scored?'Earlier speed skills reach full credit first. Later skills get half credit while accelerating from normal speed toward their ceiling. Blocked time and speed below normal count as zero.':undefined}>{label}</span><strong>{result}{#if carryMeters>0.05} <b class="carry-figure">Carryover gain +{carryMeters.toFixed(2)} m</b>{/if}{#if carry>0.02} <b class="carry-figure">+{Math.round(carry*100)}%</b>{/if}</strong></div>
-  {#if total!==null&&total>0}<div class="meter" role="img" aria-label={`${label} use: ${result}`}>
-    <i class="used" style:width={`${share(full)}%`} title="Full credit"></i>
-    {#if half>0.01}<i class="half" style:width={`${share(half)}%`} title="Half credit while accelerating to the skill speed"></i>{/if}
-    {#if blocked>0.01}<i class="blocked" style:width={`${share(blocked)}%`} title="Blocked"></i>{/if}
-    {#if wasted>0.01}<i class="wasted" style:width={`${share(wasted)}%`} title="Wasted: below normal speed, including the climb back"></i>{/if}
-  </div>{/if}
   <div class="times">
     {#if scored&&effect.usefulDuration!==null}<span>{full.toFixed(2)} s full</span>
       {#if half>.0001}<span>{half.toFixed(2)} s half</span>{/if}
@@ -39,5 +31,5 @@
   </div>
 </div>
 <style>
-.effect-use{margin-top:8px;font-size:var(--font-11);line-height:1.4}.effect-use:first-child{margin-top:0}.heading{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;color:var(--muted)}strong{color:var(--text);font-weight:550;font-variant-numeric:tabular-nums}.meter{display:flex;height:6px;border-radius:2px;background:var(--border);overflow:visible}.meter i{display:block;height:100%;border-radius:0;flex:none}.meter .used{background:var(--accent)}.meter .half{background:color-mix(in srgb,var(--accent) 45%,var(--border))}.meter .blocked,.meter .wasted{background:#c44747}.carry-figure{display:inline-block;margin-left:8px;color:#8ec8f0;font-size:var(--font-13);font-weight:750;letter-spacing:.01em}.times{display:flex;gap:3px 9px;flex-wrap:wrap;margin-top:4px;color:var(--muted);font-variant-numeric:tabular-nums}.unknown-time{text-decoration:underline dotted;text-underline-offset:2px;cursor:help}.expanded{margin-top:13px;font-size:var(--font-12)}.expanded .meter{height:8px}.expanded .times{font-size:var(--font-11);margin-top:5px}
+.effect-use{margin-top:8px;font-size:var(--font-11);line-height:1.4}.effect-use:first-child{margin-top:0}.heading{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;color:var(--muted)}strong{color:var(--text);font-weight:550;font-variant-numeric:tabular-nums}.carry-figure{display:inline-block;margin-left:8px;color:#8ec8f0;font-size:var(--font-13);font-weight:750;letter-spacing:.01em}.times{display:flex;gap:3px 9px;flex-wrap:wrap;margin-top:4px;color:var(--muted);font-variant-numeric:tabular-nums}.unknown-time{text-decoration:underline dotted;text-underline-offset:2px;cursor:help}.expanded{margin-top:13px;font-size:var(--font-12)}.expanded .times{font-size:var(--font-11);margin-top:5px}
 </style>

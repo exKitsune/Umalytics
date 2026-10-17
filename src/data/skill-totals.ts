@@ -23,15 +23,21 @@ export function skillTotals(race:Race,reference:ReferenceData|null,analysis:Race
 }
 function buildTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null){
   const detail=analysis.runners[runnerId];
-  const skills=(detail?.skillRows??[]).filter(row=>row.effectiveActive).flatMap(row=>{
+  const skills=(detail?.skillRows??[]).flatMap(row=>{
+    if(!row.effectiveActive)return [{skillId:row.skillId,motion:null,score:0,coverage:1,active:0,assessed:0}];
     const motion=motionSkillImpact(race,reference,analysis,runnerId,row.skillId,courseId);
     return motion?[{skillId:row.skillId,motion,...movementUse(motion.effects)}]:[];
   });
-  const ids=new Set(skills.map(row=>row.skillId));
+  const active=skills.filter(row=>row.motion);
+  const ids=new Set(active.map(row=>row.skillId));
   const activations=(detail?.skillActivations??[]).filter(a=>ids.has(a.referenceSkillId??a.skillId)&&a.effectiveEnd!==null&&a.effectiveEnd>a.start);
   // Remove the whole set once. Adding individual marginal gains double-counts
   // interactions (especially speed + acceleration and simultaneous expiry).
   const benefit=activations.length?motionBenefitFor(race,reference,analysis,runnerId,activations,courseId):null;
-  const use=movementUse(skills.flatMap(row=>row.motion.effects));
-  return {skills,benefit,...use};
+  const use=movementUse(active.flatMap(row=>row.motion!.effects));
+  // Equal-weight each equipped skill that has a numeric score. Skills that never
+  // activated contribute 0% so they pull the consolidated effectiveness down.
+  const rated=skills.filter(row=>row.score!=null);
+  const score=rated.length?rated.reduce((n,row)=>n+(row.score??0),0)/rated.length:use.score;
+  return {skills,benefit,...use,score};
 }

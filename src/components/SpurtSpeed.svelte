@@ -4,6 +4,8 @@
   import type { MotionBand } from '../data/race-motion';
   export let value:SpurtComparison|undefined;
   export let name:string;
+  export let startDistance:number|null|undefined=undefined;
+  export let reserveStages=false;
   let button:HTMLButtonElement,popup:HTMLDivElement,left=0,top=0;
   let selectedDecision=-1,hideTimer:ReturnType<typeof setTimeout>|undefined;
   let distributionAxis:'speed'|'delay'='speed';
@@ -36,13 +38,13 @@
   $: startInWindow=value?.startTime!=null&&choice&&'time' in choice&&value.startTime>=choice.time&&value.startTime<choice.end?{time:value.startTime,wait:value.startTime-choice.time,metres:choice.observedDelay}:null;
 </script>
 <div class="spurt-summary">
-{#if groups.length>1}<div class="stage-buttons" aria-label={`Spurt recalculations for ${name}`}>{#each groups as stage}<button class:chosen={stage===group} aria-pressed={stage===group} onclick={e=>{e.stopPropagation();select(stage.indices.at(-1)!);}}>{label(stage.indices[0])}{#if stage.indices.length>1}–{stage.indices.at(-1)}{/if}</button>{/each}</div>{/if}
+{#if reserveStages}<div class="stage-buttons" class:idle={groups.length<=1} aria-hidden={groups.length<=1} aria-label={groups.length>1?`Spurt recalculations for ${name}`:undefined}>{#if groups.length>1}{#each groups as stage}<button class:chosen={stage===group} aria-pressed={stage===group} onclick={e=>{e.stopPropagation();select(stage.indices.at(-1)!);}}>{label(stage.indices[0])}{#if stage.indices.length>1}–{stage.indices.at(-1)}{/if}</button>{/each}{:else}<span class="stage-slot">&nbsp;</span>{/if}</div>{/if}
 <button bind:this={button} class="spurt-speed" aria-label={`Last spurt target for ${name}`} onmouseenter={show} onmouseleave={hide} onfocus={show} onblur={hide} onclick={e=>{e.stopPropagation();show();}} onkeydown={dismiss}>
-  {#if group&&group.indices.length>1}<small title="HP supports the same maximum at these checks. The speed reading comes from the later clear window.">Full spurt · same target</small>{/if}
-  <span class="target" title={group?.targetTime!=null?`Baseline target read at ${group.targetTime.toFixed(2)} s.`:'No clear target speed before the next recovery.'}>{target!=null?`${target.toFixed(2)} m/s`:'Target unresolved'}</span>
-  <small>Max {format(value?.maximum)} m/s</small>
-  {#if value?.delaySeconds!=null}<small title={`Recorded start ${value.delaySeconds.toFixed(3)} s after late entry. Offsets up to ${NORMAL_SPURT_START_DELAY.toFixed(2)} s count as normal timing here.`}>{normalDelay?'On time':`Start delay ${value.delaySeconds.toFixed(2)} s`}</small>{/if}
-  {#if target!=null&&value?.maximum&&value.maximum.mid-target>=.025}<small class="shortfall">−{(value.maximum.mid-target).toFixed(2)} m/s target</small>{/if}
+  {#if startDistance===-1}<div class="fact"><strong>None</strong></div>
+  {:else}
+    <div class="fact">{#if group&&group.indices.length>1}<span class="tag" title="HP supports the same maximum at these checks. The speed reading comes from the later clear window.">Full</span>{/if}<strong class="target" title={group?.targetTime!=null?`Baseline target read at ${group.targetTime.toFixed(2)} s.`:'No clear target speed before the next recovery.'}>{target!=null?target.toFixed(2):'—'}</strong><span class="unit">m/s</span><span class="aside">max {format(value?.maximum)}</span>{#if target!=null&&value?.maximum&&value.maximum.mid-target>=.025}<span class="shortfall">−{(value.maximum.mid-target).toFixed(2)}</span>{/if}</div>
+    <div class="spurt-meta">{#if startDistance!=null}<span>{startDistance.toFixed(0)} m</span>{/if}{#if value?.delaySeconds!=null}<span class="timing" class:on-time={normalDelay} title={`Recorded start ${value.delaySeconds.toFixed(3)} s after late entry. Offsets up to ${NORMAL_SPURT_START_DELAY.toFixed(2)} s count as normal timing here.`}>{normalDelay?'On time':`delay ${value.delaySeconds.toFixed(2)} s`}</span>{/if}</div>
+  {/if}
 </button>
 </div>
 <div bind:this={popup} popover="manual" class="spurt-popup" role="dialog" tabindex="-1" aria-label={`Last spurt choices for ${name}`} style={`left:${left}px;top:${top}px`} onmouseenter={keep} onmouseleave={hide} onfocusin={keep} onfocusout={hide} onkeydown={dismiss}>
@@ -78,7 +80,13 @@
 </div>
 <style>
   .distribution-controls{display:flex;align-items:center;gap:6px;margin-top:12px}.distribution-controls strong{font-size:var(--font-10);margin-right:auto}.distribution-controls button{padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--panel);color:var(--text);font-size:var(--font-10)}.distribution-controls button.chosen{border-color:var(--accent);color:var(--accent)}
-  .stage-buttons{display:flex;flex-wrap:wrap;gap:3px;max-width:220px;margin:3px 0 5px}.stage-buttons button{padding:3px 5px;font-size:var(--font-9);border:1px solid var(--border);border-radius:4px;background:var(--panel);color:var(--muted)}.stage-buttons button.chosen{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
-  .spurt-speed{display:block;text-align:left;background:none;border:0;padding:2px 0;color:inherit;font:inherit;cursor:help}.target{text-decoration:underline dotted var(--muted);text-underline-offset:3px}.spurt-speed small{display:block;font-size:var(--font-9);line-height:1.5;color:var(--muted)}.spurt-speed .shortfall{color:#e6a085}
+  .stage-buttons{display:flex;flex-wrap:nowrap;gap:3px;max-width:220px;min-height:22px;margin:0 0 5px}.stage-buttons.idle{visibility:hidden}.stage-buttons button,.stage-slot{padding:3px 5px;font-size:var(--font-9);border:1px solid var(--border);border-radius:4px;background:var(--panel);color:var(--muted)}.stage-buttons button.chosen{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+  .spurt-speed{display:block;text-align:left;background:none;border:0;padding:2px 0;color:inherit;font:inherit;cursor:help}
+  .fact{display:flex;align-items:baseline;gap:6px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .fact strong{font-size:var(--font-14);font-weight:600}.unit,.aside,.note,.spurt-meta,.tag{color:var(--muted);font-size:var(--font-11);font-weight:550}
+  .tag{font-weight:700;letter-spacing:.04em}.target{text-decoration:underline dotted var(--muted);text-underline-offset:3px}
+  .spurt-meta{display:flex;align-items:baseline;gap:16px;margin-top:4px;white-space:nowrap}
+  .timing{min-width:4.6em}.timing:not(.on-time){color:#ef7474;font-weight:650}
+  .shortfall{color:#e6a085;font-size:var(--font-11);font-weight:550}
   .spurt-popup{position:fixed;margin:0;width:min(384px,calc(100vw - 16px));max-height:80vh;overflow:auto;padding:14px;border:1px solid var(--border);border-radius:9px;color:var(--text);background:var(--panel);box-shadow:0 8px 32px #0008;white-space:normal;font-size:var(--font-11)}.spurt-popup strong{font-size:var(--font-12)}p{margin:7px 0 0;line-height:1.4;color:var(--muted)}svg{display:block;width:100%;margin-top:8px}svg text{fill:currentColor;font-size:11px}.odds{display:flex;flex-direction:column;gap:4px;margin-top:8px;color:var(--accent)}.target-compare{height:7px;background:var(--border);margin-top:12px}.target-compare span{display:block;height:100%;background:var(--accent)}.compare-labels{display:flex;justify-content:space-between;font-size:var(--font-10);margin-top:5px}.decisions{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px}.decisions button{padding:5px 7px;font-size:var(--font-10);border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:4px}.decisions button.chosen{border-color:var(--accent);color:var(--accent)}
 </style>
