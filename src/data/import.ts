@@ -3,12 +3,17 @@ import { decode } from '@msgpack/msgpack';
 import { base64Bytes, MAX_FILE_BYTES, MAX_FRAMES, MAX_RUNNERS, MAX_SAMPLES, parseScenario } from './binary';
 import { courseDistance, finishDistance, instanceCourse, instanceConditions } from './course-detection';
 import { extractSanitizedRaw } from './raw-export';
+import { attachTeamStatTotals } from './race-teams';
 import { runnerBySlot, type Frame, type Race, type RaceCategory, type RaceEvent, type Runner, type RunnerAptitudes, type RunnerSample, type RunnerSkill, type RunnerStats } from './types';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Uint8Array) ? value as RecordValue : {};
 const number = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
 const string = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
+const trainerIdentity = (value: unknown): string | null => {
+  const parsed = number(value);
+  return parsed !== null && Number.isSafeInteger(parsed) ? String(parsed) : string(value);
+};
 const pick = (obj: RecordValue, ...keys: string[]): unknown => { for (const key of keys) if (obj[key] !== undefined && obj[key] !== null) return obj[key]; return undefined; };
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const strategyNames: Record<number, string> = { 1: 'Front Runner', 2: 'Pace Chaser', 3: 'Late Surger', 4: 'End Closer', 5: 'Runaway' };
@@ -153,7 +158,7 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
   if (byIndex.size < binary.runnerCount && ('race_history_chara_result_array' in obj || ('race_num' in obj && 'room_info' in obj))) {
     warnings.push('Champions Meeting history lacks complete chart metadata. Unmapped runners remain numbered simulation slots; separate chart responses are not matched automatically.');
   }
-  const runners: Runner[] = Array.from({ length: binary.runnerCount }, (_, runnerIndex) => {
+  const runners: Runner[] = attachTeamStatTotals(Array.from({ length: binary.runnerCount }, (_, runnerIndex) => {
     const meta = byIndex.get(runnerIndex) ?? {};
     const result = binary.results[runnerIndex];
     const charaId = number(pick(meta, 'chara_id', 'charaId'));
@@ -163,6 +168,7 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
       name: string(pick(meta, 'chara_name', 'charaName', 'name')) ?? (charaId === null ? `Runner ${runnerIndex + 1}` : `Character ${charaId}`),
       charaId, cardId: number(pick(meta, 'card_id', 'cardId')),
       trainer: string(pick(meta, 'trainer_name', 'trainerName', 'user_name', 'userName')),
+      trainerId: trainerIdentity(pick(meta, 'viewer_id', 'viewerId')),
       strategy: strategyNames[number(pick(meta, 'running_style', 'runningStyle')) ?? result.strategy] ?? null,
       finishOrder: result.finishOrder, finishTime: result.finishTime,
       finishTimeRaw: result.finishTimeRaw, startDelay: result.startDelay, finishGap: result.finishGap, lastSpurtDistance: result.lastSpurtDistance,
@@ -175,7 +181,7 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
       mood: number(meta.motivation), raceWinCount: number(meta.single_mode_win_count), fanCount: number(meta.fan_count),
       starCount: number(meta.rarity), rankScore: number(meta.rank_score),
     };
-  });
+  }));
   const frames: Frame[] = binary.frames.map(frame => ({ time: frame.time, runners: frame.samples.map((sample, runnerIndex) => ({ runnerId: runners[runnerIndex].id, ...sample })) }));
   const events: RaceEvent[] = binary.events.map(event => {
     // SKILL=3: param[0] is the zero-based frame slot; param[1] is the skill ID.
@@ -233,14 +239,16 @@ function parseNormalized(obj: RecordValue, index: number): Race {
   if (!rawRunners.length || rawRunners.length > MAX_RUNNERS) throw new Error(`Normalized race needs 1–${MAX_RUNNERS} runners.`);
   if (!rawFrames.length || rawFrames.length > MAX_FRAMES || rawFrames.length * rawRunners.length > MAX_SAMPLES) throw new Error('Normalized race contains no frames or exceeds the frame/sample limit.');
   const normalizedMembers = rawRunners.map(record), normalizedTeams = teamGroups(normalizedMembers, rawRunners.length, true);
-  const runners: Runner[] = normalizedMembers.map((runner, runnerIndex) => {
+  const runners: Runner[] = attachTeamStatTotals(normalizedMembers.map((runner, runnerIndex) => {
     const finishOrder = number(runner.finishOrder);
     const finishTime = number(runner.finishTime);
     const finishTimeRaw = number(runner.finishTimeRaw);
     return {
       id: string(runner.id) ?? `runner-${runnerIndex + 1}`, index: runnerIndex,
       gate: number(runner.gate), name: string(runner.name) ?? `Runner ${runnerIndex + 1}`,
-      charaId: number(runner.charaId), cardId: number(runner.cardId), trainer: string(runner.trainer), strategy: string(runner.strategy),
+      charaId: number(runner.charaId), cardId: number(runner.cardId), trainer: string(runner.trainer),
+      ...(runner.trainerId !== undefined ? { trainerId: trainerIdentity(runner.trainerId) } : {}),
+      strategy: string(runner.strategy),
       finishOrder: finishOrder !== null && Number.isInteger(finishOrder) && finishOrder > 0 && finishOrder <= rawRunners.length ? finishOrder : null,
       finishTime: finishTime !== null && finishTime >= 0 && finishTime <= 3600 ? finishTime : null,
       ...(runner.finishTimeRaw !== undefined ? { finishTimeRaw: finishTimeRaw !== null && finishTimeRaw >= 0 && finishTimeRaw <= 3600 ? finishTimeRaw : null } : {}),
@@ -255,7 +263,7 @@ function parseNormalized(obj: RecordValue, index: number): Race {
       ...(normalizedTeams.has(runner) ? { teamGroup: normalizedTeams.get(runner)! } : {}),
       ...Object.fromEntries(['strategyCode', 'mood', 'raceWinCount', 'fanCount', 'starCount', 'rankScore', 'gutsOrder', 'wisdomOrder', 'defeatFlags'].filter(key => runner[key] !== undefined).map(key => [key, number(runner[key])])),
     };
-  });
+  }));
   const ids = new Set(runners.map(r => r.id));
   if (ids.size !== runners.length) throw new Error('Normalized runner IDs must be unique.');
   let previous = -Infinity;

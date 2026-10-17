@@ -8,7 +8,17 @@ const stat = [1,1.01,1.02,1.03,1.04,1.05,1.06,1.07,1.08,1.10];
 const target = [1,1.01,1.04,1.07,1.10,1.13,1.16,1.19,1.22,1.25];
 const accel = [1,1.02,1.04,1.06,1.08,1.10,1.125,1.15,1.175,1.20];
 const other = [1,1.02,1.04,1.06,1.08,1.10,1.12,1.14,1.16,1.18];
-export interface EffectValueContext {activeGreenCount?:number|null;additionalActivations?:number|null;trainingTeamStatTotal?:number|null;randomMultiplier?:number|null}
+export interface EffectValueContext {activeGreenCount?:number|null;additionalActivations?:number|null;teamStatTotal?:number|null;randomMultiplier?:number|null}
+const teamStatKeys=['speed','stamina','power','guts','wisdom'] as const;
+export function racingTeamStatTotal(runner:Runner,valueUsage:number):number|null {
+  const key=teamStatKeys[valueUsage-3];
+  if(!key)return null;
+  const total=runner.teamStatTotals?.[key];
+  return total==null||!Number.isFinite(total)||total<0?null:total;
+}
+export function teamStatScale(total:number):number {
+  return total<1200?0.8:total<1800?0.9:total<2600?1:total<3600?1.1:1.2;
+}
 export function effectValue(runner: Runner, skillId: number, effect: SkillReference['branches'][number]['effects'][number],context?:EffectValueContext): number | null {
   if (effect.levelUsage !== 1) return null;
   const additional=effect.additionalActivateType??0;
@@ -35,10 +45,9 @@ export function effectValue(runner: Runner, skillId: number, effect: SkillRefere
     if(count==null||!Number.isInteger(count)||count<0)return null;
     scale=count<3?0:count<5?1:count===5?2:3;
   }else if(effect.valueUsage>=3&&effect.valueUsage<=7){
-    const total=context?.trainingTeamStatTotal;
-    // Training-team totals are not in the replay. Use the 1.2 tier, the highest
-    // Aoharu scale, until a captured total is available.
-    scale=total==null||!Number.isFinite(total)||total<0?1.2:total<1200?0.8:total<1800?0.9:total<2600?1:total<3600?1.1:1.2;
+    const total=context?.teamStatTotal??racingTeamStatTotal(runner,effect.valueUsage);
+    if(total==null)return null;
+    scale=teamStatScale(total);
   }else if([8,9].includes(effect.valueUsage)){
     const value=context?.randomMultiplier;
     if(value==null||![0,.02,.04].includes(value))return null;

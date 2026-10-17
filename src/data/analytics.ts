@@ -3,7 +3,7 @@
 import { runnerBySlot, type Frame, type Race, type RaceEvent, type Runner, type RunnerSample } from './types';
 import type { ReferenceData, SkillReference } from './reference';
 import { modeledStatuses } from './status-models';
-import { evaluateSkillConditions, type SkillConditionEvaluation } from './skill-conditions';
+import { applyRecordedBranchEvidence, evaluateSkillConditions, type SkillConditionEvaluation } from './skill-conditions';
 import { alignedSkillLottery, concentrationFailureBound, type SkillLotteryEvidence } from './skill-lottery';
 import { populateStatusImpacts, statusImpactTotals, type StatusImpact, type StatusImpactTotal } from './status-impact';
 import { referenceEquippedSkillId } from './equipped-skills';
@@ -323,7 +323,7 @@ function rowsFor(race: Race, runnerId: string, reference: ReferenceData | null, 
   return [...ids].map(skillId => {
     const equipped = equippedIds.includes(skillId), applied = activations.filter(a => (a.referenceSkillId ?? a.skillId) === skillId), observed=applied.filter(a=>a.activationEvidence!=='estimated'), initial=applied.some(a=>a.activationEvidence==='estimated');
     const def = reference?.metadata.skills[skillId];
-    const conditionEvaluation = def ? evaluateSkillConditions(race, runner, course, def, {reference,skillId}) : null;
+    const conditionEvaluation = def ? applyRecordedBranchEvidence(evaluateSkillConditions(race, runner, course, def, {reference,skillId}), observed, def) : null
     const inferredBranches = !observed.length && equipped && def?.activateLot === 0
       ? (conditionEvaluation?.branches ?? []).filter(b => b.state === 'met' && b.staticOnly && def.branches.find((d, i) => (d.branchIndex ?? i) === b.branchIndex)!.rawDuration < 0).map(b => b.branchIndex) : [];
     const lottery = alignedSkillLottery(race, reference).get(runnerId)?.get(skillId) ?? (!observed.length && skillId === 200431 ? concentrationFailureBound(race, runnerId, reference) : undefined);

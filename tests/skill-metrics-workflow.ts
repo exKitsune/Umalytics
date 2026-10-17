@@ -31,7 +31,7 @@ if(process.argv[2]==='--evaluate'){
   }});
   const fixture=(skills:number[])=>({schemaVersion:1,title:'Explicit synthetic component workflow',synthetic:true,distance:2000,courseId:99999,category:'practice',conditions:{ground:'1',weather:'1',season:'4'},
     runners:[{id:'fixture-1',gate:1,name:'Synthetic runner',cardId:100101,charaId:1001,strategyCode:1,mood:3,finishOrder:1,finishTime:100,finishTimeRaw:100,lastSpurtDistance:-1,startDelay:.018,
-      stats:{speed:1000,stamina:1000,power:1000,guts:1000,wisdom:1000},aptitudes:{turf:7,middle:7,front:7},skills:skills.map(id=>({id,level:1}))}],
+      stats:{speed:1000,stamina:1000,power:1000,guts:1000,wisdom:1000},aptitudes:{turf:7,middle:7,front:7},skills:skills.map(id=>({id,level:1})),teamGroup:undefined as number|undefined}],
     frames:Array.from({length:401},(_,i)=>({time:i/4,runners:[{runnerId:'fixture-1',distance:i*5,speed:20,hp:2760-i*5,lane:.1+i/4000,temptationMode:i>=200&&i<240?1:0,blockFrontRunnerIndex:-1}]})),events:[] as any[]});
   const event=(id:number,time=0,duration=0)=>({time,type:3,runnerId:'fixture-1',skillId:id,label:'Synthetic activation',params:[0,id,duration*10000,0,0]});
   let cases=0;
@@ -54,9 +54,12 @@ if(process.argv[2]==='--evaluate'){
   const runaway=await evaluate('runaway',fixture([202051]));assert.equal(metric(runaway,202051,'Running style').value,'Runaway');near(metric(runaway,202051,'Early target coefficient').value,1.26);near(metric(runaway,202051,'Starting HP style change').value,-72);
   const random=fixture([700114,700115]);random.events=[event(700114,50,2),event(700115,50,2)];const rd=await evaluate('random-candidates',random);near(metric(rd,700114,'Requested gold activations').value,1);near(metric(rd,700114,'Same-frame gold candidates').value,1);assert.match(metric(rd,700114,'Same-frame gold candidates').detail,/not reported/);
   const carnival=await evaluate('carnival',fixture([700116]));assert.equal(carnival.result['fixture-1:700116'].length,3);assert.ok(carnival.result['fixture-1:700116'].every((m:any)=>m.value===null&&/unsupported/.test(m.reason)));
-  // Missing training totals use the documented maximum tier; additional-hit
-  // counts remain unknown and must not be inferred from equipped skills.
-  const unknown=await evaluate('unknown-training',fixture([700117,700119]));near(metric(unknown,700117,'Speed stat').value,72);assert.match(metric(unknown,700117,'Speed stat').detail,/Training-team total.*assumes the maximum 1\.2 tier/);assert.equal(metric(unknown,700119,'Speed stat').value,null);
+  // Missing racing-team totals stay unknown; additional-hit counts are not inferred.
+  const unknown=await evaluate('unknown-training',fixture([700117,700119]));assert.equal(metric(unknown,700117,'Speed stat').value,null);assert.match(metric(unknown,700117,'Speed stat').detail,/Racing-team total/);assert.equal(metric(unknown,700119,'Speed stat').value,null);
+  const teamRace=fixture([700117]);teamRace.runners[0].teamGroup=1;teamRace.runners[0].stats.speed=1000;
+  teamRace.runners.push({...structuredClone(teamRace.runners[0]),id:'fixture-2',gate:2,name:'Synthetic teammate A',skills:[],stats:{...teamRace.runners[0].stats,speed:800}});
+  teamRace.runners.push({...structuredClone(teamRace.runners[0]),id:'fixture-3',gate:3,name:'Synthetic teammate B',skills:[],stats:{...teamRace.runners[0].stats,speed:700}});
+  const team=await evaluate('racing-team-total',teamRace);near(metric(team,700117,'Speed stat').value,60);
   const foreign=fixture([700118]);foreign.events=[event(700118,50,2)];const f=await evaluate('foreign-vision',foreign);near(metric(f,700118,'Vision modifier').value,10);assert.match(metric(f,700118,'Vision modifier').detail,/immunity/);assert.ok(!f.result['fixture-1:700118'].some((m:any)=>/gain|damage/.test(m.label)));
   const cap=fixture([700101]);cap.runners[0].stats.speed=4000;const cp=await evaluate('capped-stat',cap);near(metric(cp,700101,'Speed stat').value,60);near(metric(cp,700101,'Late target coefficient').value,0);
   const missingStats=fixture([700102]);missingStats.runners[0].stats.stamina=null as any;const ms=await evaluate('missing-stat',missingStats);near(metric(ms,700102,'Stamina stat').value,60);assert.equal(metric(ms,700102,'Starting HP contribution').value,null);

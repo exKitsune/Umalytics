@@ -200,13 +200,31 @@ function evaluate(expression: Expression, observation: ConditionObservation | nu
   options: ConditionContextOptions, eligibility: boolean, checks?: Checks) {
   return logic(expression.map(group => {const viewer=group.filter((a):a is Atom=>a!==null&&a.key==='remain_distance_viewer_id');return [...group.filter(a=>a?.key!=='remain_distance_viewer_id').map(atom => checkAtom(atom, observation, statics, race, course, options, eligibility, checks)),...(viewer.length?[viewerClause(viewer,observation,eligibility,checks)]:[])];}));
 }
+function reconstructedTimer(key: string): boolean {
+  return /continuetime$/.test(key) || /_near_lane_time(_set\d+)?$/.test(key) || key === 'overtake_target_time' || key === 'overtake_target_no_order_up_time';
+}
+function formatObservedValue(value: number, key: string, confidence: PredicateValue['confidence']): string {
+  const amount = reconstructedTimer(key) || !Number.isInteger(value) ? value.toFixed(2) : String(value);
+  if (confidence === 'lower-bound') return `Recorded lower bound ${amount}.`;
+  if (confidence === 'proxy' && reconstructedTimer(key)) return `Reconstructed timer ${amount} s.`;
+  if (confidence === 'proxy') return `Replay proxy ${amount}.`;
+  return `Value ${amount}.`;
+}
 function predicateEvidence(atom: Atom, observation: ConditionObservation | null, statics: Record<string, PredicateValue>, race: Race, course: CourseReference | null,
   options: ConditionContextOptions): Pick<PredicateExplanation, 'state' | 'observed' | 'time'> {
-  const satisfied = checkAtom(atom, observation, statics, race, course, options, false);
+  const observedSatisfied = checkAtom(atom, observation, statics, race, course, options, false);
   const item = statics[atom.key] ?? (observation ? eventValue(atom, observation, race, options) ?? observation.values[atom.key] : undefined);
+  // A reconstructed timer still has a numeric sample. Use it for the predicate
+  // display; it does not become a definitive / non-proxy witness.
+  // A calculated sample is evidence. Interpolated rank stays unresolved: the
+  // position can be true on a straight-line guess without being recorded.
+  const modeledSatisfied = observedSatisfied === null && item?.confidence === 'proxy' && item.value != null && atom.key !== 'order' && atom.key !== 'order_rate'
+    ? checkAtom(atom, observation, statics, race, course, options, true) : null;
+  const satisfied = observedSatisfied ?? modeledSatisfied;
   let observed = conditionMechanic(atom.key)?.observation === 'random' ? (options.coverRandom ? (satisfied === true ? 'The recorded path crosses this region.' : satisfied === false ? 'The recorded path misses this region.' : 'Region not recorded.') : 'Candidate region; selected random trigger unrecorded.') : satisfied === true ? 'Rule satisfied.' : satisfied === false ? 'Rule not satisfied.' : 'Input unrecorded.';
   if (item?.range) observed = atom.key==='order'||atom.key==='order_rate'?`${item.confidence === 'proxy' ? 'Interpolated position' : 'Position'} ${item.range[0] === item.range[1] ? item.range[0] : item.range.join('–')} of ${race.runners.length}.`:`${item.confidence==='proxy'?'Replay-inferred':'Supported'} value range ${item.range.join('–')}.`;
-  else if (item?.value != null) observed = `${item.confidence === 'lower-bound' ? 'Recorded lower bound' : item.confidence === 'proxy' ? 'Replay proxy' : 'Value'} ${Number.isInteger(item.value) ? item.value : item.value.toFixed(2)}.`;
+  else if ((satisfied === true || satisfied === false) && (atom.key === 'blocked_front' || atom.key === 'blocked_side' || atom.key.startsWith('is_')) && item?.value != null && (item.value === 0 || item.value === 1)) observed = satisfied ? 'Rule satisfied.' : 'Rule not satisfied.';
+  else if (item?.value != null) observed = formatObservedValue(item.value, atom.key, item.confidence);
   return { state: satisfied === true ? 'met' : satisfied === false ? 'unmet' : 'unknown', observed,
     time: Object.hasOwn(statics, atom.key) ? null : observation?.time ?? null };
 }
@@ -358,6 +376,21 @@ export function evaluateSkillConditions(race: Race, runner: Runner, course: Cour
         }
       }
     }
+    // A branch can fail to show a conjunction and still have calculated values.
+    // Record those before any activation is allowed to fill a remaining gap.
+    if (opportunities === 0 && state !== 'unmet') for (const predicate of predicates) {
+      if (predicate.state) continue;
+      const atom = unique.find(item => item.text === predicate.expression)!;
+      const samples = timeline.length ? timeline : [null];
+      let chosen: ReturnType<typeof predicateEvidence> | null = null, disagreed = false;
+      for (const observation of samples) {
+        const evidence = predicateEvidence(atom, observation, statics, race, course, explainOptions(atom));
+        if (evidence.state === 'met') { disagreed = true; break; }
+        if (evidence.state === 'unmet') chosen = evidence;
+        else disagreed = true;
+      }
+      if (!disagreed && chosen) Object.assign(predicate, chosen);
+    }
     for (const missing of checks.missingInputs) if ([...checks.observations].some(observed => missing.startsWith(observed.split(':')[0] + ':'))) checks.missingInputs.delete(missing);
     const missingInputs = [...checks.missingInputs], hiddenState = [...checks.hiddenState], proxies = [...checks.proxies], unresolved = [...missingInputs, ...hiddenState];
     const absenceAssessment:BranchConditionEvaluation['absenceAssessment']=impossible||recordedMiss?'conditions-excluded':inferredState==='met'?'conditions-supported':randomTrigger&&opportunities>0&&!recordedHit?'random-trigger-unobserved':missingInputs.length?'replay-inputs-missing':mechanicsState!=='understood'?'mechanics-partial':'no-observed-candidate';
@@ -378,6 +411,59 @@ export function evaluateSkillConditions(race: Race, runner: Runner, course: Cour
     eligibilityState: branches.some(b => b.eligibilityState === 'eligible') ? 'eligible' : branches.length && branches.every(b => b.eligibilityState === 'ineligible') ? 'ineligible' : 'unresolved',
     definitiveOpportunity: branches.some(b => b.definitiveOpportunity), randomTrigger: branches.some(b => b.randomTrigger),
     inferredState:branches.some(b=>b.inferredState==='met')?'met':branches.length&&branches.every(b=>b.inferredState==='unmet')?'unmet':'unknown' };
+}
+
+function provedByActivation(expression: string, predicates: PredicateExplanation[], role: 'condition' | 'precondition'): Set<string> {
+  const groups = parse(expression);
+  const status = (text: string) => predicates.find(item => item.expression === text && (!item.role || item.role === 'both' || item.role === role))?.state;
+  const eliminated = groups.map(group => group.some(atom => atom && status(atom.text) === 'unmet'));
+  const confirmed = groups.map(group => group.every(atom => !atom || status(atom.text) === 'met'));
+  if (confirmed.some((done, index) => done && !eliminated[index])) return new Set();
+  const possible = groups.filter((_, index) => !eliminated[index]);
+  if (!possible.length) return new Set();
+  const proved = new Set<string>();
+  for (const text of new Set(possible.flatMap(group => group.flatMap(atom => atom ? [atom.text] : [])))) {
+    if (!possible.every(group => group.some(atom => atom?.text === text))) continue;
+    const state = status(text);
+    if (state !== 'met' && state !== 'unmet') proved.add(text);
+  }
+  return proved;
+}
+/** A recorded proc fills only checks that are still unknown, and only when
+ * every remaining alternative requires them. Known values and rejected
+ * alternatives stay as calculated. */
+export function applyRecordedBranchEvidence(
+  evaluation: SkillConditionEvaluation,
+  activations: { effectBranch: number | null; start: number }[],
+  skill?: SkillReference,
+): SkillConditionEvaluation {
+  for (const activation of activations) {
+    if (activation.effectBranch == null) continue;
+    const branch = evaluation.branches.find(item => item.branchIndex === activation.effectBranch);
+    if (!branch) continue;
+    const definition = skill?.branches.find((item, index) => (item.branchIndex ?? index) === branch.branchIndex);
+    branch.state = 'met';
+    branch.inferredState = 'met';
+    if (branch.inferenceBasis === 'unresolved') branch.inferenceBasis = 'observed';
+    const proved = new Set([
+      ...provedByActivation(definition?.condition ?? '', branch.predicates, 'condition'),
+      ...provedByActivation(definition?.precondition ?? '', branch.predicates, 'precondition'),
+    ]);
+    for (const predicate of branch.predicates) {
+      if (!proved.has(predicate.expression) || predicate.state === 'met' || predicate.state === 'unmet') continue;
+      const previous = predicate.observed;
+      predicate.state = 'met';
+      predicate.observed = previous && previous !== 'Input unrecorded.'
+        ? `Recorded activation proves this was met. ${previous}`
+        : 'Recorded activation of this branch requires this condition.';
+      predicate.time ??= activation.start;
+    }
+  }
+  evaluation.state = evaluation.branches.some(branch => branch.state === 'met') ? 'met'
+    : evaluation.branches.length && evaluation.branches.every(branch => branch.state === 'unmet') ? 'unmet' : 'unknown';
+  evaluation.inferredState = evaluation.branches.some(branch => branch.inferredState === 'met') ? 'met'
+    : evaluation.branches.length && evaluation.branches.every(branch => branch.inferredState === 'unmet') ? 'unmet' : 'unknown';
+  return evaluation;
 }
 
 export function conditionCoverage(metadata: ReferenceMetadata) {

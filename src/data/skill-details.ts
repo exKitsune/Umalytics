@@ -1,7 +1,7 @@
 import { getSkillReference, type ReferenceData, type SkillReference } from './reference';
 import type { SkillRow } from './analytics';
 import type { Runner } from './types';
-import { effectValue, levelCoefficient, ownedSkillLevel } from './effect-value';
+import { effectValue, levelCoefficient, ownedSkillLevel, racingTeamStatTotal, teamStatScale } from './effect-value';
 
 const names: Record<number,string> = {1:'Speed stat',2:'Stamina stat',3:'Power stat',4:'Guts stat',5:'Wit stat',8:'Vision',9:'HP recovery',10:'Start delay multiplier',14:'Start delay',21:'Current speed',22:'Current speed · coast',27:'Target speed',28:'Lane speed',31:'Acceleration',35:'Lane change',37:'Random gold skill',42:'Duration multiplier'};
 /** Target speed eases onto a new ceiling. Current speed jumps now. Coast keeps that jump and eases it away afterward. */
@@ -9,19 +9,67 @@ export type VelocityKind = 'target' | 'current' | 'coast';
 export function velocityKind(type:number): VelocityKind | null {
   return type===27?'target':type===21?'current':type===22?'coast':null;
 }
+const teamStatNames:Record<number,string>={3:'Speed',4:'Stamina',5:'Power',6:'Guts',7:'Wit'};
 export function effectText(effect: SkillReference['branches'][number]['effects'][number],runner?:Runner|null,skillId?:number): string {
-  const resolved=runner&&skillId!=null?effectValue(runner,skillId,effect):effect.rawValue/10000;
+  const resolved=runner&&skillId!=null?effectValue(runner,skillId,effect):null;
   const value=resolved??effect.rawValue/10000;
   const signed=value>0?`+${Number(value.toFixed(5))}`:String(Number(value.toFixed(5)));
   const amount=[10,42].includes(effect.type)?String(Number(value.toFixed(5))):effect.type===9?`${Number((value*100).toFixed(3))}%`:signed;
   const unit=[21,22,27,28].includes(effect.type)?' m/s':effect.type===31?' m/s²':effect.type===14?' s':effect.type===10||effect.type===42?'×':'';
   const label=effect.type===9&&value<0?'HP cost':names[effect.type]??`Effect ${effect.type}`;
+  if(resolved!==null&&effect.levelUsage===1)return `${label} ${amount}${unit}`;
+  if(effect.valueUsage>=3&&effect.valueUsage<=7)return `${label} · scales with racing-team ${teamStatNames[effect.valueUsage]}`;
   // Usage 1 is the normal master reference value, not a variable-value flag.
   // Other usage codes need special skill logic; their coefficient is not a
   // resolved effect magnitude (e.g. HP cost usage 8 is not a -100% HP hit).
   if(effect.valueUsage!==1||(effect.additionalActivateType??0)!==0)return `${label} · varies by condition`;
-  if(resolved===null||effect.levelUsage!==1)return `${label} · depends on skill level`;
+  if(effect.levelUsage!==1)return `${label} · depends on skill level`;
   return `${label} ${amount}${unit}`;
+}
+export function teamScaleNote(runner:Runner|null|undefined,effect:SkillReference['branches'][number]['effects'][number]):string|null {
+  if(!runner||effect.valueUsage<3||effect.valueUsage>7)return null;
+  const total=racingTeamStatTotal(runner,effect.valueUsage),stat=teamStatNames[effect.valueUsage];
+  if(total==null)return `Racing-team ${stat} is unavailable, so this magnitude stays unknown.`;
+  const scale=teamStatScale(total);
+  return `Racing-team ${stat} ${Math.round(total)} uses the ×${scale} tier.`;
+}
+export function usedBranchIndexes(row?:SkillRow|null):number[] {
+  const recorded=[...new Set(row?.activations.map(activation=>activation.effectBranch).filter((index):index is number=>index!==null)??[])];
+  if(recorded.length)return recorded;
+  return row?.inferredBranches.length===1?row.inferredBranches:[];
+}
+export function displayedSkillBranches(skill:SkillReference,row?:SkillRow|null):SkillReference['branches'] {
+  const used=new Set(usedBranchIndexes(row));
+  if(!used.size)return skill.branches;
+  return skill.branches.filter((branch,index)=>used.has(branch.branchIndex??index));
+}
+export interface SkillBranchNode {
+  index:number;
+  label:string;
+  taken:boolean|null;
+  state:'met'|'unmet'|'unknown';
+  precondition:string;
+  condition:string;
+  effects:SkillReference['branches'][number]['effects'];
+}
+export function skillBranchNodes(skill:SkillReference,row?:SkillRow|null):SkillBranchNode[] {
+  const used=usedBranchIndexes(row);
+  return skill.branches.map((branch,position)=>{
+    const index=branch.branchIndex??position;
+    const evaluated=row?.conditionEvaluation?.branches.find(item=>item.branchIndex===index);
+    const taken=used.length?used.includes(index):null;
+    const state:SkillBranchNode['state']=taken===true?'met':evaluated?.state==='unmet'?'unmet'
+      :evaluated?.state==='met'||evaluated?.inferredState==='met'?'met':evaluated?.state??'unknown';
+    return {
+      index,
+      label:position===0?'If':position===skill.branches.length-1?'Otherwise':'Else if',
+      taken,
+      state,
+      precondition:branch.precondition??'',
+      condition:branch.condition??'',
+      effects:branch.effects,
+    };
+  });
 }
 function baseAmount(effect: SkillReference['branches'][number]['effects'][number]): string {
   const value = effect.rawValue / 10000;

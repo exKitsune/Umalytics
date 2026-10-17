@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Race, Runner } from '../data/types';
   import { getSkillReference, skillName, runnerName, type ReferenceData } from '../data/reference';
-  import { effectText, durationText, nonProcLabel, velocityKind, levelBuffExplanation, uniqueLevelLabel } from '../data/skill-details';
+  import { effectText, durationText, nonProcLabel, velocityKind, levelBuffExplanation, uniqueLevelLabel, teamScaleNote } from '../data/skill-details';
   import SpeedTerm from './SpeedTerm.svelte';
   import GameIcon from './GameIcon.svelte';
   import { skillIconKey } from '../data/game-icons';
@@ -12,6 +12,7 @@
   import { metricsForSkill } from '../data/skill-metrics';
   import SkillMetrics from './SkillMetrics.svelte';
   import ConditionRules from './ConditionRules.svelte';
+  import SkillBranchGraph from './SkillBranchGraph.svelte';
   export let skillId:number;
   export let reference:ReferenceData|null;
   export let race:Race;
@@ -46,17 +47,25 @@
         {@const evaluated=row?.conditionEvaluation?.branches.find(b=>b.branchIndex===index)}
         {@const activation=row?.activations.find(a=>a.effectBranch===index||skill.branches.length===1)}
         {@const levelNote=runner?levelBuffExplanation(reference,runner,skillId,branch.effects):null}
+        {@const branched=skill.branches.length>1}
         <section class="skill-effects"><h3>{branches.length>1?`Variant ${i+1}`:'Effects'}</h3>
-          <ul>{#each branch.effects as effect}{@const kind=velocityKind(effect.type)}<li>{#if kind}<SpeedTerm {kind} up={effect.rawValue>=0} text={effectText(effect,runner,skillId)}/>{:else}{effectText(effect,runner,skillId)}{/if}</li>{/each}</ul>
+          <ul>{#each branch.effects as effect}{@const kind=velocityKind(effect.type)}<li>{#if kind}<SpeedTerm {kind} up={effect.rawValue>=0} text={effectText(effect,runner,skillId)}/>{:else}{effectText(effect,runner,skillId)}{/if}{#if teamScaleNote(runner,effect)}<small class="scale-note">{teamScaleNote(runner,effect)}</small>{/if}</li>{/each}</ul>
           {#if levelNote}<p class="level-note">{levelNote.detail}</p>{/if}
           <div class="duration"><span>Duration</span><strong>{activation?.timingKind==='instant'?'Instant':activation?.effectiveDuration!=null?`${Number(activation.effectiveDuration.toFixed(3))} s`:durationText(branch,race.distance)}</strong></div>
-          <details class="conditions" open><summary>Conditions <span class:met={!!activation||evaluated?.state==='met'}>{activation||evaluated?.state==='met'?'Met':evaluated?.state==='unmet'?'Not met':evaluated?.inferredState==='met'?'Met in replay model':evaluated?.eligibilityState==='eligible'?'Eligible window':'Uncertain'}</span></summary>
-            <label class="condition-code"><input type="checkbox" bind:checked={showConditionCode}/>Show condition code</label>
-            {#if branch.precondition}<h4>First</h4><ConditionRules expression={branch.precondition} {reference} showCode={showConditionCode} fieldSize={race.runners.length} predicates={evaluated?.predicates??[]} role="precondition"/><h4>Then</h4>{/if}
-            <ConditionRules expression={branch.condition} {reference} showCode={showConditionCode} fieldSize={race.runners.length} predicates={evaluated?.predicates??[]}/>
-            {#if evaluated?.firstOpportunity!=null&&!evaluated.staticOnly}<button class="seek-condition" onclick={()=>onSeek(evaluated.firstOpportunity!)}>▶ {evaluated.firstOpportunity.toFixed(2)} s</button>{/if}
-            {#if !activation&&evaluated?.state==='unknown'}<p class="muted">{evaluated.randomTrigger?'The random trigger is not in the replay.':evaluated.missingInputs.length?'Some required race details are missing.':'The replay cannot confirm every check.'}</p>{/if}
-          </details>
+          {#if !branched||i===branches.length-1}
+            {@const summary=branched?row?.conditionEvaluation?.branches.find(b=>usedBranches.has(b.branchIndex))??evaluated:evaluated}
+            <details class="conditions" open><summary>Conditions <span class:met={!!activation||!!usedBranches.size||summary?.state==='met'}>{activation||usedBranches.size||summary?.state==='met'?'Met':summary?.state==='unmet'?'Not met':summary?.inferredState==='met'?'Met in replay model':summary?.eligibilityState==='eligible'?'Eligible window':'Uncertain'}</span></summary>
+              <label class="condition-code"><input type="checkbox" bind:checked={showConditionCode}/>Show condition code</label>
+              {#if branched}
+                <SkillBranchGraph {skill} {skillId} {row} {runner} {race} {reference} showCode={showConditionCode} {onSeek}/>
+              {:else}
+                {#if branch.precondition}<h4>First</h4><ConditionRules expression={branch.precondition} {reference} showCode={showConditionCode} fieldSize={race.runners.length} predicates={evaluated?.predicates??[]} role="precondition" {onSeek}/><h4>Then</h4>{/if}
+                <ConditionRules expression={branch.condition} {reference} showCode={showConditionCode} fieldSize={race.runners.length} predicates={evaluated?.predicates??[]} {onSeek}/>
+                {#if evaluated?.firstOpportunity!=null&&!evaluated.staticOnly}<button class="seek-condition" onclick={()=>onSeek(evaluated.firstOpportunity!)}>▶ {evaluated.firstOpportunity.toFixed(2)} s</button>{/if}
+              {/if}
+              {#if !activation&&!usedBranches.size&&summary?.state==='unknown'}<p class="muted">{summary.randomTrigger?'The random trigger is not in the replay.':summary.missingInputs.length?'Some required race details are missing.':'The replay cannot confirm every check.'}</p>{/if}
+            </details>
+          {/if}
         </section>
       {/each}
     {:else}<p>Skill data unavailable.</p>{/if}
@@ -65,5 +74,5 @@
 </dialog>
 <style>
 .condition-code{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:var(--font-11);color:var(--muted);font-weight:400}.condition-code input{margin:0}
-dialog{padding:0;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;width:min(570px,calc(100vw - 32px));max-height:85vh;box-shadow:var(--shadow)}dialog::backdrop{background:#0009}.skill-dialog-title{display:flex;align-items:center;padding:18px 20px;border-bottom:1px solid var(--border);gap:12px}.skill-dialog-title>div{flex:1}.skill-dialog-title small{font-size:var(--font-11);color:var(--muted)}h2{margin:0 0 3px;font-size:var(--font-18)}.skill-level{margin-left:8px;color:var(--muted);font-size:var(--font-13);font-weight:650;font-variant-numeric:tabular-nums}.skill-dialog-title button{font-size:var(--font-24);background:transparent;border:0;padding:0 6px}.skill-dialog-body{padding:0 20px 18px;font-size:var(--font-12);line-height:1.6}.description{margin:16px 0;color:var(--muted)}section{padding:15px 0;border-bottom:1px solid var(--border)}h3{margin:0 0 10px;font-size:var(--font-13)}.activation-links{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.activation-links button{display:flex;align-items:center;gap:12px;padding:6px 10px;font-size:var(--font-12);background:var(--accent-soft);color:var(--accent-text,var(--accent));border:0}.activation-links small{font-size:var(--font-10)}.activation-rule,.duration{display:flex;justify-content:space-between;gap:16px;padding:9px 0}.activation-rule{border-bottom:1px solid var(--border)}.activation-rule span,.duration span{color:var(--muted)}strong{font-weight:550}.skill-effects ul{list-style:none;padding:0;margin:0;display:grid;gap:5px}.level-note{margin:8px 0 0;color:var(--muted);font-size:var(--font-11);line-height:1.45}.outcome{color:#e48087}.outcome.active{color:var(--accent-text,var(--accent))}.conditions{margin-top:9px}.conditions summary{cursor:pointer;font-weight:550}.conditions summary span{float:right;color:var(--muted);font-weight:400}.conditions summary span.met{color:var(--accent-text,var(--accent))}.conditions :global(.condition-rules){margin-top:10px}.conditions h4{margin:12px 0 0;font-size:var(--font-11);color:var(--muted)}.seek-condition{font-size:var(--font-11);margin-top:8px}.muted{font-size:var(--font-11);color:var(--muted)}footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:16px}footer button{padding:0;border:0;background:transparent;color:var(--muted);font-size:var(--font-11)}footer a{font-size:var(--font-11)}.calculated{float:right;font-size:var(--font-10);color:var(--muted);font-weight:400}
+dialog{padding:0;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;width:min(640px,calc(100vw - 32px));max-height:85vh;box-shadow:var(--shadow)}dialog::backdrop{background:#0009}.skill-dialog-title{display:flex;align-items:center;padding:18px 20px;border-bottom:1px solid var(--border);gap:12px}.skill-dialog-title>div{flex:1}.skill-dialog-title small{font-size:var(--font-11);color:var(--muted)}h2{margin:0 0 3px;font-size:var(--font-18)}.skill-level{margin-left:8px;color:var(--muted);font-size:var(--font-13);font-weight:650;font-variant-numeric:tabular-nums}.skill-dialog-title button{font-size:var(--font-24);background:transparent;border:0;padding:0 6px}.skill-dialog-body{padding:0 20px 18px;font-size:var(--font-12);line-height:1.6}.description{margin:16px 0;color:var(--muted)}section{padding:15px 0;border-bottom:1px solid var(--border)}h3{margin:0 0 10px;font-size:var(--font-13)}.activation-links{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.activation-links button{display:flex;align-items:center;gap:12px;padding:6px 10px;font-size:var(--font-12);background:var(--accent-soft);color:var(--accent-text,var(--accent));border:0}.activation-links small{font-size:var(--font-10)}.activation-rule,.duration{display:flex;justify-content:space-between;gap:16px;padding:9px 0}.activation-rule{border-bottom:1px solid var(--border)}.activation-rule span,.duration span{color:var(--muted)}strong{font-weight:550}.skill-effects ul{list-style:none;padding:0;margin:0;display:grid;gap:5px}.scale-note{display:block;margin-top:3px;color:var(--muted);font-size:var(--font-10)}.level-note{margin:8px 0 0;color:var(--muted);font-size:var(--font-11);line-height:1.45}.outcome{color:#e48087}.outcome.active{color:var(--accent-text,var(--accent))}.conditions{margin-top:9px}.conditions summary{cursor:pointer;font-weight:550}.conditions summary span{float:right;color:var(--muted);font-weight:400}.conditions summary span.met{color:var(--accent-text,var(--accent))}.conditions :global(.condition-rules){margin-top:10px}.conditions h4{margin:12px 0 0;font-size:var(--font-11);color:var(--muted)}.seek-condition{font-size:var(--font-11);margin-top:8px}.muted{font-size:var(--font-11);color:var(--muted)}footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:16px}footer button{padding:0;border:0;background:transparent;color:var(--muted);font-size:var(--font-11)}footer a{font-size:var(--font-11)}.calculated{float:right;font-size:var(--font-10);color:var(--muted);font-weight:400}
 </style>

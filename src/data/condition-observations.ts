@@ -188,7 +188,7 @@ export function conditionTimeline(race: Race, runner: Runner, course: CourseRefe
     const visible = !complete || !allLanes || d == null || s?.lane == null || vision == null ? null : others.filter(o => {
       const gap = o.distance! - d; return gap > 0 && gap <= vision && Math.abs(o.lane! - s.lane!) <= (gap / vision * 11.5 * horseLane + 2 * horseLane) / 2;
     });
-    const candidate = frontBlocked===true?true:visible == null || s?.speed == null || visible.some(o => o.speed == null) ? null : visible.some(o => {const gap=o.distance!-d!,closing=s.speed!-o.speed!;return gap>0&&gap<=20&&closing>0&&gap/closing<=15;});
+    const candidate = frontBlocked===true?true:visible == null || s?.speed == null || visible.some(o => o.speed == null) ? null : visible.some(o => {const gap=o.distance!-d!,closing=s.speed!-o.speed!;return gap>0&&gap<=20&&closing>0;});
     const targeted=!complete||!allLanes||d==null||s?.lane==null||s.speed==null?null:(()=>{let uncertain=false;for(const other of race.runners){if(other.id===runner.id)continue;const o=sample(frame,other.id);if(o?.distance==null||o.lane==null||o.speed==null){uncertain=true;continue;}const gap=d-o.distance,closing=o.speed-s.speed!;if(gap<=0||gap>20||closing<=0||gap/closing>15)continue;const ov=knownVision(race,other,frame.time,conditionStaticValues(race,other,course),reference);if(ov===null){uncertain=true;continue;}if(gap<=ov&&Math.abs(s.lane!-o.lane)<=(gap/ov*11.5*horseLane+2*horseLane)/2)return true;}return uncertain?null:false;})();
     overtakeTimer = targeted === true ? priorTargeted ? overtakeTimer + dt : 0 : 0;
     overtakeNoUpTimer = candidate === true ? priorOvertake ? overtakeNoUpTimer + dt : 0 : 0;

@@ -26,13 +26,13 @@ function applications(row:SkillRow,ref:ReferenceData):Applied[] {
   return result;
 }
 function context(rows:SkillRow[],ref:ReferenceData,time:number):EffectValueContext {
-  // No training-team, random roll, or additional-hit history is invented.
+  // No random roll or additional-hit history is invented.
   const active=rows.filter(r=>r.inferredBranches.length===1||r.activations.some(a=>a.start<time));
   return {activeGreenCount:active.some(r=>ref.metadata.skills[r.skillId]?.tagIds==null&&ref.metadata.skills[r.skillId]?.tagId==null)?null:active.filter(r=>{const definition=ref.metadata.skills[r.skillId];return (definition.tagIds??[definition.tagId??0]).some(tag=>tag>=601&&tag<=615);}).length};
 }
 function missing(e:Effect):string {
   if((e.additionalActivateType??0)!==0)return 'Additional activation count is unavailable.';
-  if(e.valueUsage>=3&&e.valueUsage<=7)return 'Training-team total is not in the replay; the maximum 1.2 tier is used.';
+  if(e.valueUsage>=3&&e.valueUsage<=7)return 'Racing-team total is not in the replay.';
   if([8,9].includes(e.valueUsage))return 'The random effect roll is unavailable.';
   return 'Effect scaling or skill level is unresolved.';
 }
@@ -61,7 +61,7 @@ export function metricsForSkill(race:Race,reference:ReferenceData|null,analysis:
     for(const e of a.effects.filter(relevant)){
       const foreign=(e.targetType??1)!==1,value=effectValue(runner,a.id,e,ec),label=(s:string)=>s+suffix;
       const why=missing(e);
-      const assumption=e.valueUsage>=3&&e.valueUsage<=7?'Training-team total is not in the replay; magnitude assumes the maximum 1.2 tier. ':
+      const assumption=e.valueUsage>=3&&e.valueUsage<=7&&value===null?'Racing-team total is not in the replay. ':
         e.valueUsage===10&&(runner.raceWinCount==null||!Number.isInteger(runner.raceWinCount)||runner.raceWinCount<0)?'Race-win count is unavailable; magnitude assumes the maximum 1.2 tier. ':
         e.valueUsage===12&&(runner.fanCount==null||!Number.isInteger(runner.fanCount)||runner.fanCount<0)?'Fan count is unavailable; magnitude assumes the maximum 1.2 tier. ':'';
       const prefix=applicationPrefix+assumption;

@@ -5377,7 +5377,7 @@
           210012
         ],
         "known": true,
-        "implementation": "unsupported-context"
+        "implementation": "implemented-captured-input"
       },
       {
         "code": 4,
@@ -5387,7 +5387,7 @@
           210022
         ],
         "known": true,
-        "implementation": "unsupported-context"
+        "implementation": "implemented-captured-input"
       },
       {
         "code": 5,
@@ -5397,7 +5397,7 @@
           210032
         ],
         "known": true,
-        "implementation": "unsupported-context"
+        "implementation": "implemented-captured-input"
       },
       {
         "code": 6,
@@ -5407,7 +5407,7 @@
           210042
         ],
         "known": true,
-        "implementation": "unsupported-context"
+        "implementation": "implemented-captured-input"
       },
       {
         "code": 7,
@@ -5417,7 +5417,7 @@
           210052
         ],
         "known": true,
-        "implementation": "unsupported-context"
+        "implementation": "implemented-captured-input"
       },
       {
         "code": 8,
@@ -16582,24 +16582,25 @@
         "210012:0"
       ],
       "calculation": {
-        "name": "Aoharu speed",
-        "semantics": "Scale by training-team total base speed.",
+        "name": "Racing-team speed",
+        "semantics": "Scale by current racing-team total base speed.",
         "formulaState": "understood",
-        "implementation": "unsupported-context",
+        "implementation": "implemented-captured-input",
         "formulas": [
           "0.8/0.9/1/1.1/1.2 at1200/1800/2600/3600 team total."
         ],
-        "metric": "Reference tiers.",
+        "metric": "Resolved magnitude when the racing team and raw speed are present.",
         "requirements": [
-          "Scenario whole-team base speed"
+          "Same-team raw speed"
         ],
         "limitations": [
-          "Racing opponents are not the training team."
+          "Missing team membership or a teammate stat remains unknown.",
+          "Installed text says racing team members; this is not a recovered native method body."
         ],
         "evidence": [
           {
-            "source": "KuromiAK, Race Mechanics notes (user-supplied snapshot)",
-            "locator": "Aoharu Skills (3–7)"
+            "source": "Bundled installed Global master skill_data and text_data categories47/48",
+            "locator": "Installed skill210011/210012 descriptions"
           }
         ]
       }
@@ -16618,24 +16619,24 @@
         "210022:0"
       ],
       "calculation": {
-        "name": "Aoharu stamina",
-        "semantics": "Scale by training-team total base stamina.",
+        "name": "Racing-team stamina",
+        "semantics": "Scale by current racing-team total base stamina.",
         "formulaState": "understood",
-        "implementation": "unsupported-context",
+        "implementation": "implemented-captured-input",
         "formulas": [
-          "Same Aoharu tier table."
+          "Same racing-team tier table."
         ],
-        "metric": "Reference tiers.",
+        "metric": "Resolved magnitude when the racing team and raw stamina are present.",
         "requirements": [
-          "Scenario whole-team stamina"
+          "Same-team raw stamina"
         ],
         "limitations": [
-          "Context not retained."
+          "Missing team membership or a teammate stat remains unknown."
         ],
         "evidence": [
           {
-            "source": "KuromiAK, Race Mechanics notes (user-supplied snapshot)",
-            "locator": "Aoharu Skills (3–7)"
+            "source": "Bundled installed Global master skill_data and text_data categories47/48",
+            "locator": "Installed skill210021/210022 descriptions"
           }
         ]
       }
@@ -16654,24 +16655,24 @@
         "210032:0"
       ],
       "calculation": {
-        "name": "Aoharu power",
-        "semantics": "Scale by training-team total base power.",
+        "name": "Racing-team power",
+        "semantics": "Scale by current racing-team total base power.",
         "formulaState": "understood",
-        "implementation": "unsupported-context",
+        "implementation": "implemented-captured-input",
         "formulas": [
-          "Same Aoharu tier table."
+          "Same racing-team tier table."
         ],
-        "metric": "Reference tiers.",
+        "metric": "Resolved magnitude when the racing team and raw power are present.",
         "requirements": [
-          "Scenario whole-team power"
+          "Same-team raw power"
         ],
         "limitations": [
-          "Context not retained."
+          "Missing team membership or a teammate stat remains unknown."
         ],
         "evidence": [
           {
-            "source": "KuromiAK, Race Mechanics notes (user-supplied snapshot)",
-            "locator": "Aoharu Skills (3–7)"
+            "source": "Bundled installed Global master skill_data and text_data categories47/48",
+            "locator": "Installed skill210031/210032 descriptions"
           }
         ]
       }
@@ -16690,24 +16691,24 @@
         "210042:0"
       ],
       "calculation": {
-        "name": "Aoharu guts",
-        "semantics": "Scale by training-team total base guts.",
+        "name": "Racing-team guts",
+        "semantics": "Scale by current racing-team total base guts.",
         "formulaState": "understood",
-        "implementation": "unsupported-context",
+        "implementation": "implemented-captured-input",
         "formulas": [
-          "Same Aoharu tier table."
+          "Same racing-team tier table."
         ],
-        "metric": "Reference tiers.",
+        "metric": "Resolved magnitude when the racing team and raw guts are present.",
         "requirements": [
-          "Scenario whole-team guts"
+          "Same-team raw guts"
         ],
         "limitations": [
-          "Context not retained."
+          "Missing team membership or a teammate stat remains unknown."
         ],
         "evidence": [
           {
-            "source": "KuromiAK, Race Mechanics notes (user-supplied snapshot)",
-            "locator": "Aoharu Skills (3–7)"
+            "source": "Bundled installed Global master skill_data and text_data categories47/48",
+            "locator": "Installed skill210041/210042 descriptions"
           }
         ]
       }
@@ -16726,24 +16727,24 @@
         "210052:0"
       ],
       "calculation": {
-        "name": "Aoharu wit",
-        "semantics": "Scale by training-team total base wit.",
+        "name": "Racing-team wit",
+        "semantics": "Scale by current racing-team total base wit.",
         "formulaState": "understood",
-        "implementation": "unsupported-context",
+        "implementation": "implemented-captured-input",
         "formulas": [
-          "Same Aoharu tier table."
+          "Same racing-team tier table."
         ],
-        "metric": "Reference tiers.",
+        "metric": "Resolved magnitude when the racing team and raw wit are present.",
         "requirements": [
-          "Scenario whole-team wit"
+          "Same-team raw wit"
         ],
         "limitations": [
-          "Context not retained."
+          "Missing team membership or a teammate stat remains unknown."
         ],
         "evidence": [
           {
-            "source": "KuromiAK, Race Mechanics notes (user-supplied snapshot)",
-            "locator": "Aoharu Skills (3–7)"
+            "source": "Bundled installed Global master skill_data and text_data categories47/48",
+            "locator": "Installed skill210051/210052 descriptions"
           }
         ]
       }

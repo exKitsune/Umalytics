@@ -24,6 +24,16 @@ const rules = [
 for (let i = 0; i < rules.length; i++) metadata.skills[800001 + i] = { name: `Synthetic rule ${i + 1}`, rarity: 1, groupId: 80000 + i, activateLot: 1, iconId: 20011,
   branches: [{ condition: rules[i], precondition: '', branchIndex: 0, rawDuration: 30000, durationUsage: 1,
     effects: [{ type: 27, rawValue: 1500, valueUsage: 1, levelUsage: 1, targetType: 1 }] }] };
+metadata.skills[800040] = { name: 'Synthetic side-block unique', rarity: 5, groupId: 80040, activateLot: 0, iconId: 20011,
+  branches: [
+    { branchIndex: 0, precondition: 'blocked_side_continuetime>=2', condition: 'accumulatetime>=5', rawDuration: 30000, durationUsage: 1,
+      effects: [{ type: 27, rawValue: 5500, valueUsage: 1, levelUsage: 1, targetType: 1 }] },
+    { branchIndex: 1, precondition: '', condition: 'accumulatetime>=5', rawDuration: 30000, durationUsage: 1,
+      effects: [{ type: 27, rawValue: 2500, valueUsage: 1, levelUsage: 1, targetType: 1 }] },
+  ] };
+metadata.skills[800041] = { name: 'Synthetic midleg side-block', rarity: 5, groupId: 80041, activateLot: 0, iconId: 20011,
+  branches: [{ branchIndex: 0, precondition: 'phase==1&blocked_side_continuetime>=2', condition: 'accumulatetime>=25', rawDuration: 30000, durationUsage: 1,
+    effects: [{ type: 27, rawValue: 5500, valueUsage: 1, levelUsage: 1, targetType: 1 }] }] };
 await writeFile(join(reference, 'metadata.json'), JSON.stringify(metadata));
 const runnerIds = Array.from({ length: 9 }, (_, i) => `fixture-${i + 1}`);
 const race = { schemaVersion: 1, title: 'Explicit synthetic condition workflow', synthetic: true, distance: 2400, courseId: 10606, category: 'practice',
@@ -132,5 +142,82 @@ assert.equal(act.raceHorse[0].trained_chara_data.trained_chara_id, 998877); asse
 assert.equal(act.raceHorse[0].responseHorseData.viewer_id, 'PRIVATE_OWNER');
 assert.equal(act.raceHorse[0].trained_chara_data.viewer_id, 'PRIVATE_OWNER');
 assert.ok(JSON.stringify(act).includes('998877'));
+const sideIds = ['side-1', 'side-2'];
+const sideRace = { schemaVersion: 1, title: 'Synthetic side-block timer', synthetic: true, distance: 2400, courseId: 10606, category: 'practice',
+  grade: 100, conditions: { ground: '2', weather: '1', season: '4', timeOfDay: '4' },
+  runners: sideIds.map((id, i) => ({ id, gate: i + 1, name: `Side ${i + 1}`, charaId: 1001 + i, cardId: (1001 + i) * 100 + 1,
+    popularity: i + 1, teamGroup: 1, strategyCode: 3, mood: 3, finishOrder: i + 1, finishTimeRaw: 120, finishTime: 120,
+    stats: { speed: 1000, stamina: 1000, power: 1000, guts: 600, wisdom: 600 }, aptitudes: { turf: 7, middle: 7, late: 7 },
+    skills: i === 0 ? [{ id: 800040, level: 1 }] : [] })),
+  frames: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 10].map(time => ({ time, runners: sideIds.map((runnerId, i) => ({
+    runnerId, distance: 20 * time + i * 0.3, speed: 20, hp: 1000, lane: 0.2 + i * 0.02, temptationMode: 0, blockFrontRunnerIndex: -1 })) })),
+  events: [{ time: 6, type: 3, runnerId: sideIds[0], skillId: 800040, label: 'Synthetic side-block unique', params: [0, 800040, 30000, 0] }],
+  warnings: ['Synthetic public workflow. No private game capture.'] };
+const sideInput = join(folder, 'side-block.json'), sideOutput = join(folder, 'side-block-analysis.json');
+await writeFile(sideInput, JSON.stringify(sideRace));
+await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/analyze-race.ts'), sideInput, sideOutput, '--reference-dir', reference], { cwd: root, windowsHide: true, timeout: 30000 });
+const sideBranch = JSON.parse(await readFile(sideOutput, 'utf8'))[0].analysis.runners[sideIds[0]].skillRows.find((r: any) => r.skillId === 800040).conditionEvaluation.branches[0];
+const sideTimer = sideBranch.predicates.find((p: any) => p.expression === 'blocked_side_continuetime>=2');
+assert.equal(sideBranch.state, 'met');
+assert.equal(sideTimer.state, 'met');
+assert.equal(sideTimer.time, 2);
+assert.match(sideTimer.observed, /Reconstructed timer 2\.00 s/);
+const missRace = structuredClone(sideRace);
+for (const frame of missRace.frames) frame.runners[1].distance += 20;
+const missInput = join(folder, 'side-block-miss.json'), missOutput = join(folder, 'side-block-miss-analysis.json');
+await writeFile(missInput, JSON.stringify(missRace));
+await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/analyze-race.ts'), missInput, missOutput, '--reference-dir', reference], { cwd: root, windowsHide: true, timeout: 30000 });
+const missBranch = JSON.parse(await readFile(missOutput, 'utf8'))[0].analysis.runners[sideIds[0]].skillRows.find((r: any) => r.skillId === 800040).conditionEvaluation.branches[0];
+const missTimer = missBranch.predicates.find((p: any) => p.expression === 'blocked_side_continuetime>=2');
+assert.equal(missBranch.state, 'met');
+assert.equal(missTimer.state, 'unmet');
+assert.match(missTimer.observed, /Reconstructed timer 0\.00 s/);
+assert.doesNotMatch(missTimer.observed, /Recorded activation/);
+const midRace = { schemaVersion: 1, title: 'Synthetic midleg side-block conjunction', synthetic: true, distance: 2400, courseId: 10606, category: 'practice',
+  grade: 100, conditions: { ground: '2', weather: '1', season: '4', timeOfDay: '4' },
+  runners: sideIds.map((id, i) => ({ id, gate: i + 1, name: `Side ${i + 1}`, charaId: 1001 + i, cardId: (1001 + i) * 100 + 1,
+    popularity: i + 1, teamGroup: 1, strategyCode: 3, mood: 3, finishOrder: i + 1, finishTimeRaw: 30, finishTime: 30,
+    stats: { speed: 1000, stamina: 1000, power: 1000, guts: 600, wisdom: 600 }, aptitudes: { turf: 7, middle: 7, late: 7 },
+    skills: i === 0 ? [{ id: 800041, level: 1 }] : [] })),
+  frames: [0, 5, 10, 15, 21, 26, 30].map(time => ({ time, runners: sideIds.map((runnerId, i) => ({
+    runnerId, distance: 20 * time + i * 0.3, speed: 20, hp: 1000, lane: 0.2 + i * 0.02, temptationMode: 0, blockFrontRunnerIndex: -1 })) })),
+  events: [{ time: 26, type: 3, runnerId: sideIds[0], skillId: 800041, label: 'Synthetic midleg side-block', params: [0, 800041, 30000, 0] }],
+  warnings: ['Synthetic public workflow. No private game capture.'] };
+const midInput = join(folder, 'midleg-side-block.json'), midOutput = join(folder, 'midleg-side-block-analysis.json');
+await writeFile(midInput, JSON.stringify(midRace));
+await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/analyze-race.ts'), midInput, midOutput, '--reference-dir', reference], { cwd: root, windowsHide: true, timeout: 30000 });
+const midBranch = JSON.parse(await readFile(midOutput, 'utf8'))[0].analysis.runners[sideIds[0]].skillRows.find((r: any) => r.skillId === 800041).conditionEvaluation.branches[0];
+const midTimer = midBranch.predicates.find((p: any) => p.expression === 'blocked_side_continuetime>=2');
+const midPhase = midBranch.predicates.find((p: any) => p.expression === 'phase==1');
+assert.equal(midBranch.state, 'met');
+assert.equal(midTimer.state, 'met');
+assert.equal(midPhase.state, 'met');
+assert.equal(midTimer.time, midPhase.time);
+assert.equal(midTimer.time, 21, 'AND with phase==1 uses the first midleg sample, not the opening-leg timer crossing');
+assert.match(midTimer.observed, /Reconstructed timer 2[0-9]/);
+const styleRace = { schemaVersion: 1, title: 'Synthetic pace-or-late overtake', synthetic: true, distance: 2400, courseId: 10606, category: 'practice',
+  grade: 100, conditions: { ground: '2', weather: '1', season: '4', timeOfDay: '4' },
+  runners: sideIds.map((id, i) => ({ id, gate: i + 1, name: `Style ${i + 1}`, charaId: 1001 + i, cardId: (1001 + i) * 100 + 1,
+    popularity: i + 1, teamGroup: 1, strategyCode: i === 0 ? 2 : 4, mood: 3, finishOrder: i + 1, finishTimeRaw: 80, finishTime: 80,
+    stats: { speed: 1000, stamina: 1000, power: 1000, guts: 600, wisdom: 600 }, aptitudes: { turf: 7, middle: 7, pace: 7 },
+    skills: i === 0 ? [{ id: 800042, level: 1 }] : [] })),
+  frames: [0, 40, 70, 80].map(time => ({ time, runners: sideIds.map((runnerId, i) => ({
+    runnerId, distance: (time === 0 ? 0 : 20 * time) + (i === 0 ? 0 : 8), speed: i === 0 ? 21 : 19, hp: 1000, lane: 0.3, temptationMode: 0, blockFrontRunnerIndex: -1 })) })),
+  events: [{ time: 72, type: 3, runnerId: sideIds[0], skillId: 800042, label: 'Synthetic hot pursuit', params: [0, 800042, 24000, 0] }],
+  warnings: ['Synthetic public workflow. No private game capture.'] };
+metadata.skills[800042] = { name: 'Synthetic pace or late', rarity: 2, groupId: 80042, activateLot: 1, iconId: 20012,
+  branches: [{ branchIndex: 0, precondition: '', condition: 'running_style==2&distance_rate>=50&is_overtake==1@running_style==3&distance_rate>=50&is_overtake==1', rawDuration: 24000, durationUsage: 1,
+    effects: [{ type: 27, rawValue: 3500, valueUsage: 1, levelUsage: 1, targetType: 1 }] }] };
+await writeFile(join(reference, 'metadata.json'), JSON.stringify(metadata));
+const styleInput = join(folder, 'style-or.json'), styleOutput = join(folder, 'style-or-analysis.json');
+await writeFile(styleInput, JSON.stringify(styleRace));
+await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/analyze-race.ts'), styleInput, styleOutput, '--reference-dir', reference], { cwd: root, windowsHide: true, timeout: 30000 });
+const styleBranch = JSON.parse(await readFile(styleOutput, 'utf8'))[0].analysis.runners[sideIds[0]].skillRows.find((r: any) => r.skillId === 800042).conditionEvaluation.branches[0];
+const styleOf = (expression: string) => styleBranch.predicates.find((p: any) => p.expression === expression);
+assert.equal(styleOf('running_style==2').state, 'met');
+assert.equal(styleOf('running_style==3').state, 'unmet');
+assert.equal(styleOf('is_overtake==1').state, 'met');
+assert.doesNotMatch(styleOf('running_style==3').observed ?? '', /Recorded activation/);
+assert.doesNotMatch(styleOf('is_overtake==1').observed ?? '', /Recorded activation/);
 console.log(JSON.stringify({ globalSkills: coverage.skills, globalBranches: coverage.branches, predicateKeys: coverage.predicateKeys, understoodKeys: coverage.understoodKeys, partialKeys: coverage.partialKeys,
   syntaxCoverage: 'complete', observedHistory: 'passed', randomWindowSeparation: 'passed', lotteryCauseSeparation: 'passed', spatialProxies: 'passed', rankContinuity: 'passed', eventOrder: 'passed', captureContext: 'passed', privacy: 'passed', portable: 'passed', rawExport: 'passed' }));

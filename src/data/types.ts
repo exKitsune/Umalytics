@@ -28,6 +28,8 @@ export interface Runner {
   charaId: number | null;
   cardId: number | null;
   trainer: string | null;
+  /** Account id captured on the horse; displayed with the trainer, never used as a secret. */
+  trainerId?: string | null;
   strategy: string | null;
   /** One based, unlike the zero based value in the binary scenario. */
   finishOrder: number | null;
@@ -48,6 +50,8 @@ export interface Runner {
   popularity?: number | null;
   /** Anonymous within-race team ordinal, remapped from raw team membership. */
   teamGroup?: number | null;
+  /** Sum of raw stats for the current racing team. Used by Spirit / valueUsage 3–7. */
+  teamStatTotals?: RunnerStats;
   /** Explicit NPC/player class only; no viewer/owner identifier is retained. */
   isNpc?: boolean | null;
   /** Original game's motivation code, not a simulator mood conversion. */

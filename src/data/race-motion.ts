@@ -180,7 +180,7 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
       // Lane movement does not use its raw magnitude in the speed equation. An
       // unresolved team-stat scale must not blank the whole simulated line.
       if(effect.type===28){if(effect.end!==null&&!effect.unknownRecipient)laneEffect=true;continue;}
-      if(effect.raw.valueUsage>=3&&effect.raw.valueUsage<=7||effect.raw.valueUsage===10&&effect.source.raceWinCount==null||effect.raw.valueUsage===12&&effect.source.fanCount==null)assumptions.push('Scenario scaling uses the maximum 1.2 tier when the replay has no training-team, win, or fan total.');
+      if(effect.raw.valueUsage===10&&effect.source.raceWinCount==null||effect.raw.valueUsage===12&&effect.source.fanCount==null)assumptions.push('Scenario scaling uses the maximum 1.2 tier when the replay has no win or fan total.');
       if(effect.raw.valueUsage===14||(effect.raw.additionalActivateType??0)!==0){
         if(effect.raw.additionalActivateType===1)assumptions.push('Additional overtake increments use sampled interpolated crossings; hidden between-sample passes are not recovered.');
         value=resolvedValue(effect,time,excluded);

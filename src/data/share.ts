@@ -53,8 +53,9 @@ export function toShareableRace(race: Race) {
 
 /** Portable normalized race document retaining all supported telemetry and metadata. */
 export function toPortableRace(race: Race) {
+  const shared = toShareableRace(race);
   return {
-    ...toShareableRace(race),
+    ...shared,
     title: race.title,
     randomSeed: race.randomSeed,
     events: race.events.map(e => ({ time: e.time, type: e.type,
@@ -62,6 +63,11 @@ export function toPortableRace(race: Race) {
       skillId: e.skillId, label: e.label, params: e.params.slice(),
     })),
     warnings: race.warnings.slice(),
+    runners: race.runners.map((r, index) => ({
+      ...shared.runners[index],
+      trainer: r.trainer,
+      trainerId: r.trainerId,
+    })),
     ...portableRawFields(race),
   };
 }

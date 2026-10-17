@@ -113,6 +113,11 @@ test('all Global conditions have replay evaluation and explicit source evidence'
   assert.equal(report.globalSkills,734);assert.equal(report.globalBranches,788);assert.equal(report.predicateKeys,100);
   for(const key of ['wholeCatalog','sourceAudit','specificSkillHistory','inferenceBoundaries','visionTiming'])assert.equal(report[key],'passed');
 });
+test('racing-team totals and observed skill branches are explicit',async t=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/skill-presentation-workflow.ts')],{cwd:root,windowsHide:true,timeout:15000});
+  const report=JSON.parse(result.stdout.trim());
+  for(const key of ['racingTeamScale','trainerTeams','observedBranch'])assert.equal(report[key],'passed');
+});
 test('non-motion skill metrics survive whole-file analysis and portable export',async t=>{
   const folder=await workspace(t);
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/skill-metrics-workflow.ts'),folder],{cwd:root,windowsHide:true,timeout:60000});

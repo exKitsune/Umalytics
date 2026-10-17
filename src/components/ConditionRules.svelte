@@ -8,25 +8,13 @@
   export let fieldSize:number|undefined=undefined;
   export let predicates:PredicateExplanation[]=[];
   export let role:'condition'|'precondition'='condition';
+  export let onSeek:((time:number)=>void)|undefined=undefined;
   const evidence=(atom:string)=>predicates.find(p=>p.expression===atom.trim()&&(!p.role||p.role==='both'||p.role===role));
   function explain(atom:string){
     const rank=explainFieldRankCondition(atom,fieldSize);if(rank)return rank;
     const match=atom.trim().match(/^(\w+)(==|!=|>=|<=|>|<)(-?\d+(?:\.\d+)?)$/);
     if(!match)return explainConditionPredicate(atom);
     const [,key,op,raw]=match,value=Number(raw);
-    const enums:Record<string,Record<number,string>>={
-      running_style:{1:'Front Runner (including Runaway)',2:'Pace Chaser',3:'Late Surger',4:'End Closer'},
-      ground_type:{1:'Turf',2:'Dirt'},distance_type:{1:'Sprint',2:'Mile',3:'Medium',4:'Long'},
-      weather:{1:'Sunny',2:'Cloudy',3:'Rainy',4:'Snowy'},ground_condition:{1:'Firm',2:'Good',3:'Soft',4:'Heavy'},
-      season:{1:'Spring',2:'Summer',3:'Autumn',4:'Winter',5:'Cherry blossom season'},motivation:{1:'Awful mood',2:'Bad mood',3:'Normal mood',4:'Good mood',5:'Great mood'},
-      phase:{0:'Opening leg',1:'Middle leg',2:'Final leg',3:'Last spurt'},
-      lane_type:{0:'Inner lane (≤ 0.2)',1:'Middle lane (> 0.2–0.4)',2:'Outer lane (> 0.4–0.6)',3:'Outside lane (> 0.6)'},
-      is_move_lane:{1:'Moved toward the inner fence',2:'Moved away from the inner fence'},
-      rotation:{1:'Right-handed course',2:'Left-handed course'},
-      time:{0:'Any time of day',1:'Morning',2:'Daytime',3:'Evening',4:'Night'},
-      straight_front_type:{1:'Home straight',2:'Back straight'},
-      lastspurt:{0:'Not enough HP to finish at base speed',1:'Enough HP for a reduced final spurt',2:'Enough HP for a full-speed final spurt'},
-    };
     if((op==='=='||op==='!=')&&enums[key]?.[value])return `${op==='!='?'Not ':''}${enums[key][value]}.`;
     if(key==='always'&&op==='=='&&value===1)return 'Always satisfied.';
     if(key==='track_id'&&['==','!='].includes(op))return `${op==='!='?'Not ':''}${reference?.metadata.trackNames[value]??`Course ${raw}`}.`;
@@ -54,15 +42,40 @@
     if(names[key])return `${names[key]} ${({ '==':'=', '!=':'≠','>=':'≥','<=':'≤','>':'>','<':'<' } as Record<string,string>)[op]} ${raw}${['hp_per','order_rate','distance_rate'].includes(key)?'%':key==='remain_distance'?' m':key==='accumulatetime'?' s':''}.`;
     return explainConditionPredicate(atom);
   }
+  const enums:Record<string,Record<number,string>>={
+      running_style:{1:'Front Runner (including Runaway)',2:'Pace Chaser',3:'Late Surger',4:'End Closer'},
+      ground_type:{1:'Turf',2:'Dirt'},distance_type:{1:'Sprint',2:'Mile',3:'Medium',4:'Long'},
+      weather:{1:'Sunny',2:'Cloudy',3:'Rainy',4:'Snowy'},ground_condition:{1:'Firm',2:'Good',3:'Soft',4:'Heavy'},
+      season:{1:'Spring',2:'Summer',3:'Autumn',4:'Winter',5:'Cherry blossom season'},motivation:{1:'Awful mood',2:'Bad mood',3:'Normal mood',4:'Good mood',5:'Great mood'},
+      phase:{0:'Opening leg',1:'Middle leg',2:'Final leg',3:'Last spurt'},
+      lane_type:{0:'Inner lane (≤ 0.2)',1:'Middle lane (> 0.2–0.4)',2:'Outer lane (> 0.4–0.6)',3:'Outside lane (> 0.6)'},
+      is_move_lane:{1:'Moved toward the inner fence',2:'Moved away from the inner fence'},
+      rotation:{1:'Right-handed course',2:'Left-handed course'},
+      time:{0:'Any time of day',1:'Morning',2:'Daytime',3:'Evening',4:'Night'},
+      straight_front_type:{1:'Home straight',2:'Back straight'},
+      lastspurt:{0:'Not enough HP to finish at base speed',1:'Enough HP for a reduced final spurt',2:'Enough HP for a full-speed final spurt'},
+    };
+  const simpleTrue=(item?:PredicateExplanation)=>item?.state==='met'&&(item.observed==='Rule satisfied.'||/^Value /.test(item.observed??''));
+  function recordedAs(atom:string,item?:PredicateExplanation){
+    const value=item?.state==='unmet'?item.observed?.match(/^Value (\d+)\.$/):null;
+    const key=atom.trim().match(/^(\w+)/)?.[1]??'';
+    return value?enums[key]?.[Number(value[1])]??null:null;
+  }
+  function observedTime(item:PredicateExplanation){
+    if(item.time==null)return '';
+    return item.time.toFixed(2)+' s';
+  }
 </script>
 <div class="condition-rules">
   {#each expression.split('@') as alternative,i}
     {#if i}<span class="condition-or">or</span>{/if}
-    <div class="condition-group">{#each alternative.split('&').filter(Boolean) as atom}{@const item=evidence(atom)}<div class="rule">{#if item?.state}<span class="predicate-state" class:met={item.state==='met'} class:unmet={item.state==='unmet'} title={`${item.observed??''}${item.time!=null?` At ${item.time.toFixed(2)} s.`:''}`} aria-label={item.state==='met'?'Condition met':item.state==='unmet'?'Condition not met':'Condition uncertain'}>{item.state==='met'?'✓':item.state==='unmet'?'×':'?'}</span>{/if}<div>{explain(atom)}{#if showCode}<code>{atom}</code>{/if}</div></div>{:else}<div>No additional condition.</div>{/each}</div>
+    <div class="condition-group">{#each alternative.split('&').filter(Boolean) as atom}{@const item=evidence(atom)}<div class="rule">{#if item?.state}<span class="predicate-state" class:met={item.state==='met'} class:unmet={item.state==='unmet'} title={`${item.observed??''}${item.time!=null?` At ${item.time.toFixed(2)} s.`:''}`} aria-label={item.state==='met'?'Condition met':item.state==='unmet'?'Condition not met':'Condition uncertain'}>{item.state==='met'?'✓':item.state==='unmet'?'×':'?'}</span>{/if}<div>{explain(atom)}{#if item?.state==='met'&&simpleTrue(item)}<small class="observed">{#if item.time!=null}True at {#if onSeek}<button type="button" class="seek-pred" onclick={()=>onSeek(item.time!)}>{observedTime(item)}</button>{:else}{observedTime(item)}{/if}{:else}True{/if}</small>{:else if recordedAs(atom,item)}<small class="observed">Recorded as {recordedAs(atom,item)}.</small>{:else if item?.observed}<small class="observed">{item.observed}{#if item.time!=null}{#if onSeek} · <button type="button" class="seek-pred" onclick={()=>onSeek(item.time!)}>{observedTime(item)}</button>{:else} · {observedTime(item)}{/if}{/if}</small>{/if}{#if showCode}<code>{atom}</code>{/if}</div></div>{:else}<div>No additional condition.</div>{/each}</div>
   {/each}
 </div>
 <style>
   .condition-rules{background:var(--bg);border-radius:5px;padding:10px 12px}.condition-group{display:grid;gap:6px;font-size:var(--font-11);line-height:1.5;color:var(--muted)}.condition-or{display:block;margin:8px 0;color:var(--accent-text,var(--accent));font-size:var(--font-11)}
   code{display:block;margin-top:3px;color:var(--text);font-size:var(--font-11);overflow-wrap:anywhere}
   .rule{display:flex;gap:8px;align-items:flex-start}.predicate-state{width:13px;flex-shrink:0;font-weight:700;color:var(--muted)}.predicate-state.met{color:var(--accent-text,var(--accent))}.predicate-state.unmet{color:#e48087}
+  .observed{display:block;margin-top:2px;font-size:var(--font-10);color:var(--text)}
+  .seek-pred{padding:0;border:0;background:transparent;color:var(--accent-text,var(--accent));font:inherit;cursor:pointer}
 </style>
