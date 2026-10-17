@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { importRace, parseRaceJson, sampleAt, createDemoRace } from './data';
+  import { importRace, parseRaceJson, sampleAt } from './data';
   import type { Race, RaceCategory } from './data/types';
   import { toPortableRace } from './data/share';
   import { loadReferenceData, getCourse, runnerName, runnerOutfit, skillName, type ReferenceData } from './data/reference';
@@ -45,6 +45,11 @@
   let race: Race|null = null;
   let activeId = '';
   let pendingRemoval = '';
+  let pendingCertRemoval = false;
+  let downloadPromptOpen = false;
+  let dropActive = false;
+  let dragDepth = 0;
+  const DOWNLOAD_URL = 'https://github.com/exKitsune/Umalytics/releases/latest';
   let selected = '';
   let time = 0;
   let playing = false;
@@ -97,10 +102,12 @@
   });
   $: collecting = health?.proxy?.state==='running' && settings.collectionEnabled && certificate?.trusted;
   $: gameConnected=health?.proxy?.gameConnected===true;
+  $: setupSettled=totalRemote>0||library.some(e=>!e.synthetic&&(!!e.remoteId||e.id.startsWith('capture-')));
+  $: setupAttention=desktopSession&&!setupSettled;
   $: collectorLabel = !health || health.mode!=='desktop' ? 'Local viewer' : !settings.collectionEnabled ? 'Collection paused' : !certificate?.trusted ? 'Certificate needed' : gameConnected ? 'Game connected' : health.proxy?.state==='running' ? 'Ready · waiting for game' : health.proxy?.state==='starting' ? 'Starting collector' : 'Collector offline';
   function modalFocus(node:HTMLElement) {
     previousFocus=document.activeElement as HTMLElement;node.focus();
-    const handler=(e:KeyboardEvent)=>{if(e.key==='Escape'){settingsOpen=false;return;}if(e.key!=='Tab')return;const elements=Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),[tabindex="0"]'));const first=elements[0],last=elements.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===node)){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}};
+    const handler=(e:KeyboardEvent)=>{if(e.key==='Escape'){closeSettings();return;}if(e.key!=='Tab')return;const elements=Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),[tabindex="0"]'));const first=elements[0],last=elements.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===node)){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}};
     node.addEventListener('keydown',handler);return {destroy(){node.removeEventListener('keydown',handler);previousFocus?.focus()}};
   }
   $: document.documentElement.dataset.theme = theme;
@@ -137,7 +144,6 @@
       if(!entry.remoteId&&entry.id.startsWith('local-')){if(desktopSession)throw new Error('Wait for the desktop library to finish moving your saved races.');await deleteSavedRace(entry.id);}
       library=library.filter(item=>item.id!==entry.id&&!item.id.startsWith(`${entry.id}:`));
       if(activeId===entry.id||activeId.startsWith(`${entry.id}:`)){race=null;activeId='';selected='';}
-      tell('Race removed.');
     } catch(e){error=String(e);}
   }
   async function selectEntry(entry:LibraryEntry) {
@@ -150,10 +156,18 @@
   }
   function sidebarCourse(entry:LibraryEntry){const caption=courseCaption(entry.race??entry,reference,courseAssignments[entry.id]);return caption.replace(/\s*[·]?\s*\d[\d,]*\s*m\b/i,'').replace(/^[\s·]+|[\s·]+$/g,'');}
   function sidebarDistance(entry:LibraryEntry){const id=courseAssignments[entry.id]??entry.race?.courseId??entry.courseId;return (id?reference?.courses[id]?.distance:null)??entry.race?.distance??entry.distance;}
-  async function importFiles(files:FileList|null) {
-    if(!files)return;importing=true;error='';let count=0;
-    try {if(desktopSession&&(!storageReady||!health?.csrfToken))throw new Error('Desktop library is unavailable. Your file has not been imported; try again when it reconnects.');for(const file of Array.from(files)){if(file.size>64*1024*1024)throw new Error(`${file.name} exceeds 64 MB.`);const parsed=await importRace(await file.arrayBuffer(),file.name);for(const r of parsed){const entry=desktopSession?await saveDesktopRace(r,health!.csrfToken!):await saveRace(r);merge([entry]);setRace(r,entry.id);count++;}}tell(`Imported ${count} race${count===1?'':'s'}.`);}catch(e){error=String(e)}finally{importing=false;if(input)input.value='';}
+  async function importFiles(files:FileList|File[]|null) {
+    if(!files||!files.length)return;
+    const picked=Array.from(files).filter(file=>/\.(json|jsonl|msgpack|mpk|har)$/i.test(file.name));
+    if(!picked.length){error='Drop a race JSON file.';return;}
+    importing=true;error='';let count=0;
+    try {if(desktopSession&&(!storageReady||!health?.csrfToken))throw new Error('Desktop library is unavailable. Your file has not been imported; try again when it reconnects.');for(const file of picked){if(file.size>64*1024*1024)throw new Error(`${file.name} exceeds 64 MB.`);const parsed=await importRace(await file.arrayBuffer(),file.name);for(const r of parsed){const entry=desktopSession?await saveDesktopRace(r,health!.csrfToken!):await saveRace(r);merge([entry]);setRace(r,entry.id);count++;}}tell(`Imported ${count} race${count===1?'':'s'}.`);}catch(e){error=String(e)}finally{importing=false;if(input)input.value='';}
   }
+  function isFileDrag(e:DragEvent){return !!e.dataTransfer&&[...e.dataTransfer.types].includes('Files');}
+  function onDragEnter(e:DragEvent){if(!isFileDrag(e))return;e.preventDefault();dragDepth++;dropActive=true;}
+  function onDragOver(e:DragEvent){if(!isFileDrag(e))return;e.preventDefault();e.dataTransfer!.dropEffect='copy';dropActive=true;}
+  function onDragLeave(e:DragEvent){if(!isFileDrag(e))return;dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)dropActive=false;}
+  function onDrop(e:DragEvent){e.preventDefault();dragDepth=0;dropActive=false;void importFiles(e.dataTransfer?.files??null);}
   function download(text:string,name:string) {const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   async function saveJsonFile(filename:string,content:string,label:string) {
     try {if(health?.mode==='desktop'&&health.csrfToken){const saved=await saveDesktopExport(filename,content,health.csrfToken);tell(saved.revealed?`${label} saved · shown in Explorer.`: `${label} saved: ${saved.path}`);}else{download(content,filename);tell(`${label} downloaded.`);}}catch(e){error=String(e)}
@@ -168,7 +182,9 @@
     if(!uma?.json){error=uma?.missing.length?`Uma JSON needs ${uma.missing.join(', ')}.`:'Uma JSON is unavailable.';return;}
     await saveJsonFile(umaDownloadName(runner,analysisRace,reference),uma.json,'Uma JSON');
   }
-  function openSettings(){exportDraft=settings.exportDirectory??'';settingsOpen=true;}
+  function openSettings(){exportDraft=settings.exportDirectory??'';pendingCertRemoval=false;message='';settingsOpen=true;}
+  function closeSettings(){settingsOpen=false;pendingCertRemoval=false;}
+  function requestAutoCollection(){if(desktopSession)openSettings();else downloadPromptOpen=true;}
   async function revealFolder(target:'data'|'exports') {
     if(!health?.csrfToken)return;
     try{const saved=await revealDesktop(target,health.csrfToken);tell(saved.revealed?'Opened in Explorer.':saved.path);}catch(e){error=String(e)}
@@ -177,7 +193,7 @@
     await updateSettings({exportDirectory:path});
     exportDraft=settings.exportDirectory??'';
   }
-  async function uninstallCertificate() {if(!certificate?.sha256||!health?.csrfToken)return;busy=true;try{await api('certificate/uninstall',{sha256:certificate.sha256},health.csrfToken);await refreshCertificate();tell('Capture certificate removed.');}catch(e){error=String(e)}finally{busy=false}}
+  async function uninstallCertificate() {if(!certificate?.sha256||!health?.csrfToken)return;busy=true;try{await api('certificate/uninstall',{sha256:certificate.sha256},health.csrfToken);pendingCertRemoval=false;await refreshCertificate();tell('Capture certificate removed.');}catch(e){error=String(e)}finally{busy=false}}
   async function installAvailableUpdate() {
     const current=health;if(!current?.csrfToken)return;openSettings();busy=true;
     try{health={...current,update:await api('update/install',{},current.csrfToken)};tell('Installing update…');}catch(e){error=String(e)}finally{busy=false}
@@ -199,7 +215,6 @@
     }catch(e){error=String(e);}
   }
   async function copy(text:string,success:string) {try{await navigator.clipboard.writeText(text);tell(success)}catch{error='Clipboard is unavailable. Use the download button instead.'}}
-  async function demo() {const r=createDemoRace();r.courseId=10606;r.category='practice';setRace(r,'demo');tell('Sample race · invented data, Tokyo 2400 m.');}
   async function loadPage(offset=0) {
     const page=await api<{races:{id:string;title?:string;category?:RaceCategory;receivedAt:string;filename:string;courseId?:number|null;distance?:number|null;conditions?:Race['conditions'];raceInstanceId?:number;sha256?:string;courseIdentity?:Race['courseIdentity']}[];total:number;nextOffset:number|null}>(`races?summary=1&limit=200&offset=${offset}`);
     const entries=page.races.map(r=>({id:r.id.startsWith('local-')?r.id:`capture-${r.id}`,remoteId:r.id,title:r.title??r.filename,category:r.category,receivedAt:r.receivedAt,courseId:r.courseId,distance:r.distance,conditions:r.conditions,raceInstanceId:r.raceInstanceId,sha256:r.sha256,courseIdentity:r.courseIdentity}));
@@ -224,7 +239,7 @@
   async function installCertificate() {if(!certificate?.sha256||!health?.csrfToken)return;busy=true;try{await api('certificate/install',{sha256:certificate.sha256},health.csrfToken);await refreshCertificate();}catch(e){error=String(e)}finally{busy=false}}
   function seek(t:number) {time=Math.max(0,Math.min(race?.duration??0,t));}
   function togglePlay(){if(!race)return;if(time>=race.duration)time=0;playing=!playing;}
-  function keydown(e:KeyboardEvent){if(e.defaultPrevented||settingsOpen||skillDetail!==null||(e.target instanceof HTMLElement&&['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)))return;if(e.code==='Space'){e.preventDefault();togglePlay();}else if(e.code==='ArrowRight'){seek(time+1)}else if(e.code==='ArrowLeft'){seek(time-1)}}
+  function keydown(e:KeyboardEvent){if(downloadPromptOpen){if(e.key==='Escape')downloadPromptOpen=false;return;}if(e.defaultPrevented||settingsOpen||skillDetail!==null||(e.target instanceof HTMLElement&&['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)))return;if(e.code==='Space'){e.preventDefault();togglePlay();}else if(e.code==='ArrowRight'){seek(time+1)}else if(e.code==='ArrowLeft'){seek(time-1)}}
   function dismissPopups(event:PointerEvent){analysisClient.interacting();const node=event.target as HTMLElement|null;if(!node)return;if(pendingRemoval&&!node.closest('.race-delete'))pendingRemoval='';if(showCoursePicker&&!node.closest('.course-choice,.course-picker'))showCoursePicker=false;}
   onMount(()=>{
     let cancelled=false;
@@ -235,12 +250,14 @@
     return()=>{cancelled=true;disposed=true;analysisClient.dispose();clearInterval(timer);clearInterval(healthTimer);cancelAnimationFrame(animation);hydrateCaptions.dispose()};
   });
 </script>
-<svelte:window onkeydown={keydown} onpointerdown={dismissPopups} onpointermove={e=>{if(e.buttons)analysisClient.interacting();}} onwheel={()=>analysisClient.interacting()}/>
+<svelte:window onkeydown={keydown} onpointerdown={dismissPopups} onpointermove={e=>{if(e.buttons)analysisClient.interacting();}} onwheel={()=>analysisClient.interacting()} ondragenter={onDragEnter} ondragover={onDragOver} ondragleave={onDragLeave} ondrop={onDrop}/>
 <input class="file-input" bind:this={input} type="file" accept=".json,.jsonl,.msgpack,.mpk,.har" multiple onchange={e=>importFiles(e.currentTarget.files)}/>
 <div class="app-shell">
+  {#if dropActive}<div class="drop-overlay" aria-hidden="true"><strong>Drop race JSON</strong><span>It will be imported into this library</span></div>{/if}
   <aside class="sidebar">
     <div class="brand"><span class="brand-mark">u<span>↗</span></span><div>Umalytics<small>RACE WORKSPACE</small></div></div>
     <button class="primary import-button" onclick={()=>input.click()} disabled={importing}>＋ Import race JSON</button>
+    <p class="import-hint">or drop a race JSON anywhere in this window</p>
     <div class="library-heading"><span>RACE LIBRARY</span><span>{visible.length} / {Math.max(library.length,totalRemote)}</span></div>
     <input class="search" type="search" placeholder="Search races…" aria-label="Search races" bind:value={search}/>
     <div class="filter-chips"><button class:active={filter==='all'} onclick={()=>filter='all'}>All</button>{#each categories as c}<button class:active={filter===c.id} title={c.label} onclick={()=>filter=c.id}><i style={`background:${c.color}`}></i>{c.short}</button>{/each}</div>
@@ -253,7 +270,7 @@
         {@const entryInferred=!manuallySelected&&((entry.race?.courseIdentity??entry.courseIdentity)?.source==='skill-conditions'||!!inference?.trackId||!!inference?.courseId)}
         <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span>{date(entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title={inference?.evidence.join('\n')??'Course inferred from skills in the imported race.'}>Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" aria-label={`Remove ${courseCaption(entry.race??entry,reference,courseAssignments[entry.id])}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>
       {/each}
-      {#if !visible.length}<div class="library-empty">Your races will appear here.<br/>Import JSON or enable collection.</div>{/if}
+      {#if !visible.length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
       {#if historyLoading}<small role="status">Loading history…</small>{:else if nextOffset!==null}<button class="load-more" onclick={loadHistory}>Load older races</button>{/if}
     </div>
     <div class="sidebar-bottom"><label class="check"><input type="checkbox" bind:checked={following}/> Follow new races</label>{#if health?.update?.availableVersion}<button class="primary sidebar-update" onclick={installAvailableUpdate} disabled={!health.csrfToken||busy}>{health.update.phase==='downloading'||health.update.phase==='restarting'?'Updating…':health.update.phase==='waiting-for-game'?'Update waiting':'Update'}</button>{/if}<button onclick={openSettings}><span>⚙</span> Settings</button></div>
@@ -281,16 +298,92 @@
         {#if runner&&selectedReady}<div class="analysis-side"><RunnerPanel {runner} race={analysisRace} {course} {reference} {analysis} {time} sample={selectedSample} gap={selectedGap} onSkill={id=>{playing=false;skillDetail=id}} onSeek={seek} onDownload={()=>void downloadUmaJson()}/></div>{:else}<div class="analysis-side"><AnalysisSkeleton part="runner" message="Preparing runner…"/></div>{/if}
         </div>{:else}<AnalysisSkeleton title={courseCaption(analysisRace,reference)} conditions={race.conditions} runners={race.runners.length}/>{/if}
       </div>
-    {:else if activeId}<div class="workspace"><AnalysisSkeleton title={courseCaption(library.find(e=>e.id===activeId)??{},reference)} conditions={library.find(e=>e.id===activeId)?.conditions} message="Opening race…"/></div>{:else}<div class="empty-workspace"><span class="empty-symbol">↗</span><div class="eyebrow">RACE ANALYSIS</div><h1>Explore your races.</h1><p>Collect races as you play.<br/>View stats, skills, and replay data.</p><div class="toolbar"><button class="primary" onclick={()=>input.click()}>Import race JSON</button><button onclick={demo}>Explore a demo</button></div><button class="text-button" onclick={openSettings}>Set up collection →</button><div class="empty-features"><span>LOCAL COLLECTION</span><span>PORTABLE JSON</span><span>RUNNER COMPARISON</span></div></div>{/if}
+    {:else if activeId}<div class="workspace"><AnalysisSkeleton title={courseCaption(library.find(e=>e.id===activeId)??{},reference)} conditions={library.find(e=>e.id===activeId)?.conditions} message="Opening race…"/></div>{:else}<div class="empty-workspace"><span class="empty-symbol">↗</span><div class="eyebrow">RACE ANALYSIS</div><h1>Explore your races.</h1><p>Collect races as you play, or drop a race JSON anywhere in this window.<br/>View stats, skills, and replay data.</p><div class="toolbar"><button class="primary" onclick={()=>input.click()}>Import race JSON</button></div><button class="setup-cta" onclick={requestAutoCollection}>Set up auto collection</button><div class="empty-features"><span>LOCAL COLLECTION</span><span>PORTABLE JSON</span><span>RUNNER COMPARISON</span></div></div>{/if}
     <footer><span>Umalytics <span class="muted">/ Steam Global</span></span><span>Race data stays on this computer · <a href="data/NOTICE.txt" target="_blank">Data sources</a></span></footer>
   </main>
 </div>
-{#if settingsOpen}<div class="modal-backdrop" role="presentation" onkeydown={e=>{if(e.key==='Escape')settingsOpen=false;}} onclick={(event)=>{if(event.target===event.currentTarget)settingsOpen=false;}}><div class="settings-modal" use:modalFocus role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1"><div class="modal-title"><div class="eyebrow">UMALYTICS</div><h2>Settings</h2><button class="icon-button" aria-label="Close settings" onclick={()=>settingsOpen=false}>×</button></div><div class="settings-body">{#if error||message}<div class="notice" class:error={!!error} role="status">{error||message}</div>{/if}<section><h3>Background collection</h3><p>Closing the window keeps collecting. Use Exit in the tray menu to stop Umalytics.</p><div class="setting-row"><div><strong>Collect races</strong><small>{health?.mode==='desktop'?'Only game API traffic is inspected.':'Requires the desktop app.'}</small></div><input aria-label="Enable background collection" type="checkbox" checked={settings.collectionEnabled} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({collectionEnabled:e.currentTarget.checked})}/></div>{#each categories as c}<label class="setting-row"><span><i style={`background:${c.color}`}></i>{c.label}</span><input type="checkbox" checked={settings.categories[c.id]} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({categories:{...settings.categories,[c.id]:e.currentTarget.checked}})}/></label>{/each}<label class="setting-row"><span>Start collection when I sign in</span><input type="checkbox" checked={settings.startAtLogin??false} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({startAtLogin:e.currentTarget.checked})}/></label><small>All types are on by default. Changes affect new captures. Saved races stay in the library.</small></section><section><div class="setting-row"><h3>Capture certificate</h3><span class="tag" class:trusted={certificate?.trusted}>{certificate?.trusted?'Trusted':certificate?.exists?'Not trusted':'Unavailable'}</span></div><p>Approve the Windows prompt once to enable capture. The certificate is trusted by apps under your Windows user; Umalytics only inspects the game API.</p>{#if certificate?.sha1}<code class="fingerprint">SHA-1 {certificate.sha1}</code>{/if}<div class="toolbar"><button onclick={refreshCertificate} disabled={!health}>Check installation</button>{#if certificate?.trusted}<button onclick={uninstallCertificate} disabled={busy||!health?.csrfToken}>{busy?'Waiting for Windows…':'Remove certificate'}</button>{:else}<button class="primary" onclick={installCertificate} disabled={!certificate?.exists||busy||!health?.csrfToken}>{busy?'Waiting for Windows…':'Install certificate'}</button>{/if}</div></section><section><h3>Steam setup</h3><p>Paste this into the game’s Steam Launch Options. The game will use the proxy without a console window.</p>{#if health?.launchOption}<code class="launch-option">{health.launchOption}</code><button onclick={()=>copy(health!.launchOption!,'Steam launch option copied.')}>Copy launch option</button>{:else}<p class="muted">Open the desktop app to get the launch option.</p>{/if}<small>The launcher starts collection. Clear this option to launch normally.</small></section><section><h3>Appearance</h3><div class="segmented"><button class:active={theme==='dark'} onclick={()=>setTheme('dark')}>Dark</button><button class:active={theme==='light'} onclick={()=>setTheme('light')}>Light</button></div><div class="font-scale-setting"><label for="font-scale">Text size <output for="font-scale">{fontScale}%</output></label><div class="font-scale-control"><input id="font-scale" type="range" min={MIN_FONT_SCALE} max={MAX_FONT_SCALE} step="5" aria-label="Text size" aria-valuetext={`${fontScale}%`} bind:value={fontScale} onchange={()=>saveFontScale()}/><button onclick={()=>saveFontScale(100)}>Reset</button></div><small>Telemetry graph text stays the same size.</small></div></section>{#if desktopSession}<AppUpdates csrfToken={health?.csrfToken}/>{:else}<section><h3>Reference data</h3><p>Game names, course paths and skill data are included with this viewer.</p><a href="data/NOTICE.txt" target="_blank" rel="noreferrer">Sources and licenses ↗</a></section>{/if}<section><h3>About</h3><a href="https://exkitsune.github.io/Umalytics/" target="_blank" rel="noreferrer">Web viewer ↗</a><p>Import replay JSON in your browser.</p></section>{#if desktopSession}<section><h3>Downloads</h3><p>Race JSON and Uma JSON are saved here, then shown in Explorer.</p><label class="export-folder"><span class="muted">Folder</span><input aria-label="JSON download folder" bind:value={exportDraft} disabled={!health?.csrfToken||busy}/></label><div class="toolbar"><button onclick={()=>saveExportFolder(exportDraft)} disabled={!health?.csrfToken||busy||!exportDraft.trim()}>Save folder</button><button onclick={()=>saveExportFolder(null)} disabled={!health?.csrfToken||busy}>Use Downloads folder</button><button onclick={()=>revealFolder('exports')} disabled={!health?.csrfToken}>Open folder</button></div><small>{settings.downloadsDirectory?`Downloads folder: ${settings.downloadsDirectory}`:'Uses your Windows Downloads folder unless you choose another path.'}</small></section>{/if}{#if health?.dataDirectory}<section><h3>Saved data</h3><button class="saved-data-path" onclick={()=>revealFolder('data')} disabled={!health?.csrfToken}><code class="launch-option">{health.dataDirectory}</code></button><small>Click to open this folder in Explorer. Race imports, preferences, certificates and collection history are saved here.</small></section>{/if}<CacheSettings client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>{#if desktopSession}<section><h3>Uninstall</h3><details><summary>Uninstall instructions</summary><ol><li>Choose <strong>Exit Umalytics and stop collection</strong> in the tray menu.</li><li>Clear the game’s Steam Launch Options.</li><li>Turn off <strong>Start collection when I sign in</strong> if it is enabled.</li><li>Use <strong>Remove certificate</strong> above. Approve the Windows prompt. The certificate is named “Umalytics Local Capture” under Current User Trusted Root Certification Authorities.</li><li>Delete <code>Umalytics.exe</code>.</li><li>Optional: delete the Saved data folder to remove races, settings and the capture certificate key.</li></ol></details></section>{/if}</div><div class="modal-footer"><span class="muted">{health?.mode==='desktop'?'Background collector connected':'Static viewer · import / export available'}</span><button onclick={()=>settingsOpen=false}>Done</button></div></div></div>{/if}
-
-
-
-
-
+{#if settingsOpen}<div class="modal-backdrop" role="presentation" onkeydown={e=>{if(e.key==='Escape')closeSettings();}} onclick={(event)=>{if(event.target===event.currentTarget)closeSettings();}}><div class="settings-modal" use:modalFocus role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1"><div class="modal-title"><div class="eyebrow">UMALYTICS</div><h2>Settings</h2><button class="icon-button" aria-label="Close settings" onclick={closeSettings}>×</button></div><div class="settings-body">
+      {#if error||(message&&settingsOpen)}<div class="notice" class:error={!!error} role="status">{error||message}</div>{/if}
+      {#snippet certSection()}
+      <section class:setup-attention={setupAttention}>
+        <div class="setting-row"><h3>Capture certificate</h3><span class="tag" class:trusted={certificate?.trusted}>{certificate?.trusted?'Trusted':certificate?.exists?'Not trusted':'Unavailable'}</span></div>
+        <p>Approve the Windows prompt once to enable capture. The certificate is trusted by apps under your Windows user; Umalytics only inspects the game API.</p>
+        {#if certificate?.sha1}<code class="fingerprint">SHA-1 {certificate.sha1}</code>{/if}
+        <div class="toolbar">
+          <button onclick={refreshCertificate} disabled={!health}>Check installation</button>
+          {#if certificate?.trusted}
+            {#if pendingCertRemoval}
+              <button class="danger" onclick={uninstallCertificate} disabled={busy||!health?.csrfToken}>{busy?'Waiting for Windows…':'Confirm remove'}</button>
+              <button onclick={()=>pendingCertRemoval=false}>Cancel</button>
+            {:else}
+              <button class="danger" onclick={()=>pendingCertRemoval=true} disabled={busy||!health?.csrfToken}>Remove certificate</button>
+            {/if}
+          {:else}
+            <button class="primary" onclick={installCertificate} disabled={!certificate?.exists||busy||!health?.csrfToken}>{busy?'Waiting for Windows…':'Install certificate'}</button>
+          {/if}
+        </div>
+      </section>
+      {/snippet}
+      {#snippet steamSection()}
+      <section class:setup-attention={setupAttention}>
+        <h3>Steam setup</h3>
+        <p>Paste this into the game’s Steam Launch Options. The game will use the proxy without a console window.</p>
+        {#if health?.launchOption}<code class="launch-option">{health.launchOption}</code><button onclick={()=>copy(health!.launchOption!,'Steam launch option copied.')}>Copy launch option</button>{:else}<p class="muted">Open the desktop app to get the launch option.</p>{/if}
+        <small>The launcher starts collection. Clear this option to launch normally.</small>
+      </section>
+      {/snippet}
+      {#if desktopSession}
+        <section>
+          <h3>Background collection</h3>
+          <p>Closing the window keeps collecting. Use Exit in the tray menu to stop Umalytics.</p>
+          <div class="setting-row"><div><strong>Collect races</strong><small>Only game API traffic is inspected.</small></div><input aria-label="Enable background collection" type="checkbox" checked={settings.collectionEnabled} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({collectionEnabled:e.currentTarget.checked})}/></div>
+          {#each categories as c}<label class="setting-row"><span><i style={`background:${c.color}`}></i>{c.label}</span><input type="checkbox" checked={settings.categories[c.id]} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({categories:{...settings.categories,[c.id]:e.currentTarget.checked}})}/></label>{/each}
+          <label class="setting-row"><span>Start collection when I sign in</span><input type="checkbox" checked={settings.startAtLogin??false} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({startAtLogin:e.currentTarget.checked})}/></label>
+          <small>All types are on by default. Changes affect new captures. Saved races stay in the library.</small>
+        </section>
+        {#if !setupSettled}{@render certSection()}{@render steamSection()}{/if}
+      {/if}
+      <section>
+        <h3>Appearance</h3>
+        <div class="theme-switch" role="group" aria-label="Appearance">
+          <button type="button" class:active={theme==='dark'} onclick={()=>setTheme('dark')}><span class="theme-icon" aria-hidden="true">☾</span>Dark</button>
+          <button type="button" class:active={theme==='light'} onclick={()=>setTheme('light')}><span class="theme-icon" aria-hidden="true">☀</span>Light</button>
+        </div>
+        <div class="font-scale-setting"><label for="font-scale">Text size <output for="font-scale">{fontScale}%</output></label><div class="font-scale-control"><input id="font-scale" type="range" min={MIN_FONT_SCALE} max={MAX_FONT_SCALE} step="5" aria-label="Text size" aria-valuetext={`${fontScale}%`} bind:value={fontScale} onchange={()=>saveFontScale()}/><button onclick={()=>saveFontScale(100)}>Reset</button></div><small>Telemetry graph text stays the same size.</small></div>
+      </section>
+      {#if desktopSession}
+        <AppUpdates csrfToken={health?.csrfToken}/>
+      {:else}
+        <section><h3>Reference data</h3><p>Game names, course paths and skill data are included with this viewer.</p><a href="data/NOTICE.txt" target="_blank" rel="noreferrer">Sources and licenses ↗</a></section>
+      {/if}
+      <section>
+        <h3>About</h3>
+        {#if desktopSession}
+          <a href="https://exkitsune.github.io/Umalytics/" target="_blank" rel="noreferrer">Web viewer ↗</a>
+          <p>Import replay JSON in your browser. You can also drop a race JSON onto this window.</p>
+        {:else}
+          <a href={DOWNLOAD_URL} target="_blank" rel="noreferrer">Download the Windows app ↗</a>
+          <p>This web viewer opens race JSON in your browser, including files you drop onto the window. Auto collection only works in the desktop app.</p>
+        {/if}
+      </section>
+      {#if desktopSession}
+        <section>
+          <h3>Downloads</h3>
+          <p>Race JSON and Uma JSON are saved here, then shown in Explorer.</p>
+          <label class="export-folder"><span class="muted">Folder</span><input aria-label="JSON download folder" bind:value={exportDraft} disabled={!health?.csrfToken||busy}/></label>
+          <div class="toolbar"><button onclick={()=>saveExportFolder(exportDraft)} disabled={!health?.csrfToken||busy||!exportDraft.trim()}>Save folder</button><button onclick={()=>saveExportFolder(null)} disabled={!health?.csrfToken||busy}>Use Downloads folder</button><button onclick={()=>revealFolder('exports')} disabled={!health?.csrfToken}>Open folder</button></div>
+          <small>{settings.downloadsDirectory?`Downloads folder: ${settings.downloadsDirectory}`:'Uses your Windows Downloads folder unless you choose another path.'}</small>
+        </section>
+        {#if health?.dataDirectory}<section><h3>Saved data</h3><button class="saved-data-path" onclick={()=>revealFolder('data')} disabled={!health?.csrfToken}><code class="launch-option">{health.dataDirectory}</code></button><small>Click to open this folder in Explorer. Race imports, preferences, certificates and collection history are saved here.</small></section>{/if}
+        <CacheSettings client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>
+        {#if setupSettled}{@render certSection()}{@render steamSection()}{/if}
+        <section>
+          <h3>Uninstall</h3>
+          <details><summary>Uninstall instructions</summary><ol><li>Use <strong>Remove certificate</strong> above. Approve the Windows prompt. The certificate is named “Umalytics Local Capture” under Current User Trusted Root Certification Authorities.</li><li>Turn off <strong>Start collection when I sign in</strong> if it is enabled.</li><li>Clear the game’s Steam Launch Options.</li><li>Optional: delete the Saved data folder to remove races, settings and the capture certificate key.</li><li>Choose <strong>Exit Umalytics and stop collection</strong> in the tray menu.</li><li>Delete <code>Umalytics.exe</code>.</li></ol></details>
+        </section>
+      {/if}
+    </div><div class="modal-footer"><span class="muted">{health?.mode==='desktop'?'Background collector connected':'Static viewer · import / export available'}</span><button onclick={closeSettings}>Done</button></div></div></div>{/if}
+{#if downloadPromptOpen}<div class="modal-backdrop" role="presentation" onclick={(event)=>{if(event.target===event.currentTarget)downloadPromptOpen=false;}}><div class="download-prompt" role="dialog" aria-modal="true" aria-label="Download Umalytics" tabindex="-1"><h2>Auto collection needs the desktop app</h2><p>This website can open race JSON, including files you drop here. Capturing races from Uma Musume only works if you download the Windows app.</p><div class="toolbar"><a class="button primary" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">Download Umalytics</a><button onclick={()=>downloadPromptOpen=false}>Close</button></div></div></div>{/if}
 
 {#if faqOpen}<AnalysisFaq onClose={()=>faqOpen=false}/>{/if}
 {#if skillDetail!==null&&analysisRace&&analysis}<SkillDetails onFaq={()=>{skillDetail=null;faqOpen=true}} skillId={skillDetail} {reference} race={analysisRace} {analysis} {runner} onClose={()=>skillDetail=null} onSeek={seek}/>{/if}

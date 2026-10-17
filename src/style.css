@@ -43,7 +43,7 @@ body{min-width:760px}.app-shell{grid-template-columns:270px minmax(0,1fr)}main{d
 .course-select .caret{margin-left:10px}
 .course-select.open{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 28%,transparent)}
 .course-picker{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin:8px 0 14px;padding:10px 12px}.course-picker select{min-width:min(420px,100%)}
-.race-row{position:relative;width:100%}.race-row .race-card{padding-right:28px}.race-delete{position:absolute;top:8px;right:6px;z-index:1;width:22px;height:22px;padding:0;border:0;background:transparent;color:var(--muted);font-size:var(--font-16);line-height:1}.race-delete:hover{color:var(--text);background:transparent}.race-delete.confirm{top:10px;right:8px;width:auto;height:auto;padding:3px 8px;border:1px solid #a85a5a;border-radius:4px;background:var(--panel);color:#e07070;font-size:var(--font-11);font-weight:650}
+.race-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;position:relative;width:100%}.race-row .race-card{padding-right:9px;grid-column:1}.race-delete{position:static;grid-column:2;grid-row:1;z-index:1;width:auto;min-width:18px;height:auto;margin:12px 2px 0 0;padding:0;border:0;background:transparent;color:var(--muted);font-size:var(--font-13);line-height:1.2;display:inline-flex;align-items:center;justify-content:center}.race-delete:hover{color:var(--text);background:transparent}.race-delete.confirm{top:auto;right:auto;width:auto;height:auto;margin:11px 2px 0 0;padding:0 7px;border:1px solid #a85a5a;border-radius:4px;background:var(--panel);color:#e07070;font-size:var(--font-11);font-weight:650;line-height:1.55}
 
 /* Text controls resize independently of the telemetry plot. */
 .font-scale-setting{margin-top:20px}
@@ -81,3 +81,22 @@ footer{height:auto;max-height:none;flex-basis:auto;line-height:1.4;flex-wrap:wra
 .settings-body details ol{margin:10px 0 0;padding-left:18px;font-size:var(--font-11);color:var(--muted);line-height:1.7}
 .settings-body details li{margin:0 0 8px}
 .settings-body details code{font-size:var(--font-10)}
+.import-button{margin-bottom:6px}
+.import-hint{margin:0 2px 18px;font-size:var(--font-10);color:var(--muted);text-align:center;line-height:1.45}
+.setup-cta{margin-top:18px;padding:12px 22px;font-size:var(--font-14);font-weight:700;letter-spacing:.02em;color:#18250f;background:#d4ba75;border:0;border-radius:8px;box-shadow:0 0 0 4px color-mix(in srgb,#d4ba75 28%,transparent)}
+.setup-cta:hover{background:#e0c889;filter:none;border:0;color:#18250f}
+.drop-overlay{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:color-mix(in srgb,#d4ba75 18%,#000a);border:3px dashed #d4ba75;pointer-events:none}
+.drop-overlay strong{font-size:var(--font-24);color:var(--text)}
+.drop-overlay span{font-size:var(--font-13);color:var(--muted)}
+.theme-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.theme-switch button{flex-direction:column;gap:6px;padding:14px 12px;min-height:76px;border-radius:10px;background:var(--bg);color:var(--muted);font-size:var(--font-13);font-weight:650}
+.theme-switch button:hover{background:var(--panel-raised)}
+.theme-switch button.active{color:var(--text);border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.theme-icon{font-size:var(--font-22);line-height:1}
+button.danger{color:#ef7474;border-color:#a85a5a;background:color-mix(in srgb,#ef7474 12%,var(--panel))}
+button.danger:hover{background:color-mix(in srgb,#ef7474 20%,var(--panel));border-color:#ef7474;color:#ff8e8e}
+.settings-body section.setup-attention{border:1px solid #d4ba75;box-shadow:0 0 0 3px color-mix(in srgb,#d4ba75 22%,transparent);border-radius:10px;padding:16px 14px;margin:12px 0;background:color-mix(in srgb,#d4ba75 7%,var(--panel))}
+.download-prompt{width:min(440px,100%);background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:28px 26px}
+.download-prompt h2{font-size:var(--font-18);margin:0 0 10px}
+.download-prompt p{font-size:var(--font-12);line-height:1.7;color:var(--muted);margin:0 0 18px}
+.download-prompt .toolbar{justify-content:flex-end}
