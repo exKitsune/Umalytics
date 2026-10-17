@@ -1,4 +1,5 @@
 import type { Race } from './types';
+import { portableRawFields } from './raw-export';
 
 /** Construct a race-only document. Never spread API/log objects into an export. */
 export function toShareableRace(race: Race) {
@@ -61,6 +62,7 @@ export function toPortableRace(race: Race) {
       skillId: e.skillId, label: e.label, params: e.params.slice(),
     })),
     warnings: race.warnings.slice(),
+    ...portableRawFields(race),
   };
 }
 

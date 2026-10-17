@@ -196,6 +196,14 @@ def workflows(temporary):
         assert saved.stat().st_mtime_ns == timestamp
         assert instance.request('/api/races/import', {'id': race_id, 'race': dict(race, title='conflict')})[0] == 400
         assert instance.request('/api/races/import', {'id': '../invalid', 'race': race})[0] == 400
+        raw_id = 'local-' + 'b' * 64
+        raw_race = dict(race, simDataBase64='A' * 70000, raceHorse=[{'charaName': 'Fixture', 'responseHorseData': {'frame_order': 1, 'viewer_id': 'PRIVATE_OWNER'}, 'trained_chara_data': {'trained_chara_id': 55, 'viewer_id': 'PRIVATE_OWNER'}}], trainedCharaArray=[{'trained_chara_id': 55, 'viewer_id': 'PRIVATE_OWNER'}], raceType='RoomMatch')
+        code, raw_receipt = instance.request('/api/races/import', {'id': raw_id, 'race': raw_race})
+        assert code == 200 and raw_receipt['id'] == raw_id, raw_receipt
+        stored = json.loads((data / 'races' / (raw_id + '.json')).read_text(encoding='utf-8'))
+        assert stored['simDataBase64'] == 'A' * 70000 and stored['raceType'] == 'RoomMatch'
+        assert stored['raceHorse'][0]['trained_chara_data']['trained_chara_id'] == 55
+        assert stored['trainedCharaArray'][0]['viewer_id'] == 'PRIVATE_OWNER'
         prefs = {'theme': 'light', 'fontScale': 125, 'courseAssignments': {race_id: 101, 'capture-captured~0': 101}, 'browserMigrationComplete': True}
         assert instance.request('/api/preferences', prefs) == (200, prefs)
         settings_stamp = (data / 'settings.json').stat().st_mtime_ns

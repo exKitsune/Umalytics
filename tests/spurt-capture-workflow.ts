@@ -93,9 +93,11 @@ if (process.argv[2] === '--child') {
   for (let t = 0; t < 2; t++) { float(t); for (let i = 0; i < 6; i++) { const b = Buffer.alloc(12); b.writeFloatLE(t * 100, 0); b.writeUInt16LE(1000, 4); b.writeUInt16LE(2000, 6); b.writeUInt16LE(1000, 8); b.writeInt8(-1, 11); chunks.push(b); } }
   int(0); for (let i = 0; i < 6; i++) { const b = Buffer.alloc(31); b.writeInt32LE(i, 0); b.writeFloatLE(1, 4); b.writeFloatLE(.05, 12); b.writeFloatLE(-1, 18); b.writeUInt8(3, 22); b.writeFloatLE(1, 27); chunks.push(b); } int(0); int(0);
   const source = join(folder, 'raw-npc.json'), safePath = join(folder, 'safe-npc.json'), imported = join(folder, 'portable'), again = join(folder, 'again');
-  await writeFile(source, JSON.stringify({ data: { race_scenario: gzipSync(Buffer.concat(chunks)).toString('base64'), race_horse_data_array: [0, 3, 11, 20, 21, 22].map((npc_type, i) => ({ frame_order: i + 1, npc_type, viewer_id: 'PRIVATE_VIEWER', owner_viewer_id: 'PRIVATE_OWNER' })) } }));
+  await writeFile(source, JSON.stringify({ data: { race_scenario: gzipSync(Buffer.concat(chunks)).toString('base64'), auth: { token: 'PRIVATE_TOKEN' },
+    race_horse_data_array: [0, 3, 11, 20, 21, 22].map((npc_type, i) => ({ frame_order: i + 1, npc_type, viewer_id: 'PRIVATE_VIEWER', owner_viewer_id: 'PRIVATE_OWNER' })) } }));
   await run('python', [join(root, 'scripts/proxy/extract-file.py'), source, safePath], { cwd: root, windowsHide: true, timeout: 15000 });
-  const safe = await readFile(safePath, 'utf8'); assert.ok(!safe.includes('PRIVATE_')); assert.ok(!safe.includes('viewer_id')); assert.ok(!safe.includes('npc_type'));
+  const safe = await readFile(safePath, 'utf8'); assert.ok(!safe.includes('PRIVATE_TOKEN')); assert.ok(!safe.includes('"auth"'));
+  assert.ok(safe.includes('PRIVATE_VIEWER')); assert.ok(safe.includes('viewer_id')); assert.ok(safe.includes('npc_type'));
   await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/import-race.ts'), safePath, imported], { cwd: root, windowsHide: true, timeout: 15000 });
   const portable = JSON.parse(await readFile(join(imported, (await readdir(imported))[0]), 'utf8'));
   assert.deepEqual(portable.runners.map((r: any) => r.isNpc), [true, true, false, false, null, null]);

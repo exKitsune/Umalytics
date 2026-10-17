@@ -93,6 +93,27 @@ export interface Race {
   distanceEvidence?: 'recorded' | 'course-reference' | 'finish-derived';
   /** Simulation random seed, never an account/session identifier. */
   randomSeed?: number;
+  /** horseACT-shaped start/result payload retained for re-export. */
+  raw?: RaceRaw;
+}
+
+/** Live RaceInfo fields observed on the same race response. Auth/session envelopes are omitted. */
+export interface RaceRaw {
+  simDataBase64: string;
+  raceHorse?: unknown[];
+  raceCourseSet?: unknown;
+  trainedCharaArray?: unknown[];
+  randomSeed?: number;
+  weather?: string;
+  groundCondition?: string;
+  season?: string;
+  raceType?: string;
+  raceGrade?: number;
+  startTimeType?: number;
+  raceInstanceId?: number;
+  distance?: number;
+  laneDistanceMax?: number;
+  horseACT_version?: string;
 }
 
 /** Event param[0] and block indexes are simulation slots, stored on Runner.index.

@@ -1,4 +1,4 @@
-"""Bounded race-field allowlisting. Decoded responses are never serialized."""
+"""Bounded copy of race-adjacent objects. Auth/session envelopes are never serialized."""
 import math
 import base64
 import struct
@@ -7,18 +7,13 @@ import zlib
 MAX_RACES = 100
 MAX_SCENARIO_CHARS = 16 * 1024 * 1024
 CATEGORIES = ('career', 'team-trials', 'practice', 'champions-meeting', 'other')
-APTITUDES = ('proper_ground_turf', 'proper_ground_dirt', 'proper_distance_short',
-    'proper_distance_mile', 'proper_distance_middle', 'proper_distance_long',
-    'proper_running_style_nige', 'proper_running_style_senko',
-    'proper_running_style_sashi', 'proper_running_style_oikomi')
-HORSE_NUMBERS = ('frame_order', 'chara_id', 'card_id', 'speed', 'stamina', 'power',
-    'pow', 'guts', 'wisdom', 'wiz', 'running_style', 'motivation',
-    'single_mode_win_count', 'fan_count', 'rank_score', 'rarity') + APTITUDES
 RACE_NUMBERS = ('distance', 'race_distance', 'lane_distance_max', 'race_course_id', 'course_id', 'race_instance_id', 'random_seed', 'race_grade', 'start_time_type')
 CONDITIONS = ('season', 'weather', 'ground_condition')
-EXCLUDED_BRANCHES = frozenset(('auth', 'auth_data', 'auth_key', 'authentication', 'headers', 'request', 'requests',
-    'request_headers', 'request_body', 'session', 'device', 'user_info', 'trainer_info',
-    'chara_info', 'race_horse_data', 'race_horse_data_array', 'skill_array', 'race_course_set'))
+TRAINED_KEYS = ('trained_chara_array', 'trainedCharaArray', 'trained_chara_data_array')
+ENVELOPE = frozenset(('auth', 'auth_data', 'auth_key', 'authentication', 'headers', 'request', 'requests',
+    'request_headers', 'request_body', 'session', 'device', 'user_info', 'trainer_info'))
+EXCLUDED_BRANCHES = ENVELOPE | frozenset(('chara_info', 'race_horse_data', 'race_horse_data_array', 'skill_array',
+    'race_course_set', *TRAINED_KEYS))
 
 
 def collection_settings(value):
@@ -71,13 +66,64 @@ def _scenario_runner_count(scenario):
         return None
 
 
+def _copy(value, depth=0, visits=None):
+    """Keep the race object graph horseACT would serialize from the same response."""
+    if visits is None:
+        visits = [0]
+    visits[0] += 1
+    if visits[0] > 50000 or depth > 16:
+        raise ValueError('envelope_limit')
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value if _number(value) is not None else None
+    if isinstance(value, str):
+        if len(value) > MAX_SCENARIO_CHARS:
+            raise ValueError('race_limit')
+        return value
+    if isinstance(value, list):
+        if len(value) > 2000:
+            raise ValueError('array_limit')
+        return [_copy(item, depth + 1, visits) for item in value]
+    if isinstance(value, dict):
+        if len(value) > 1000:
+            raise ValueError('saved_result_limit')
+        return {key: _copy(child, depth + 1, visits) for key, child in value.items() if key not in ENVELOPE}
+    return None
+
+
+def _trained_id(value):
+    if not isinstance(value, dict):
+        return None
+    for key in ('trained_chara_id', 'trainedCharaId', 'id'):
+        n = _number(value.get(key))
+        if type(n) is int and n > 0:
+            return n
+    return None
+
+
+def _attach_trained(horses, trained):
+    by_id = {}
+    for item in trained:
+        tid = _trained_id(item)
+        if tid is not None:
+            by_id[tid] = item
+    for horse in horses:
+        if not isinstance(horse, dict) or horse.get('trained_chara_data') or horse.get('trainedCharaData'):
+            continue
+        nested = horse.get('responseHorseData') if isinstance(horse.get('responseHorseData'), dict) else {}
+        tid = _trained_id(horse) or _trained_id(nested)
+        if tid in by_id:
+            horse['trained_chara_data'] = by_id[tid]
+    return horses
+
+
 def _horse(value, runner_count=None, team_groups=None):
     if not isinstance(value, dict):
         return {}
-    result = {key: _number(value.get(key)) for key in HORSE_NUMBERS if _number(value.get(key)) is not None}
-    # RaceDefine.RaceNpcType metadata: Normal=0, Boss=3, User=11,
-    # UserOther=20. Ghost=21/Follow=22 do not establish player classification.
-    # Keep only the boolean class, never the viewer/owner identifier.
+    result = _copy(value)
+    if not isinstance(result, dict):
+        return {}
     explicit_npc = value.get('is_npc', value.get('isNpc'))
     npc_type = value.get('npc_type', value.get('NpcType'))
     if type(explicit_npc) is bool:
@@ -87,23 +133,11 @@ def _horse(value, runner_count=None, team_groups=None):
     popularity = value.get('popularity', value.get('Popularity'))
     if runner_count is not None and type(popularity) is int and 1 <= popularity <= runner_count:
         result['popularity'] = popularity
-    # Raw team IDs may resemble other identifiers. Only anonymous local ordinal
-    # membership survives; viewer/owner/trainer fields are never consulted.
     raw_team = _number(value.get('team_id', value.get('TeamId')))
     if team_groups is not None and raw_team is not None and type(raw_team) is int and raw_team > 0:
         if raw_team not in team_groups:
             team_groups[raw_team] = len(team_groups) + 1
         result['team_group'] = team_groups[raw_team]
-    name = value.get('chara_name')
-    if isinstance(name, str) and len(name) <= 200:
-        result['chara_name'] = name
-    skills = value.get('skill_array')
-    if isinstance(skills, list):
-        if len(skills) > 1000:
-            raise ValueError('skill_limit')
-        result['skill_array'] = [{k: _number(s.get(k)) for k in ('id', 'skill_id', 'level')
-            if _number(s.get(k)) is not None} if isinstance(s, dict) else {'id': s}
-            for s in skills if isinstance(s, dict) or _number(s) is not None]
     return result
 
 
@@ -118,7 +152,7 @@ def _metadata(value):
     for key, canonical in aliases.items():
         if key in value and canonical not in value:
             value[canonical] = value[key]
-    result = {key: value[key] for key in (*RACE_NUMBERS, *CONDITIONS, 'race_type',
+    result = {key: value[key] for key in (*RACE_NUMBERS, *CONDITIONS, *TRAINED_KEYS, 'race_type',
         'race_category', 'race_course_set', 'race_horse_data_array', 'race_horse_data') if key in value}
     for key in ('race_start_info', 'room_info'):
         start = value.get(key)
@@ -129,7 +163,7 @@ def _metadata(value):
             if alias in start and canonical not in start:
                 start[canonical] = start[alias]
         # Do not recursively inspect hostile nested start-info objects.
-        result.update({key: start[key] for key in (*RACE_NUMBERS, *CONDITIONS,
+        result.update({key: start[key] for key in (*RACE_NUMBERS, *CONDITIONS, *TRAINED_KEYS,
             'race_course_set', 'race_horse_data_array', 'race_horse_data') if key in start and key not in result})
     # RoomMatchGetSavedRaceResultResponse puts its replay and saved-room
     # definition beside each other. Lift only numeric race metadata from this
@@ -213,26 +247,28 @@ def extract_races(payload, endpoint='', captured_at=None, settings=None):
                         race[key] = condition
                 course = metadata.get('race_course_set')
                 if isinstance(course, dict):
-                    aliases = {'id': ('Id', 'course_id', 'courseId', '<Id>k__BackingField'),
-                        'distance': ('Distance', '<Distance>k__BackingField'),
-                        'lane_distance_max': ('LaneDistanceMax', 'laneDistanceMax', '<LaneDistanceMax>k__BackingField')}
-                    safe_course = {}
-                    for key, names in aliases.items():
-                        for name in (key, *names):
-                            n = _number(course.get(name))
-                            if n is not None:
-                                safe_course[key] = n
-                                break
-                    race['race_course_set'] = safe_course
+                    race['race_course_set'] = _copy(course)
                 elif _number(course) is not None:
                     race['race_course_set'] = {'id': course}
                 horses = metadata.get('race_horse_data_array', metadata.get('race_horse_data'))
+                trained = next((metadata[key] for key in TRAINED_KEYS if isinstance(metadata.get(key), list)), None)
                 if isinstance(horses, list):
                     if len(horses) > 64:
                         raise ValueError('runner_limit')
                     field_count = _scenario_runner_count(scenario)
                     teams = {}
-                    race['race_horse_data_array'] = [_horse(h, field_count, teams) for h in horses]
+                    copied = [_horse(h, field_count, teams) for h in horses]
+                    if isinstance(trained, list):
+                        if len(trained) > 64:
+                            raise ValueError('runner_limit')
+                        trained = [_copy(item) for item in trained]
+                        copied = _attach_trained(copied, trained)
+                        race['trained_chara_array'] = trained
+                    race['race_horse_data_array'] = copied
+                elif isinstance(trained, list):
+                    if len(trained) > 64:
+                        raise ValueError('runner_limit')
+                    race['trained_chara_array'] = [_copy(item) for item in trained]
                 result.append(race)
         starts, results = value.get('race_start_params_array'), value.get('race_result_array')
         paired = isinstance(starts, list) and isinstance(results, list)

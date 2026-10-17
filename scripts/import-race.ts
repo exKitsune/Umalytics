@@ -28,7 +28,7 @@ if (!args[0] || args.length > 2 || args[0] === '--help') {
     await writeFile(temporary, output, { encoding: 'utf8', flag: 'wx' });
     await rename(temporary, target);
     console.log(`Extracted ${races.length} race(s) to ${target}`);
-    console.log('Account/session fields excluded. Runner names and event labels remain; review before sharing.');
+    console.log('Auth/session envelopes excluded. Same-response horse and trained-character identifiers remain; review before sharing.');
   } catch (error) {
     console.error(`Race import failed: ${(error as Error).message}`);
     process.exitCode = 1;

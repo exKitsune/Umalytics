@@ -79,10 +79,10 @@ and unrecognized values remain unresolved because their relationship to this
 condition is not established. Mob IDs, character IDs and missing/zero viewer
 IDs are not used to guess classification.
 
-The sanitizer emits only `is_npc`; raw import maps the same known codes and
-portable exports preserve `isNpc`. Old sanitized races which discarded this
-field cannot recover it. Explicit normalized booleans can supply the class
-without introducing identity fields.
+The sanitizer keeps the source `npc_type` and also emits `is_npc`. Raw import
+maps the same known codes and portable exports preserve `isNpc`. Old sanitized
+races which discarded this field cannot recover it. Explicit normalized
+booleans can supply the class without a later identity guess.
 
 ## Functional verification
 

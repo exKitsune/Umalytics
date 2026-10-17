@@ -2,6 +2,7 @@
 import { decode } from '@msgpack/msgpack';
 import { base64Bytes, MAX_FILE_BYTES, MAX_FRAMES, MAX_RUNNERS, MAX_SAMPLES, parseScenario } from './binary';
 import { courseDistance, finishDistance, instanceCourse, instanceConditions } from './course-detection';
+import { extractSanitizedRaw } from './raw-export';
 import { runnerBySlot, type Frame, type Race, type RaceCategory, type RaceEvent, type Runner, type RunnerAptitudes, type RunnerSample, type RunnerSkill, type RunnerStats } from './types';
 
 type RecordValue = Record<string, unknown>;
@@ -198,6 +199,10 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
   const distance = recordedDistance ?? referenceDistance ?? derivedDistance;
   if (recordedDistance !== null && referenceDistance !== null && recordedDistance !== referenceDistance) warnings.push('Recorded course ID and distance disagree; select the correct course before using course-dependent analysis.');
   if (distance === null) warnings.push('Official course distance is absent; the chart uses the observed distance extent.');
+  const raw = extractSanitizedRaw(obj, scenario, {
+    horseact: isAct, horses: members, course: courseValue, results: binary.results,
+    category: captureFields(obj).category ?? importCategory(obj),
+  });
   return {
     id: nextId(index), title: string(pick(obj, 'title', 'race_name', 'raceName')) ?? `Imported race ${index + 1}`,
     source: isAct ? 'horseact' : 'response', sourceLabel: isAct ? 'horseACT export' : 'Decoded response',
@@ -217,6 +222,7 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
       season: conditionText(pick(obj, 'season', 'Season', '<Season>k__BackingField')),
       ...(timeOfDay !== null ? { timeOfDay: String(timeOfDay) } : {}),
     },
+    ...(raw ? { raw } : {}),
   };
 }
 
@@ -313,6 +319,10 @@ function parseNormalized(obj: RecordValue, index: number): Race {
   const context = instanceConditions(normalizedInstanceId), recordedGrade = boundedInteger(obj.grade, 0, 10000), recordedTime = boundedInteger(conditions.timeOfDay, 1, 4);
   const grade = recordedGrade ?? context?.grade ?? null, timeOfDay = recordedTime ?? context?.time ?? null, conditionEvidence = record(obj.conditionEvidence);
   const identitySource = explicitCourseId===null&&normalizedCourseId!==null?'race-instance':identity.source;
+  const raw = typeof obj.simDataBase64 === 'string' ? extractSanitizedRaw(obj, obj.simDataBase64, {
+    horseact: Array.isArray(obj.raceHorse), horses: array(obj.raceHorse), course: obj.raceCourseSet,
+    category: category(obj.category),
+  }) : undefined;
   return {
     id: string(obj.id) ?? nextId(index), title: string(obj.title) ?? `Imported race ${index + 1}`,
     source: synthetic ? 'demo' : 'normalized', sourceLabel: synthetic ? 'Synthetic demonstration' : 'Normalized JSON',
@@ -330,6 +340,7 @@ function parseNormalized(obj: RecordValue, index: number): Race {
     courseIdentity: { source: ['recorded', 'race-instance', 'filename-race-instance', 'manual', 'skill-conditions', 'unknown'].includes(String(identitySource)) ? identitySource as NonNullable<Race['courseIdentity']>['source'] : normalizedCourseId !== null ? 'recorded' as const : 'unknown' as const, ...(normalizedInstanceId!==null?{raceInstanceId:normalizedInstanceId}:{}) },
     ...(['recorded', 'course-reference', 'finish-derived'].includes(String(obj.distanceEvidence)) ? { distanceEvidence: obj.distanceEvidence as Race['distanceEvidence'] } : distance !== null ? { distanceEvidence: explicitNormalizedDistance !== null ? 'recorded' as const : normalizedReferenceDistance !== null ? 'course-reference' as const : 'finish-derived' as const } : {}),
     ...(number(obj.randomSeed) !== null ? { randomSeed: number(obj.randomSeed)! } : {}),
+    ...(raw ? { raw } : {}),
   };
 }
 

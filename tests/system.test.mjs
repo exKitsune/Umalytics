@@ -143,7 +143,7 @@ test('captured condition context survives import, whole-race evaluation and port
   const report=JSON.parse(result.stdout.trim());
   assert.ok(report.globalSkills>=734);assert.ok(report.globalBranches>=788);assert.ok(report.predicateKeys>=100);
   assert.equal(report.syntaxCoverage,'complete');
-  for(const field of ['observedHistory','randomWindowSeparation','spatialProxies','rankContinuity','eventOrder','captureContext','privacy','portable'])assert.equal(report[field],'passed');
+  for(const field of ['observedHistory','randomWindowSeparation','spatialProxies','rankContinuity','eventOrder','captureContext','privacy','portable','rawExport'])assert.equal(report[field],'passed');
   t.diagnostic(`${report.understoodKeys} understood and ${report.partialKeys} partially understood condition keys; replay evidence is evaluated separately.`);
 });
 

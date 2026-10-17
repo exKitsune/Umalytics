@@ -372,24 +372,26 @@ class Service:
             raise ValueError('A portable race document is required.')
         allowed = {'schemaVersion', 'id', 'title', 'synthetic', 'distance', 'courseId', 'conditions', 'laneDistanceMax',
                    'runners', 'frames', 'events', 'warnings', 'category', 'capturedAt', 'courseIdentity', 'distanceEvidence',
-                   'grade', 'conditionEvidence', 'capture', 'randomSeed'}
+                   'grade', 'conditionEvidence', 'capture', 'randomSeed', 'simDataBase64', 'raceHorse', 'raceCourseSet',
+                   'weather', 'groundCondition', 'season', 'raceType', 'raceGrade', 'startTimeType', 'raceInstanceId',
+                   'horseACT_version', 'trainedCharaArray'}
         if set(race) - allowed:
             raise ValueError('Unsupported portable race fields.')
         # Bound nested content before JSON serialization or recursive consumers.
-        pending, nodes = [(race, 0)], 0
+        pending, nodes = [(race, 0, '')], 0
         while pending:
-            value, depth = pending.pop()
+            value, depth, key = pending.pop()
             nodes += 1
             if depth > 24 or nodes > 1500000:
                 raise ValueError('Race structure exceeds supported limits.')
             if isinstance(value, dict):
-                if any(not isinstance(key, str) or len(key) > 256 or key in ('__proto__', 'prototype', 'constructor') for key in value):
+                if any(not isinstance(child, str) or len(child) > 256 or child in ('__proto__', 'prototype', 'constructor') for child in value):
                     raise ValueError('Invalid race field.')
-                pending.extend((item, depth + 1) for item in value.values())
+                pending.extend((item, depth + 1, child) for child, item in value.items())
             elif isinstance(value, list):
-                pending.extend((item, depth + 1) for item in value)
+                pending.extend((item, depth + 1, key) for item in value)
             elif isinstance(value, str):
-                if len(value) > 65536:
+                if len(value) > (MAX_RACE if key in ('simDataBase64', 'race_scenario') else 65536):
                     raise ValueError('Race text exceeds supported limits.')
             elif value is not None and type(value) not in (bool, int, float):
                 raise ValueError('Invalid race value.')

@@ -82,24 +82,55 @@ function scenario(compress: (bytes: Buffer) => Buffer) {
 for (const [name, compress] of [['gzip', gzipSync], ['zlib', deflateSync]] as const) {
   const source = join(folder, `raw-${name}.json`), sanitized = join(folder, `sanitized-${name}.json`), imported = join(folder, `imported-${name}`), again = join(folder, `again-${name}`);
   const raw = { data: { race_scenario: scenario(compress), race_instance_id: 101801, start_time_type: 4, race_grade: 200,
-    race_horse_data_array: [{ frame_order: 1, card_id: 100101, popularity: 2, team_id: 917364928, viewer_id: 'PRIVATE_OWNER', trainer_name: 'PRIVATE_TRAINER' },
-      { frame_order: 2, card_id: 100201, popularity: 99, team_id: 917364928, owner_viewer_id: 'PRIVATE_OWNER' }] } };
+    auth: { token: 'PRIVATE_TOKEN' }, trainer_info: { id: 'PRIVATE_TRAINER_INFO' },
+    race_horse_data_array: [{ frame_order: 1, card_id: 100101, popularity: 2, team_id: 917364928, trained_chara_id: 55, viewer_id: 'PRIVATE_OWNER', trainer_name: 'PRIVATE_TRAINER' },
+      { frame_order: 2, card_id: 100201, popularity: 99, team_id: 917364928, owner_viewer_id: 'PRIVATE_OWNER' }],
+    trained_chara_array: [{ trained_chara_id: 55, viewer_id: 'PRIVATE_OWNER', single_mode_win_count: 20, acquired_skill_array: [{ id: 210061, level: 1 }], succession_history_array: [{ viewer_id: 'PRIVATE_OWNER' }] }] } };
   await writeFile(source, JSON.stringify(raw));
   await run('python', [join(root, 'scripts/proxy/extract-file.py'), source, sanitized, '--endpoint', '/\x75mamusume/room_match/result'], { cwd: root, windowsHide: true, timeout: 15000 });
-  const safe = await readFile(sanitized, 'utf8'); assert.ok(!safe.includes('PRIVATE_')); assert.ok(!safe.includes('917364928')); assert.ok(!safe.includes('team_id'));
+  const safe = await readFile(sanitized, 'utf8'); assert.ok(!safe.includes('PRIVATE_TOKEN')); assert.ok(!safe.includes('PRIVATE_TRAINER_INFO')); assert.ok(!safe.includes('"auth"'));
+  assert.ok(safe.includes('PRIVATE_OWNER')); assert.ok(safe.includes('917364928')); assert.ok(safe.includes('team_id')); assert.ok(safe.includes('trained_chara_data'));
   await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/import-race.ts'), sanitized, imported], { cwd: root, windowsHide: true, timeout: 15000 });
   const portable = JSON.parse(await readFile(join(imported, (await readdir(imported))[0]), 'utf8'));
   assert.equal(portable.runners[0].popularity, 2); assert.equal(portable.runners[1].popularity, null); assert.equal(portable.runners[0].teamGroup, 1); assert.equal(portable.runners[1].teamGroup, 1);
   assert.equal(portable.grade, 200); assert.equal(portable.conditions.timeOfDay, '4'); assert.equal(portable.conditionEvidence.grade, 'recorded'); assert.equal(portable.conditionEvidence.timeOfDay, 'recorded');
+  assert.equal(typeof portable.simDataBase64, 'string'); assert.ok(portable.simDataBase64.length > 20);
+  assert.ok(Array.isArray(portable.raceHorse) && portable.raceHorse.length === 2);
+  assert.equal(portable.raceHorse[0].finishOrder, 0); assert.equal(portable.raceType, 'RoomMatch');
+  assert.equal(portable.raceHorse[0].responseHorseData.viewer_id, 'PRIVATE_OWNER');
+  assert.equal(portable.raceHorse[0].responseHorseData.trainer_name, 'PRIVATE_TRAINER');
+  assert.equal(portable.raceHorse[0].trained_chara_data.trained_chara_id, 55);
+  assert.equal(portable.raceHorse[0].trained_chara_data.succession_history_array[0].viewer_id, 'PRIVATE_OWNER');
+  assert.equal(portable.trainedCharaArray[0].trained_chara_id, 55);
+  assert.equal(JSON.stringify(portable).includes('PRIVATE_TOKEN'), false);
   const exportPath = join(folder, `portable-${name}.json`); await writeFile(exportPath, JSON.stringify(portable));
   await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/import-race.ts'), exportPath, again], { cwd: root, windowsHide: true, timeout: 15000 });
   const restored = JSON.parse(await readFile(join(again, (await readdir(again))[0]), 'utf8'));
-  for (const field of ['grade', 'conditions', 'conditionEvidence', 'runners', 'events']) assert.deepEqual(restored[field], portable[field]);
+  for (const field of ['grade', 'conditions', 'conditionEvidence', 'runners', 'events', 'simDataBase64', 'raceType']) assert.deepEqual(restored[field], portable[field]);
+  assert.equal(restored.raceHorse[0].finishOrder, 0);
   const { start_time_type: _time, race_grade: _grade, ...withoutContext } = raw.data;
   await writeFile(source, JSON.stringify({ data: withoutContext }));
   await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/import-race.ts'), source, join(folder, `joined-${name}`)], { cwd: root, windowsHide: true, timeout: 15000 });
   const joined = JSON.parse(await readFile(join(folder, `joined-${name}`, (await readdir(join(folder, `joined-${name}`)))[0]), 'utf8'));
   assert.equal(joined.grade, 100); assert.equal(joined.conditions.timeOfDay, '2'); assert.equal(joined.conditionEvidence.grade, 'race-instance');
 }
+const actSource = join(folder, 'horseact.json'), actImported = join(folder, 'horseact-imported');
+await writeFile(actSource, JSON.stringify({
+  simDataBase64: scenario(gzipSync), horseACT_version: '9.9.9', weather: 'Sunny', randomSeed: 42,
+  raceCourseSet: { id: 10606, distance: 2400 },
+  raceHorse: [
+    { charaName: 'Synthetic one', finishOrder: 0, responseHorseData: { frame_order: 1, chara_id: 1001, viewer_id: 'PRIVATE_OWNER', trainer_name: 'PRIVATE_TRAINER', skill_array: [{ id: 210061, level: 1 }], single_mode_win_count: 20 },
+      trained_chara_data: { trained_chara_id: 998877, viewer_id: 'PRIVATE_OWNER', acquiredSkillArray: [{ id: 210061, level: 1 }] } },
+    { charaName: 'Synthetic two', finishOrder: 1, responseHorseData: { frame_order: 2, chara_id: 1002, owner_viewer_id: 'PRIVATE_OWNER' } },
+  ],
+}));
+await run(process.execPath, ['--import', 'tsx', join(root, 'scripts/import-race.ts'), actSource, actImported], { cwd: root, windowsHide: true, timeout: 15000 });
+const act = JSON.parse(await readFile(join(actImported, (await readdir(actImported))[0]), 'utf8'));
+assert.equal(act.schemaVersion, 1); assert.ok(Array.isArray(act.runners) && Array.isArray(act.frames));
+assert.equal(act.simDataBase64, scenario(gzipSync)); assert.equal(act.horseACT_version, '9.9.9'); assert.equal(act.weather, 'Sunny');
+assert.equal(act.raceHorse[0].trained_chara_data.trained_chara_id, 998877); assert.equal(act.runners[0].raceWinCount, 20);
+assert.equal(act.raceHorse[0].responseHorseData.viewer_id, 'PRIVATE_OWNER');
+assert.equal(act.raceHorse[0].trained_chara_data.viewer_id, 'PRIVATE_OWNER');
+assert.ok(JSON.stringify(act).includes('998877'));
 console.log(JSON.stringify({ globalSkills: coverage.skills, globalBranches: coverage.branches, predicateKeys: coverage.predicateKeys, understoodKeys: coverage.understoodKeys, partialKeys: coverage.partialKeys,
-  syntaxCoverage: 'complete', observedHistory: 'passed', randomWindowSeparation: 'passed', lotteryCauseSeparation: 'passed', spatialProxies: 'passed', rankContinuity: 'passed', eventOrder: 'passed', captureContext: 'passed', privacy: 'passed', portable: 'passed' }));
+  syntaxCoverage: 'complete', observedHistory: 'passed', randomWindowSeparation: 'passed', lotteryCauseSeparation: 'passed', spatialProxies: 'passed', rankContinuity: 'passed', eventOrder: 'passed', captureContext: 'passed', privacy: 'passed', portable: 'passed', rawExport: 'passed' }));

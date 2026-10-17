@@ -54,6 +54,11 @@ This is a one-second observation window on a stated 2000 m course; it does not i
 | `conditions` | object, optional | `weather`, `ground`, and `season` code strings or null. No enum meaning is guessed. |
 | `laneDistanceMax` | number or null, optional | Explicit imported lane-width metadata when available. |
 | `randomSeed` | number, optional | Recorded simulation seed; no RNG reconstruction is asserted. |
+| `simDataBase64` | string, optional | Original compressed replay blob, also accepted as horseACT input. Portable **Export JSON** keeps this when the import had a scenario. |
+| `raceHorse` | array, optional | horseACT-shaped start/result objects (`responseHorseData`, finish fields, attached `trained_chara_data` when the same response had it). Source horse/trained-character fields are kept, including trainer/viewer identifiers present on those objects. |
+| `trainedCharaArray` | array, optional | Same-response `trained_chara_array` retained beside the per-horse attachments. |
+| `raceCourseSet` | object, optional | Captured course object or `{ id, distance }` reconstructed from recorded course fields. |
+| `weather`, `groundCondition`, `season`, `raceType`, `raceGrade`, `startTimeType`, `raceInstanceId`, `horseACT_version` | optional | HorseACT-compatible race-level fields retained from the source. `raceType` may be inferred from a known category. |
 
 The viewer computes `duration` from the last frame's `time`; an input `duration` field does not override observations. Internal `source` and `sourceLabel` are assigned on import and are not required exchange fields. A top-level array of these race objects imports multiple races.
 
@@ -181,7 +186,7 @@ Each supported scenario imports as a separate race within the same file-wide lim
 
 The scenario string is base64 decoded, then inflated, then parsed using the length-prefixed Global replay layout implemented in [binary.ts](../src/data/binary.ts). Speed is divided by 100, lane by 10,000, and zero-based finish order is converted to one based. Response metadata is associated through one-based `frame_order` / `frameOrder`; missing mappings are left unknown rather than guessed from array position. The binary `distanceDiffMax` field is not used as course distance.
 
-JP/new binary layouts are not heuristically decoded. Unknown layouts, invalid record lengths, truncated payloads, and nonmonotonic frame times fail explicitly. `race_scenario_info` is supported only as an object containing a recognized nested scenario field; no distinct byte or string layout is inferred from that name. Character names and skill names require metadata or a separately supplied database, so IDs may appear as placeholders.
+JP/new binary layouts are not heuristically decoded. Unknown layouts, invalid record lengths, truncated payloads, and nonmonotonic frame times fail explicitly. Unread header/padding/extended-record bytes are unknown replay-record fields, not career-scenario skill inputs such as training-win counts or Aoharu team totals. Portable export keeps the original compressed blob so those bytes are not discarded even when they are not decoded. `race_scenario_info` is supported only as an object containing a recognized nested scenario field; no distinct byte or string layout is inferred from that name. Character names and skill names require metadata or a separately supplied database, so IDs may appear as placeholders.
 
 Manual files are limited to 64 MB; a decompressed scenario is limited to 128 MB. Each race is limited to 64 runners, 100,000 frames, 1,000,000 runner samples, and 100,000 events. One import supports at most 100 races and 1,000,000 combined runner samples. Trace files are limited to 100,000 physical lines; envelope traversal is capped at 100,000 visits and a depth of 24, so a report containing deeply nested responses may reach the traversal cap before the line cap. Export a shorter interval if needed. The local folder bridge has its own smaller file limit documented in the capture guide.
 
