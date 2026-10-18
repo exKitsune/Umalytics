@@ -706,4 +706,9 @@ test('matched simulator decisions remain distinct from observations and discrete
   assert.match(result.stdout,/Trace UI gates.*passed/);
 });
 
+test('fixed replay calculations feed the dashboard without a simulator rerun',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/replay-math-workflow.ts')],{cwd:root,windowsHide:true,timeout:60000});
+  assert.match(result.stdout,/Fixed replay math.*passed/);
+});
+
 });

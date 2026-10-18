@@ -155,6 +155,24 @@ class AnalysisGateTests(unittest.TestCase):
                 blocked, _, _ = self.evaluate(diagnostic=self.diagnostic(status), inference=False)
                 self.assertEqual(blocked['mode'], 'recorded_only')
 
+    def test_explicit_replay_fallback_allows_unknown_rules_without_claiming_compatibility(self):
+        self.registry['allowReplayInference'] = True
+        self.registry['replayInference'] = self.inference.as_identity()
+        for era in (None, 'old', 'future'):
+            report, _, calls = self.evaluate(era)
+            self.assertEqual(report['mode'], 'inference_plan')
+            self.assertEqual(calls, 0)
+            plan = report['inferencePlan']
+            self.assertTrue(plan['provisional'])
+            self.assertEqual(plan['provisionalPolicy']['kind'], 'replay-analysis')
+            self.assertTrue(any(n['code']=='PROVISIONAL_REPLAY_INFERENCE' for n in report['notices']))
+            self.assertFalse(report['permissions']['unversionedInference'])
+            self.assertTrue(self.revalidate(plan, era)['authorized'])
+            self.assertFalse(self.revalidate(plan, era, measured_artifact_sha256='f'*64)['authorized'])
+        self.registry['replayInference']['identity']['artifactSha256'] = 'e'*64
+        report, _, _ = self.evaluate(None)
+        self.assertEqual(report['mode'], 'recorded_only')
+
     def test_old_race_can_only_choose_an_explicit_historical_inference_bundle(self):
         historical = gate.InferenceBinding('infer-old', 'synthetic-old', 'historical-profile', 'e'*64, 'f'*64)
         self.registry['engines'].append({**historical.as_identity(), 'kind':'inference',

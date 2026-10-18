@@ -214,7 +214,7 @@ def _selection_binding(decision: dict, context_sha: str,
 
 def _inference_is_eligible(decision: dict) -> bool:
     candidate = decision.get('inference', {})
-    if (decision.get('mode') not in ('compatible', 'provisional_future_inference')
+    if (decision.get('mode') not in ('compatible', 'provisional_future_inference', 'simulation_trial', 'provisional_replay_inference')
             or candidate.get('eligible') is not True):
         return False
     if candidate.get('provisional') is False:
@@ -233,7 +233,9 @@ def _inference_plan(decision: dict, context_sha: str, binding: InferenceBinding,
         notices.append(_notice(fallback_reason, FALLBACK_NOTICES[fallback_reason]))
     policy = decision.get('provisionalPolicy') if provisional else None
     if provisional:
-        notices.append(_notice('PROVISIONAL_FUTURE_INFERENCE', FUTURE_NOTICE))
+        replay = policy.get('kind') == 'replay-analysis'
+        notices.append(_notice('PROVISIONAL_REPLAY_INFERENCE' if replay else 'PROVISIONAL_FUTURE_INFERENCE',
+            'Replay analysis uses the installed inference model. Mechanics-dependent values are estimates; original game-version coverage is unconfirmed.' if replay else FUTURE_NOTICE))
         if isinstance(policy.get('notice'), str) and policy['notice'].strip():
             notices.append(_notice('FUTURE_POLICY_NOTICE', policy['notice']))
     material = {'schemaVersion': 1, 'gateVersion': ANALYSIS_GATE_VERSION,
@@ -305,7 +307,7 @@ def evaluate_for_analysis(capture: dict, registry: dict,
                 _add_notice(report, _notice(notice['code'], notice['message']))
         # This return precedes binding lookup, reference loading, file hashing,
         # low-level evaluation, and every model cache/worker access.
-        if decision.get('mode') not in ('compatible', 'provisional_future_inference', 'simulation_trial'):
+        if decision.get('mode') not in ('compatible', 'provisional_future_inference', 'simulation_trial', 'provisional_replay_inference'):
             report['binding'] = _selection_binding(decision, context_sha, None, None)
             return recorded_only()
         simulation_eligible = (decision.get('simulation', {}).get('eligible') is True

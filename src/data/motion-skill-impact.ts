@@ -41,7 +41,7 @@ function targetCredit(self:number,after:number,normal:number,normalAfter:number,
   }
   return result;
 }
-function activationImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,a:SkillActivation,courseId?:number|null):MotionSkillImpact|null {
+export function activationImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,a:SkillActivation,courseId?:number|null):MotionSkillImpact|null {
   const effects=a.effects.filter(e=>(e.targetType??1)===1&&[21,22,27,31].includes(e.type));
   if(!effects.length||a.effectiveEnd===null||a.effectiveEnd<=a.start)return null;
   const withSkill=motionFor(race,reference,analysis,runnerId,courseId,undefined,true),without=motionFor(race,reference,analysis,runnerId,courseId,activationMotionKey(runnerId,a),true);
@@ -71,12 +71,15 @@ function activationImpact(race:Race,reference:ReferenceData|null,analysis:RaceAn
     for(const component of components){
       // Direct-speed modifiers are added after the front cap; only target and
       // acceleration effects lose use to blocking.
-      if(blocked&&component.kind!=='current-speed'){component.assessedDuration+=dt;component.blockedDuration!+=dt;continue;}
+      if(blocked&&!p.blockingClamps&&component.kind!=='current-speed'){component.assessedDuration+=dt;component.blockedDuration!+=dt;continue;}
       if(p.constraint.kind==='unknown'&&p.selfActual===null)continue;
       if(!u||!v||p.selfActual===null||q.selfActual===null||!p.targetActive||!q.targetActive||!u.targetActive||!v.targetActive)continue;
       if(component.kind==='current-speed'){
         const delta=p.currentSpeedDelta-u.currentSpeedDelta;
-        component.assessedDuration+=dt;const useful=Math.abs(delta)>.00001?dt:0;component.usefulDuration!+=useful;for(const c of channels)credited.get(component)![c]+=useful;continue;
+        const fraction=p.blockingClamps&&p.constrained&&u.constrained&&Math.abs(delta)>.00001?Math.min(1,Math.abs(p.constrained.mid-u.constrained.mid)/Math.abs(delta)):Math.abs(delta)>.00001?1:0;
+        component.assessedDuration+=dt;const useful=dt*fraction;component.usefulDuration!+=useful;
+        if(p.blockingClamps)component.blockedDuration!+=dt-useful;
+        for(const c of channels)credited.get(component)![c]+=useful;continue;
       }
       if(component.kind==='acceleration'){
         const rate=(q.selfActual-p.selfActual)/dt;

@@ -72,10 +72,11 @@
       <text x="48" y="151">{minValue.toFixed(distributionAxis==='speed'?2:1)}</text><text x="328" y="151" text-anchor="end">{maxValue.toFixed(distributionAxis==='speed'?2:1)}</text><text x="190" y="168" text-anchor="middle">{distributionAxis==='speed'?'Target speed (m/s)':'Start delay (m after check)'}</text>
     </svg>
     <p>Model probabilities · each tick is a possible choice.</p>
+    {#if value?.source==='simulation'&&choice?.matched!=null}<div class="odds"><span>{pct(points[choice.matched].probability)} chance of this choice</span>{#if choice.betterChance!=null}<span>{pct(choice.betterChance)} chance of a better spurt</span>{/if}</div>{/if}
     {#if choice?.decisionDistance!=null}<p>Decision at {choice.decisionDistance.toFixed(0)} m</p>{/if}
     {#if luck}<div class="odds"><span>{pct(luck.probability)} chance of this choice</span><span>{pct(luck.betterChance)} chance of a better spurt</span><span title="Inferred from the matched choice's order. Checks happen within this decision, not once per elapsed second.">{luck.failedMin===luck.failedMax?luck.failedMin:`${luck.failedMin}–${luck.failedMax}`} failed wit checks · inferred</span></div>{/if}
   {:else if points.length===1}
-    <p>No wit roll in this model.</p>
+    <p>{choice?.rolls?.length?'One feasible candidate; actual rolls are shown above.':'No wit roll in this decision.'}</p>
   {/if}
   <p>{choice?.reason??'Preparing spurt analysis…'}</p>
 </div>

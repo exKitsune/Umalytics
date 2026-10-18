@@ -9,7 +9,7 @@
 </script>
 <section>
   <h3>Analysis cache</h3>
-  <p>{status.entries.length} saved analyses · {(status.bytes/1024/1024).toFixed(1)} MB saved</p>
+  <p>{new Set(status.entries.map(entry=>entry.raceId)).size} saved analyses · {(status.bytes/1024/1024).toFixed(1)} MB saved</p>
   <label class="setting-row">Limit <select aria-label="Analysis cache limit" disabled={working} value={status.policy.mode} onchange={e=>change({mode:e.currentTarget.value as CachePolicy['mode']})}><option value="unlimited">Unlimited</option><option value="races">Most recent analyses</option><option value="size">Disk size</option></select></label>
   {#if status.policy.mode!=='unlimited'}<label class="setting-row">{status.policy.mode==='races'?'Number of races':'Maximum MB'}<input aria-label="Cache limit value" type="number" min="1" max="1000000" step="1" value={status.policy.value} disabled={working} onchange={e=>{const value=Number(e.currentTarget.value);if(Number.isInteger(value)&&value>0&&value<=1000000)change({value});}}/></label>{/if}
   <p>Saved analysis is reused when compatible. New or changed races are analyzed when opened. Automatic background analysis is currently unavailable.</p>

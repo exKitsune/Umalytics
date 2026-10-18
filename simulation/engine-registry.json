@@ -4,5 +4,6 @@
   "eras": [],
   "engines": [],
   "futureInferencePolicies": [],
-  "allowUnknownVersionSimulation": true
+  "allowUnknownVersionSimulation": true,
+  "allowReplayInference": true
 }

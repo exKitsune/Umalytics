@@ -21,7 +21,7 @@ export interface StatusModeHillImpact {
   distanceStart:number;distanceEnd:number;duration:number;carryoverDuration:number;
   distance:number|null;time:number|null;hp:number|null;complete:boolean;
 }
-const kinds = new Set(['pace-up', 'pace-down', 'speed-up', 'overtake', 'downhill-mode']);
+const kinds = new Set(['pace-up', 'pace-down', 'speed-up', 'overtake', 'downhill-mode','extra-pace-up','dueling','spot-struggle','rushed','rushed-boost']);
 const cache = new WeakMap<RaceAnalysis, Map<number, { engine: ReturnType<typeof createRaceMotionEngine>; values: Map<string, StatusModeImpact[]> }>>();
 /** Lazy all-runner result data: one shared-engine excluded path per mode kind,
  * never one trajectory per episode and never an eager analyzeRace recursion. */
@@ -36,7 +36,7 @@ export function modeImpactsFor(race: Race, reference: ReferenceData | null, anal
   if (!runner || !detail) return [];
   const full = entry.engine.build({ runnerId, applyInferredModes: true }).runners[runnerId], style = effectiveStrategyCode(runner, detail.skillRows), result: StatusModeImpact[] = [];
   for (const kind of kinds) {
-    const windows = detail.intervals.filter(i => i.kind === `${kind}-model` && i.end != null && i.end > i.start);
+    const windows = detail.intervals.filter(i => (i.kind === `${kind}-model`||i.evidence==='simulated'&&i.kind===kind) && i.end != null && i.end > i.start);
     if (!windows.length) continue;
     const ordered = windows.map(i => [i.start, i.end!] as [number, number]).sort((a, b) => a[0] - b[0]), union: [number, number][] = [];
     for (const window of ordered) { const last = union.at(-1); if (last && window[0] <= last[1]) last[1] = Math.max(last[1], window[1]); else union.push([...window]); }

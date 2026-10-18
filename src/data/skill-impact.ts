@@ -15,12 +15,12 @@ type Effect=SkillReference['branches'][number]['effects'][number];
 interface Proc {source:Runner;activation:SkillActivation;recipientsKnown:boolean;}
 const moves=new Set([1,2,3,4,5,21,22,27,28,31]);
 const harmful=(e:Effect)=>(e.targetType??1)!==1&&(e.rawValue<0||[13,14,15,16].includes(e.type));
-function applies(proc:Proc,target:Runner,e:Effect){return (e.targetType??1)===1?proc.source.id===target.id:!(proc.source.teamGroup!=null&&target.teamGroup!=null&&proc.source.teamGroup===target.teamGroup)&&proc.activation.targetRunnerIds.includes(target.id);}
+function applies(proc:Proc,target:Runner,e:Effect){return (e.targetType??1)===1?proc.source.id===target.id:proc.activation.simulatedRecipients!==undefined?!!proc.activation.simulatedRecipients[target.id]?.some(hit=>hit.type===e.type&&hit.evaluatedValue===e.evaluatedValue):!(proc.source.teamGroup!=null&&target.teamGroup!=null&&proc.source.teamGroup===target.teamGroup)&&proc.activation.targetRunnerIds.includes(target.id);}
 function active(proc:Proc,time:number){return time>=proc.activation.start&&(proc.activation.effectiveEnd===null?time===proc.activation.start:time<proc.activation.effectiveEnd);}
 const procCache=new WeakMap<Pick<RaceAnalysis,'runners'>,Proc[]>();
 function procsFor(race:Race,analysis:Pick<RaceAnalysis,'runners'>):Proc[]{const cached=procCache.get(analysis);if(cached)return cached;const result=race.runners.flatMap(source=>analysis.runners[source.id].skillActivations.map(activation=>{
   const event=race.events.find(e=>(e.type===3||e.type==='skill')&&e.skillId===activation.skillId&&e.time===activation.start&&(e.runnerId===source.id||e.runnerId===null&&e.params[0]===source.index));
-  return {source,activation,recipientsKnown:Number.isInteger(event?.params[4])&&race.runners.length<=32};
+  return {source,activation,recipientsKnown:activation.simulatedRecipients!==undefined||Number.isInteger(event?.params[4])&&race.runners.length<=32};
 }));procCache.set(analysis,result);return result;}
 function windowOverlaps(a:SkillActivation,b:SkillActivation){const ae=a.end??a.start,be=b.end??b.start;return ae===a.start||be===b.start?Math.abs(a.start-b.start)<1e-5:a.start<be&&b.start<ae;}
 function statusTarget(intervals:StatusInterval[],time:number,base:number):number|null {
@@ -141,7 +141,7 @@ function componentUtilization(race:Race,analysis:Pick<RaceAnalysis,'runners'>,pr
 function evaluateImpact(race:Race,reference:ReferenceData|null,course:CourseReference|null,analysis:Pick<RaceAnalysis,'runners'>,proc:Proc,target:Runner,effects:Effect[],all:Proc[]):SkillImpact {
   const a=proc.activation,stop=stopTime(race,target.id),end=a.effectiveEnd===null?null:Math.min(stop,a.effectiveEnd),scheduledDuration=a.effectiveDuration;
   const duration=scheduledDuration!==null&&target.finishTimeRaw!=null?Math.max(0,Math.min(a.effectiveEnd!,target.finishTimeRaw)-a.start):scheduledDuration,finishClippedDuration=scheduledDuration!==null&&duration!==null?Math.max(0,scheduledDuration-duration):0;
-  const immune=proc.source.id!==target.id&&proc.source.teamGroup!=null&&target.teamGroup!=null&&proc.source.teamGroup===target.teamGroup;
+  const immune=a.simulatedRecipients===undefined&&proc.source.id!==target.id&&proc.source.teamGroup!=null&&target.teamGroup!=null&&proc.source.teamGroup===target.teamGroup;
   const detail=analysis.runners[target.id],ctx=mechanicsContext(race,target,course,detail.statBreakdown,effectiveStrategyCode(target,detail.skillRows));
   const resolved=effects.map(e=>({effect:e,value:effectValue(proc.source,a.referenceSkillId??a.skillId,e)}));
   const unknown=resolved.some(e=>e.value===null),laneOnly=effects.length>0&&effects.every(e=>[28,35].includes(e.type)),unsupported=!laneOnly&&effects.some(e=>![9,21,22,27,31].includes(e.type));
@@ -285,14 +285,18 @@ export function populateSkillImpacts(race:Race,reference:ReferenceData|null,cour
   const all=procsFor(race,analysis);analysis.debuffs=[];
   for(const proc of all){const a=proc.activation,own=a.effects.filter(e=>(e.targetType??1)===1),foreign=a.effects.filter(harmful);
     if(own.length)analysis.runners[proc.source.id].skillImpacts.push(evaluateImpact(race,reference,course,analysis,proc,proc.source,own,all));
-    if(foreign.length){analysis.debuffs.push({sourceRunnerId:proc.source.id,skillId:a.skillId,start:a.start,end:a.end,effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason,targetRunnerIds:a.targetRunnerIds,recipientsKnown:proc.recipientsKnown,effects:foreign,detail:'Recorded skill activation and target-mask selection. A mask does not measure effect magnitude or prove immunity was absent; unknown recipients are never filled from a cone.'});for(const id of a.targetRunnerIds){const target=race.runners.find(r=>r.id===id);if(target)analysis.runners[id].receivedDebuffImpacts.push(evaluateImpact(race,reference,course,analysis,proc,target,foreign,all));}}
+    if(foreign.length){analysis.debuffs.push({sourceRunnerId:proc.source.id,skillId:a.skillId,start:a.start,end:a.end,effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason,targetRunnerIds:a.targetRunnerIds,recipientsKnown:proc.recipientsKnown,effects:foreign,detail:a.simulatedRecipients?'Confirmed applied effects in the matched execution.':'Recorded skill activation and target-mask selection. A mask does not measure effect magnitude or prove immunity was absent; unknown recipients are never filled from a cone.'});for(const id of a.targetRunnerIds){const target=race.runners.find(r=>r.id===id);if(target)analysis.runners[id].receivedDebuffImpacts.push(evaluateImpact(race,reference,course,analysis,proc,target,a.simulatedRecipients?.[id]?.filter(harmful)??foreign,all));}}
   }
   for(const runner of race.runners){const detail=analysis.runners[runner.id];detail.receivedDebuffTotals=contributionTotals(detail.receivedDebuffImpacts,'Recorded-mask incoming debuffs; model conditional on immunity and known effects');
     if(analysis.debuffs.some(d=>d.sourceRunnerId!==runner.id&&!d.recipientsKnown)){for(const key of ['observedDistance','observedHpConsumed','observedHpRecovered','modeledDistanceDelta','modeledTimeDelta','modeledHpDelta'] as const)detail.receivedDebuffTotals[key]=null;detail.receivedDebuffTotals.detail+=' Unreported recipient masks leave incoming totals unresolved.';}
   }
 }
 export function visionDistanceAt(race:Race,runnerId:string,time:number,reference:ReferenceData|null,analysis:RaceAnalysis):{metres:number|null;detail:string} {
-  if(analysis.source==='simulation')return {metres:null,detail:'Vision distance is not emitted by this simulator trace.'};
+  if(analysis.source==='simulation'){
+    const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];if(!runner||!detail)return {metres:null,detail:'Runner unavailable.'};
+    const effects=detail.skillActivations.filter(a=>time>=a.start&&(a.timingKind==='passive'||a.effectiveEnd!=null&&time<a.effectiveEnd)).flatMap(a=>a.effects.filter(e=>e.type===8&&(e.targetType??1)===1).map(e=>effectValue(runner,a.skillId,e)));
+    return {metres:effects.every(v=>v!==null)?20+effects.reduce<number>((n,v)=>n+v!,0):null,detail:'Reference 20 m vision plus applied vision modifiers at this time. Geometry is a fixed-position guide.'};
+  }
   const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];if(!runner||!detail)return {metres:null,detail:'Runner unavailable.'};let metres=20;
   for(const row of detail.skillRows){const def=reference?.metadata.skills[row.skillId];if(!def){if(row.equipped)return {metres:null,detail:'Equipped vision effects unavailable.'};continue;}
     for(const [i,b] of def.branches.entries()){const index=b.branchIndex??i,vision=b.effects.filter(e=>e.type===8&&(e.targetType??1)===1);if(!vision.length||b.rawDuration>=0)continue;

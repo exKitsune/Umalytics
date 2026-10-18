@@ -20,6 +20,7 @@ export function teamStatScale(total:number):number {
   return total<1200?0.8:total<1800?0.9:total<2600?1:total<3600?1.1:1.2;
 }
 export function effectValue(runner: Runner, skillId: number, effect: SkillReference['branches'][number]['effects'][number],context?:EffectValueContext): number | null {
+  if(effect.evaluatedValue!==undefined)return Number.isFinite(effect.evaluatedValue)?effect.evaluatedValue:null;
   if (effect.levelUsage !== 1) return null;
   const additional=effect.additionalActivateType??0;
   let repeat=1;

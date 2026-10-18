@@ -30,7 +30,7 @@ import re
 from typing import Any
 
 
-POLICY_VERSION = "umalytics-original-race-selection-v2"
+POLICY_VERSION = "umalytics-original-race-selection-v3"
 ORIGINAL_RULE_FIELDS = frozenset({"rulesetId", "gameBuild", "masterSha256"})
 EVIDENCE_FIELDS = frozenset({"region", "mode", "occurredAt"}) | ORIGINAL_RULE_FIELDS
 PROVENANCE_SOURCES = frozenset({"upstream-original-race", "independently-confirmed-original-race"})
@@ -135,12 +135,19 @@ def _scope(row: dict, evidence: dict) -> bool:
 def _registry(value: Any) -> dict:
     if value is None:
         raise CompatibilityError("REGISTRY_UNAVAILABLE", "No engine compatibility registry is available")
-    raw = _shape(value, {"schemaVersion", "registryId", "eras", "engines", "futureInferencePolicies"}, {"allowUnknownVersionSimulation", "unknownVersionSimulators"}, "registry")
+    raw = _shape(value, {"schemaVersion", "registryId", "eras", "engines", "futureInferencePolicies"}, {"allowUnknownVersionSimulation", "unknownVersionSimulators", "allowReplayInference", "replayInference"}, "registry")
     _require(type(raw["schemaVersion"]) is int and raw["schemaVersion"] == 1, "Unsupported registry schema")
     _name(raw["registryId"], "registryId")
     for key in ("eras", "engines", "futureInferencePolicies"):
         _require(isinstance(raw[key], list) and len(raw[key]) <= 1000, f"{key} must be a bounded list")
     _require(type(raw.get("allowUnknownVersionSimulation", False)) is bool, "Unknown simulation policy must be boolean")
+    _require(type(raw.get("allowReplayInference", False)) is bool, "Replay inference policy must be boolean")
+    replay = raw.get("replayInference")
+    if replay is not None:
+        _shape(replay, {"engineId", "version", "profile", "identity"}, set(), "replayInference")
+        for key in ("engineId", "version", "profile"): _name(replay[key], "replayInference." + key)
+        _shape(replay["identity"], {"artifactSha256", "dataSha256"}, set(), "replayInference.identity")
+        for key, value in replay["identity"].items(): _sha(value, "replayInference." + key)
     trials = raw.get("unknownVersionSimulators", [])
     _require(isinstance(trials, list) and len(trials) <= 1, "Configure at most one preferred unknown-version simulator")
     for trial in trials:
@@ -259,7 +266,7 @@ def _registry(value: Any) -> dict:
                 overlaps = any(eras[key]["_window"] is None or _overlap(timed["_window"], eras[key]["_window"])
                                for key in named["eraIds"])
             _require(not overlaps, "Future inference policies overlap")
-    return {"registryId": raw["registryId"], "eras": eras, "engines": engines, "policies": policies, "trials": trials if raw.get("allowUnknownVersionSimulation") else []}
+    return {"registryId": raw["registryId"], "eras": eras, "engines": engines, "policies": policies, "trials": trials if raw.get("allowUnknownVersionSimulation") else [], "replayInference": replay if raw.get("allowReplayInference") else None}
 
 
 def _evidence(value: Any, capture_sha256: str) -> dict:
@@ -498,6 +505,17 @@ def select_compatibility(capture_sha256: str, evidence: dict, registry: dict) ->
                 decision["noticeCodes"] = []
                 _notice(decision, "UNKNOWN_VERSION_REPLAY_TRIAL",
                     "Original game version is unknown. The installed simulator may explain this race only after all supported recorded fields match. Inference remains separately version-gated.")
+        if not decision["inference"]["eligible"] and parsed_registry["replayInference"]:
+            engine = parsed_registry["replayInference"]
+            decision["inference"] = _selected(engine, provisional=True)
+            decision["inference"]["reasonCodes"] = ["PROVISIONAL_REPLAY_INFERENCE"]
+            decision["provisionalPolicy"] = {"kind": "replay-analysis", "inferenceEngineId": engine["engineId"],
+                "notice": "Use the installed inference model when simulation cannot match. Original rules coverage is not asserted."}
+            decision["engineEligibility"] = [r for r in decision["engineEligibility"] if r["engineId"] != engine["engineId"]] + [
+                {"engineId": engine["engineId"], "kind": "inference", "eligible": True, "provisional": True, "reasonCodes": ["PROVISIONAL_REPLAY_INFERENCE"]}]
+            if decision["mode"] == "recorded_only": decision["mode"] = "provisional_replay_inference"
+            decision["notices"], decision["noticeCodes"] = [], []
+            _notice(decision, "PROVISIONAL_REPLAY_INFERENCE", "Replay analysis uses the installed inference model when simulation is unavailable or does not match. Mechanics-dependent values are estimates; original version coverage is unconfirmed.")
         for kind in ("simulation", "inference"):
             if not decision[kind]["eligible"]:
                 decision[kind]["reasonCodes"] = [resolution if era is None else "NO_COMPATIBLE_" + kind.upper() + "_ENGINE"]

@@ -66,6 +66,8 @@ export interface SkillActivation extends SkillTiming {
   effects: SkillReference['branches'][number]['effects']; detail: string;
   /** A recorded targeting mask; recipient effect magnitude is not measured. */
   targetRunnerIds: string[];
+  /** Effects actually delivered in the matched execution, by recipient. */
+  simulatedRecipients?: Record<string,SkillReference['branches'][number]['effects']>;
 }
 export interface SkillRow {
   simulation?: { checks: import('../simulation/trace').DecisionEvent[]; wit: import('../simulation/trace').DecisionEvent[] };

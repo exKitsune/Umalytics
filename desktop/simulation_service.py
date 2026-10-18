@@ -57,6 +57,12 @@ class SimulationService:
                 'region': 'global', 'modes': ['practice', 'team-trials', 'champions-meeting'],
                 'reference': 'User-authorized unknown-version trial; replay agreement required; no date coverage claimed.'
             } for row in candidates[-1:]]}
+        if registry.get('allowReplayInference') is True:
+            candidates = [row for row in manifest['bundles'] if row.get('kind') == 'inference']
+            if candidates:
+                row = candidates[-1]
+                registry = {**registry, 'replayInference': {'engineId': row['engine_id'], 'version': row['version'], 'profile': row['profile'],
+                    'identity': {'artifactSha256': row['artifact_sha256'], 'dataSha256': row['data_sha256']}}}
         return registry, manifest
 
     def path(self, relative):

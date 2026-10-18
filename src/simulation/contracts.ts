@@ -121,7 +121,7 @@ export interface CompatibilityDecision {
   evidenceSha256: string | null;
   selectionSha256: string | null;
   registryId: string | null;
-  mode: 'recorded_only' | 'compatible' | 'provisional_future_inference' | 'simulation_trial';
+  mode: 'recorded_only' | 'compatible' | 'provisional_future_inference' | 'simulation_trial' | 'provisional_replay_inference';
   evidenceStatus: string;
   compatibilityClass: string;
   matchedEraId: string | null;
@@ -327,7 +327,7 @@ export function matchesCurrentAnalysisSelection(
 
 function hasEligibleCompatibility(report: AnalysisGateReportSummary | null | undefined): boolean {
   const mode = report?.compatibility?.mode;
-  return mode === 'compatible' || mode === 'provisional_future_inference';
+  return mode === 'compatible' || mode === 'provisional_future_inference' || mode === 'provisional_replay_inference' || mode === 'simulation_trial';
 }
 
 function sameEngine(left: ImmutableEngineIdentity | null | undefined,
@@ -395,7 +395,7 @@ export function canUseInferencePlan(
       .every(key => plan[key] === binding[key])) return false;
   if (plan.provisional) {
     const hasWarning = (notices: AnalysisNotice[]) => notices.some(notice =>
-      notice.code === 'PROVISIONAL_FUTURE_INFERENCE' && notice.severity === 'warning'
+      ['PROVISIONAL_FUTURE_INFERENCE','PROVISIONAL_REPLAY_INFERENCE'].includes(notice.code) && notice.severity === 'warning'
       && notice.persistent === true && notice.message.trim().length > 0);
     if (!plan.provisionalPolicy || !hasWarning(plan.notices) || !hasWarning(report.notices)) return false;
   }

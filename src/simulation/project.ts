@@ -84,7 +84,7 @@ function conditions(events:DecisionEvent[]):SkillConditionEvaluation|null {
   return {state,inferredState:state,branches,mechanicsState:'understood',eligibilityState:eligible?'eligible':branches.every(b=>b.eligibilityState==='ineligible')?'ineligible':'unresolved',definitiveOpportunity:eligible,randomTrigger:branches.some(b=>b.randomTrigger)};
 }
 
-function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,reference:ReferenceData|null,stop:number,runners:Runner[]) {
+function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,reference:ReferenceData|null,stop:number,runners:Runner[],allEvents:DecisionEvent[]) {
   const reported=objects(modeled.skillEvents).filter(e=>e.horseIndex===runner.index);
   const ids=[...new Set([...(runner.skills??[]).map(s=>s.id),...events.filter(e=>e.skillId&&['skill-definition','skill-wit','skill-activated'].includes(e.kind)).map(e=>Number(e.skillId)),...reported.map(e=>Number(e.skillId))])].filter(Number.isFinite);
   const metrics:Record<number,SkillMetric[]>={},rows:SkillRow[]=[];
@@ -100,17 +100,34 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
       const event=reported.find(p=>Number(p.skillId)===id&&Math.abs(Number(p.t)-e.time)<.001);
       const passive=effects.some(x=>Number(x.data.duration)<0),reportedDuration=num(event?.duration);
       const duration=reportedDuration??(effects.length?Math.max(0,...effects.map(x=>Number(x.data.duration))):null);
-      const expiry=own.find(x=>x.kind==='effect-ended'&&x.sequence>e.sequence&&x.sequence<next);
+      const expiry=own.filter(x=>x.kind==='effect-ended'&&x.sequence>e.sequence&&x.sequence<next).at(-1);
       const end=passive?stop:expiry?.time??(duration===null?null:Math.min(stop,e.time+duration));
+      const effectEnd=(event:DecisionEvent,recipient=runner.index)=>{
+        const seconds=Number(event.data.duration);if(seconds<0)return stop;
+        const expected=event.time+seconds;
+        const ended=allEvents.find(x=>x.kind==='effect-ended'&&x.horseIndex===recipient&&x.skillId===e.skillId&&x.sequence>event.sequence&&x.sequence<next&&x.time>=expected-.001&&x.time<=expected+.2);
+        return Math.min(stop,ended?.time??expected);
+      };
       // Reference effects supply labels/icons only. Magnitudes below are copied
       // from evaluated engine modifiers, never scaled by the UI formula engine.
-      const displayEffects=effects.map(x=>({type:Number(x.data.type),rawValue:Number(x.data.modifier)*10000,valueUsage:1,levelUsage:0,
-        targetType:ref?.effects[Number(x.data.ability)]?.targetType??1}));
-      const targetRunnerIds=[...new Set(queued.flatMap(x=>Array.isArray(x.data.targets)?x.data.targets.map(v=>runners.find(r=>r.index===v)?.id).filter((v):v is string=>!!v):[]))];
+      const displayEffects=effects.filter(x=>applied.some(p=>p.data.ability===x.data.ability)||queued.some(p=>p.data.ability===x.data.ability)).map(x=>({type:Number(x.data.type),rawValue:Number(x.data.modifier)*10000,valueUsage:1,levelUsage:0,evaluatedValue:Number(x.data.modifier),
+        appliedStart:x.time,appliedEnd:effectEnd(x),
+        targetType:ref?.effects[Number(x.data.ability)]?.targetType??(queued.some(p=>p.data.ability===x.data.ability)?2:1)}));
+      const simulatedRecipients:NonNullable<SkillActivation['simulatedRecipients']>={};
+      for(const queue of queued){
+        const evaluated=effects.find(x=>x.data.ability===queue.data.ability);if(!evaluated)continue;
+        const previousQueue=queued.filter(q=>q.sequence<queue.sequence).at(-1)?.sequence??e.sequence;
+        for(const target of Array.isArray(queue.data.targets)?queue.data.targets:[]){
+          const recipient=runners.find(r=>r.index===target);if(!recipient||recipient.id===runner.id)continue;
+          const delivered=allEvents.find(x=>x.horseIndex===target&&x.kind==='effect-applied'&&x.skillId===e.skillId&&x.tick===e.tick&&x.sequence>previousQueue&&x.sequence<queue.sequence&&x.data.type===evaluated.data.type);
+          if(delivered)(simulatedRecipients[recipient.id]??=[]).push({type:Number(delivered.data.type),rawValue:Number(delivered.data.modifier)*10000,evaluatedValue:Number(delivered.data.modifier),valueUsage:1,levelUsage:0,appliedStart:delivered.time,appliedEnd:effectEnd(delivered,Number(target)),targetType:ref?.effects[Number(queue.data.ability)]?.targetType??2});
+        }
+      }
+      const targetRunnerIds=Object.keys(simulatedRecipients);
       return {skillId:id,referenceSkillId:id,start:e.time,end,duration,effectiveEnd:end,effectiveDuration:end===null?null:Math.max(0,end-e.time),
-        activationEvidence:'simulated',durationEvidence:'simulated',effectBranch:e.detail,effects:displayEffects,targetRunnerIds,
+        activationEvidence:'simulated',durationEvidence:'simulated',effectBranch:e.detail,effects:displayEffects,targetRunnerIds,simulatedRecipients,
         timingKind:passive?'passive':duration===0?'instant':'reported',timingReason:'Engine activation and effect expiry ticks.',
-        detail:`Simulator activation; ${applied.length} self effects applied, ${targetRunnerIds.length} queued recipients.`};
+        detail:`Simulator activation; ${applied.length} self effects applied, ${targetRunnerIds.length} confirmed recipients.`};
     });
     const evaluation=conditions(own),failed=wit.some(e=>e.data.checked===true&&e.data.passed===false);
     const nonProcReason=activations.length?'Activated in the simulation.':failed?'The simulator’s actual wit check failed.':evaluation?.state==='unmet'?'No branch became ready in the simulation.':'No activation in this simulation; consult the actual checks below.';
@@ -136,16 +153,24 @@ function spurt(events:DecisionEvent[],rows:number[][],stop:number):SpurtComparis
     const endSequence=inputs[index+1]?.sequence??Infinity,checks=events.filter(e=>e.sequence>input.sequence&&e.sequence<endSequence);
     const accepted=checks.find(e=>e.kind==='spurt-accepted');
     const rolls=checks.filter(e=>e.kind==='spurt-roll').map(e=>({roll:Number(e.data.roll),threshold:Number(e.data.threshold),passed:e.data.passed===true,speed:Number(e.data.speed),start:Number(e.data.start)}));
-    return {time:input.time,end:inputs[index+1]?.time??stop,trigger:index?'recovery':'late-entry',skillIds:[],candidates:[],matched:null,betterChance:null,
+    const feasible=checks.filter(e=>e.kind==='spurt-search'&&e.data.feasible===true);
+    const candidates=[...new Map(feasible.map(e=>[`${e.data.speed}/${e.data.start}`,{speed:Number(e.data.speed),delay:Math.max(0,Number(e.data.start)-Number(input.data.position)),time:Math.fround(Math.fround((Number(e.data.start)-Number(input.data.position))/Number(input.data.base_speed))+Math.fround((Number(input.data.distance)-60-Number(e.data.start))/Number(e.data.speed))),probability:0}])).values()].sort((a,b)=>Math.trunc((a.time-b.time)*10000));
+    const chance=Math.max(0,Math.min(1,Math.ceil(rolls[0]?.threshold??Math.fround(15+Math.fround(.05*Number(input.data.wisdom))))/100));let residual=1;
+    for(const [i,c] of candidates.entries()){c.probability=i===candidates.length-1?residual:residual*chance;residual-=c.probability;}
+    if(!candidates.length&&accepted)candidates.push({speed:Number(accepted.data.speed),delay:Math.max(0,Number(accepted.data.start)-Number(input.data.position)),time:0,probability:1});
+    const matched=accepted?candidates.findIndex(c=>Math.abs(c.speed-Number(accepted.data.speed))<.0001&&Math.abs(c.delay-Math.max(0,Number(accepted.data.start)-Number(input.data.position)))<.01):-1;
+    return {time:input.time,end:inputs[index+1]?.time??stop,trigger:index?'recovery':'late-entry',skillIds:[],candidates,matched:matched<0?null:matched,betterChance:matched<0?null:candidates.slice(0,matched).reduce((n,c)=>n+c.probability,0),
       decisionDistance:num(input.data.position),hp:num(input.data.hp),checkChance:rolls.length?rolls[0].threshold/100:null,
       reason:rolls.length?`${rolls.length} actual wit ${rolls.length===1?'roll':'rolls'}. The displayed target is the plan retained by the engine.`:'Deterministic budget decision; no wit draw was made.',
       deterministic:!rolls.length,rolls,observedTarget:num(accepted?.data.speed),observedDelay:accepted?Number(accepted.data.start)-Number(input.data.position):null,observedTargetTime:input.time,targetEvidence:null};
   });
   const last=decisions.at(-1),maximum=num(inputs.at(-1)?.data.max_speed),target=last?.observedTarget??null;
-  return {source:'simulation',candidates:[],matched:null,betterChance:null,decisionDistance:last?.decisionDistance??null,hp:last?.hp??null,checkChance:last?.checkChance??null,
+  const waiting=rows.filter(r=>inputs.length&&start!==null&&r[m.time]>=inputs[0].time&&r[m.time]<start);
+  const waitingPlateau=waiting.length>1&&waiting.every(r=>Math.abs(r[m.base]-waiting[0][m.base])<.001)?{start:waiting[0][m.time],end:start!,speed:waiting[0][m.base]}:null;
+  return {source:'simulation',candidates:last?.candidates??[],matched:last?.matched??null,betterChance:last?.betterChance??null,decisionDistance:last?.decisionDistance??null,hp:last?.hp??null,checkChance:last?.checkChance??null,
     reason:last?.reason??'No last-spurt decision occurred.',deterministic:last?.deterministic??true,target:target===null?null:exact(target),maximum:maximum===null?null:exact(maximum),
     shortfall:maximum===null||target===null?null:exact(Math.max(0,maximum-target)),initialTarget:decisions[0]?.observedTarget??null,initialTargetTime:decisions[0]?.time??null,
-    targetTime:last?.time??null,waitingPlateau:null,startTime:start,delaySeconds:start===null||!inputs.length?null:Math.max(0,start-inputs[0].time),decisions};
+    targetTime:last?.time??null,waitingPlateau,startTime:start,delaySeconds:start===null||!inputs.length?null:Math.max(0,start-inputs[0].time),decisions};
 }
 
 export function projectSimulation(recorded:Race,report:AnalysisGateReport,reference:ReferenceData|null):PreparedRace|null {
@@ -163,7 +188,7 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
   for(const runner of runners){
     const events=trace.events.filter(e=>e.horseIndex===runner.index),rows=trace.motion.filter(r=>r[m.horse]===runner.index),stop=runner.finishTimeRaw??race.duration;
     if(!rows.length)throw new Error('Simulator motion is incomplete.');
-    const states=[...intervals(rows,stop),...internalIntervals(events,stop)].sort((a,b)=>a.start-b.start),{rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners),activations=skillRows.flatMap(s=>s.activations);
+    const states=[...intervals(rows,stop),...internalIntervals(events,stop)].sort((a,b)=>a.start-b.start),{rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events),activations=skillRows.flatMap(s=>s.activations);
     const samples=frames.filter(f=>f.time<=stop+.067).map((f,index)=>{const s=f.runners.find(s=>s.runnerId===runner.id)!,before=frames[index-1]?.runners.find(s=>s.runnerId===runner.id),dt=index?f.time-frames[index-1].time:0;
       const hpDelta=before?.hp==null||s.hp===null?null:s.hp-before.hp;
       return {time:f.time,distance:s.distance,speed:s.speed,hp:s.hp,lane:s.lane,leadGap:runnerGap(race,f.runners,runner.id),rank:sampleRanks.get(f)!.get(runner.id)??null,
@@ -186,7 +211,7 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
       totals:{skills:skillRows.map(s=>({skillId:s.skillId,motion:null,score:null,coverage:0,active:0,assessed:0})),benefit:null,score:null,coverage:0,active:0,assessed:0}} satisfies PreparedRunner;
     for(const a of activations){
       race.events.push({time:a.start,type:'skill',runnerId:runner.id,skillId:a.skillId,label:'Simulated skill activation',params:[runner.index,a.skillId,a.duration??-1,a.effectBranch??0]});
-      if(a.targetRunnerIds.length)analysis.debuffs.push({sourceRunnerId:runner.id,skillId:a.skillId,start:a.start,end:a.end,targetRunnerIds:a.targetRunnerIds,recipientsKnown:true,effects:a.effects,detail:'Recipients queued by the simulator; immunity checks may prevent effects.',effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason});
+      if(a.targetRunnerIds.length)analysis.debuffs.push({sourceRunnerId:runner.id,skillId:a.skillId,start:a.start,end:a.end,targetRunnerIds:a.targetRunnerIds,recipientsKnown:true,effects:a.effects,detail:'Confirmed applied effects in the matched execution.',effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason});
     }
   }
   race.events.sort((a,b)=>a.time-b.time);

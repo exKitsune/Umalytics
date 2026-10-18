@@ -20,7 +20,15 @@ export function statBreakdownFor(race: Race, runner: Runner, course: CourseRefer
   const style = effectiveStrategyCode(runner, rows), styleKey = ({1:'front',2:'pace',3:'late',4:'end',5:'front'} as const)[style as 1|2|3|4|5];
   const rank = styleKey ? aptitudeRank(runner.aptitudes?.[styleKey]) : null;
   const unresolved = unresolvedPassiveStats(runner,rows,reference), passiveLabels = unresolvedPassiveLabels(runner,rows,reference), passive = [0,0,0,0,0];
+  if(rows.every(row=>row.evidence==='simulated'))unresolved.clear();
   for (const row of rows) {
+    if(row.evidence==='simulated'){
+      for(const a of row.activations.filter(a=>a.start===0))for(const e of a.effects){
+        if(e.type<1||e.type>5||(e.targetType??1)!==1)continue;
+        const value=effectValue(runner,row.skillId,e);if(value===null)unresolved.add(e.type);else passive[e.type-1]+=value;
+      }
+      continue;
+    }
     const definition = reference?.metadata.skills[row.skillId];
     const indices = new Set([...row.inferredBranches,...row.activations.filter(a=>a.start===0).flatMap(a=>a.effectBranch!==null?[a.effectBranch]:definition?.branches.length===1?[definition.branches[0].branchIndex??0]:[])]);
     if (row.inferredBranches.length > 1) for (const b of definition?.branches??[]) for (const e of b.effects) if(e.type>=1&&e.type<=5) unresolved.add(e.type);

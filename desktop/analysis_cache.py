@@ -43,7 +43,9 @@ class AnalysisCache:
         if policy['mode'] == 'unlimited':
             return
         used = 16384
-        for index, entry in enumerate(self.inventory(db)):
+        races = {}
+        for entry in self.inventory(db):
+            index = races.setdefault(entry['raceId'], len(races))
             used += entry['bytes'] + (0 if '_path' in entry else 4096)
             if (policy['mode'] == 'races' and index >= policy['value']) or (policy['mode'] == 'size' and used > policy['value'] * 1024 * 1024):
                 self.remove_entry(db, entry)

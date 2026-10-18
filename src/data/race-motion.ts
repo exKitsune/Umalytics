@@ -91,7 +91,15 @@ export function neighborhoodConstraintAt(race: Race, runner: Runner, time: numbe
   return {kind:missing?'unknown':'none',cap:null,runnerId:null,detail:missing?'Some field positions are unavailable.':'No front-collision geometry at this sampled point; mere proximity causes no invented slowdown.'};
 }
 
-export function createRaceMotionEngine(race: Race, reference: ReferenceData | null, courseIdOverride: number | null | undefined, analysis: RaceAnalysis) {
+export interface ReplayMotionEngine {
+  build(options?:RaceMotionOptions):RaceMotion;
+  speedPotential(runnerId:string,activationKeys:readonly string[]):MotionBand|null;
+  physics(runnerId:string,time:number,options?:RaceMotionOptions,healthy?:boolean):State;
+}
+const replayEngines=new WeakMap<RaceAnalysis,ReplayMotionEngine>();
+export function registerReplayMotion(analysis:RaceAnalysis,engine:ReplayMotionEngine){replayEngines.set(analysis,engine);}
+export function createRaceMotionEngine(race: Race, reference: ReferenceData | null, courseIdOverride: number | null | undefined, analysis: RaceAnalysis):ReplayMotionEngine {
+  const supplied=replayEngines.get(analysis);if(supplied)return supplied;
   const course = reference?.courses[courseIdOverride ?? race.courseId ?? ''] ?? null;
   const compiled = new Map<string,Effect[]>(), statCache = new Map<string,StatBands>(), calibration = new Map<string,SectionCalibration[]>();
   const runnerBuildCache=new Map<string,RunnerMotion>();
@@ -514,7 +522,12 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
     }
     return result;
   }
-  return {build,speedPotential};
+  function physics(runnerId:string,time:number,options:RaceMotionOptions={},healthy=false){
+    const selected=new Set([...(options.excludeActivationKeys??[]),...(options.excludeActivationKey?[options.excludeActivationKey]:[])]);
+    const excluded:EffectExclusion=options.excludeEffectTypes?{activationKeys:selected,types:new Set(options.excludeEffectTypes)}:selected;
+    return stateAt(race.runners.find(r=>r.id===runnerId)!,time,excluded,undefined,healthy,false,options.excludeStatusKey??null,true);
+  }
+  return {build,speedPotential,physics};
 }
 export function buildRaceMotion(race:Race,reference:ReferenceData|null,courseIdOverride:number|null|undefined,analysis:RaceAnalysis):RaceMotion {
   return createRaceMotionEngine(race,reference,courseIdOverride,analysis).build();

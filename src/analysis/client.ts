@@ -10,6 +10,7 @@ import { AnalysisStore, type CachePolicy, type CacheStatus } from './store';
 import type { AnalysisGateReport, AnalysisGateReportSummary, SimulationJob, SimulationJobDetails, InferencePlanRevalidation } from '../simulation/contracts';
 import { canUseInferencePlan, canUseSimulatedCapability } from '../simulation/contracts';
 import { projectSimulation } from '../simulation/project';
+import { digest } from './codec';
 declare const __ANALYSIS_REVISION__:string;
 export interface AnalysisState {busy:boolean;background:boolean;done:number;total:number;message:string}
 interface Authorization extends InferencePlanRevalidation {cacheKey:string;artifactUrl:string;dataUrl:string;uiRevision:string}
@@ -65,9 +66,21 @@ export class AnalysisClient {
         return detail.report;
         };
         const detail=await this.detailRequest();if(!alive())return;
-        const projected=detail?projectSimulation(race,detail,this.reference):null;
+        const cacheKey=detail&&this.reference?await digest(JSON.stringify(['replay-math-v1',__ANALYSIS_REVISION__,detail.binding?.authorizationSha256])):null;
+        const cached=cacheKey?await this.store.get(cacheKey).catch(()=>null):null;
+        if(!alive())return;
+        let packed:Uint8Array|undefined;
+        const projected=detail&&this.reference?await new Promise<PreparedRace>((resolve,reject)=>{
+          const worker=this.worker=new Worker(new URL('../simulation/analysis-worker.ts',import.meta.url),{type:'module'});
+          worker.onmessage=event=>{worker.terminate();packed=event.data.packed;event.data.type==='complete'?resolve(event.data.value):reject(new Error(event.data.error));};
+          worker.onerror=()=>{worker.terminate();reject(new Error('Simulation analysis calculations failed.'));};
+          worker.postMessage({race,report:detail,reference:this.reference,cached,cacheKey});
+        }):detail?projectSimulation(race,detail,this.reference):null;
+        if(!alive())return;
+        if(this.reference){const fresh=await api<SimulationJob>(`${endpoint}?jobId=${job.jobId}`);if(!alive())return;if(fresh.phase!=='complete'||!canUseSimulatedCapability(fresh.report,'recordedResults',report.binding))throw new Error('Simulation authorization changed. Reopen the race.');}
         if(projected){attachPrepared(projected);this.callbacks.ready(projected,entry.id);}
         this.state(projected?'Simulator analysis ready':'Recorded replay ready');
+        if(packed&&cacheKey)await this.store.put({key:cacheKey,raceId:detail?.simulation?.cacheKey??entry.id,date:new Date().toISOString(),revision:__ANALYSIS_REVISION__},packed).then(status=>this.callbacks.cache(status)).catch(()=>{});
         this.refresh().catch(()=>{});
       }
       else if(report.mode==='inference_plan'&&canUseInferencePlan(report,report.binding)){

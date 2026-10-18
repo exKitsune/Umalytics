@@ -99,8 +99,8 @@ sites without drawing more randomness or evaluating conditions again.
 
 The comparator checks results, supported sampled movement/state, and supported
 skill/competition events. A complete match exposes the model's decision timeline.
-Failure falls back to a separately authorized inference worker, or recorded
-replay when inference is ineligible. Trace executions are fresh when reopening;
+Failure falls back to a separately authorized inference worker, including the
+explicit provisional replay policy. Trace authorization and comparison are fresh when reopening;
 changing capture, policy, executable or resources invalidates authorization.
 
 The desktop build packages the worker, pinned data, Python service and shared
@@ -108,112 +108,63 @@ frontend into the Tauri application. Their hashes are recorded in the installed
 bundle manifest. Instrumentation inputs are stored without Git newline conversion
 so Windows checkout cannot change patch application or their hashes.
 
-## Effectiveness calculator plan
+## Fixed-replay effectiveness and movement comparisons
 
-This is a proposed implementation, not functionality shipped with the UI cleanup.
-Use two measurements rather than treating a percentage as a finish-time prediction:
+The dashboard keeps its established cards, charts and scoring conventions. The
+matched execution supplies effective stats, HP, target speed, acceleration,
+current speed, blockers, status windows, activations and decision checks. The
+TypeScript analysis worker calculates local comparisons from those values; it
+does not start another Rust simulation or draw randomness.
 
-| Measurement | Meaning | Execution |
-|---|---|---|
-| Effectiveness | How much of the activated effect was usable in this race | Engine-side probes against the matched run's actual tick state |
-| Race impact | How the runner and field finish differently without those effects | A separate full-field counterfactual execution |
+For a selected movement effect, subtract its evaluated modifier during the
+active window, advance the runner's local velocity, retain the original field's
+speed cap and integrate the difference. The no-removal path is exactly the trace.
+The paired path carries the same per-step baseline residual to preserve native
+float/order details. Target-speed and acceleration changes can leave a decaying
+speed advantage; type-22 natural deceleration also preserves its expiry impulse.
+Stat, status and healthy-HP comparisons apply differences from the established
+reference formulas to the traced baseline. Their results are estimates, even
+though their starting state and active windows come from the simulator.
 
-### 1. Define the measurements before optimizing
+| Dashboard result | Meaning |
+|---|---|
+| Effectiveness | Existing target-speed 0/half/full convention, with separate acceleration and direct-speed use |
+| Movement gain | Integral of full minus effect-removed velocity with field, HP, phase and decisions fixed |
+| Equivalent travel time | Movement difference divided by the local comparison speed, not another race's finish time |
+| Combined skill gain | One comparison removing the whole supported set; marginal skill gains are not summed |
+| Traffic / exhaustion | Local movement deficit under the existing fixed-context comparison |
+| HP / recovery | Existing HP-capacity and recovery timing calculations using the matched replay context |
+| Corner and hills | Existing geometric/reference calculations using matched positions and state windows |
+| Spurt odds | Feasible traced candidates and the integer roll threshold, with all-rejected probability assigned to the fallback candidate |
+| Incoming debuffs | Confirmed effect deliveries, followed by a recipient-local movement comparison |
 
-Preserve the existing target-speed 0/half/full scoring convention, with its
-numerator and duration denominator explicit. Replace reconstructed targets,
-acceleration and blockers with engine values and engine-owned calculations.
-Report fully used, accelerating, capped/blocked and unused time as the breakdown.
-Do not assume that a blocker flag wastes every effect: the actual clamp order
-determines whether target-speed, acceleration and direct-speed effects survive.
-Acceleration and direct speed need their own measurable use ratios. Recovery
-shows actual HP restored versus offered HP, including overflow; useful recovery
-is a separate question answered by the race-impact calculation. Mixed skills
-retain their component results instead of averaging incompatible units. A failed
-wit check means no activation and zero realized effect; activation utilization
-itself is not applicable. Missed activation remains visible separately.
+Changing a skill here does not change other runners, lanes, activation checks,
+RNG, HP decisions or last-spurt choices. This is the user's requested diagnostic
+of the observed race context, not a causal alternative-race outcome. Recovery,
+stat and lane benefits do not share the movement-score denominator. Unsupported
+components remain unavailable rather than receiving an invented zero.
 
-For each tick with active supported effects, evaluate the relevant physics
-functions on scratch state with and without one effect. Hold the baseline
-pre-tick field context fixed, consume no new randomness, and never mutate the
-live execution. This measures immediate use under the actual circumstances;
-summing these probes does not establish a causal finish-time gain. Implement
-the probes beside the Rust calculation sites, not as another TypeScript physics
-engine. Unsupported effect components remain unavailable.
+Work runs off the UI thread. Indexed traces and cached paths are shared across
+cards, skills and combined comparisons. Compressed derived results are keyed by
+fresh baseline authorization and the analysis code revision. Only derived
+mathematical fields are restored; frames, effective stats, activations, hidden
+states and rolls are always projected from the freshly authorized trace. The
+service's authenticated simulator cache can reuse the baseline itself while
+rerunning the independent comparison. Both layers share cache settings.
 
-### 2. Establish a correct counterfactual reference implementation
+## Inference fallback
 
-Start with complete reruns from initialization. Keep the race setup, opponents,
-owned skills and initial RNG state fixed; suppress the selected skill's applied
-effects while preserving its checks, draws, activations and cooldown bookkeeping.
-Apply suppression consistently to self effects, queued external effects,
-initial passives and later activations. This answers the value of its effects
-within this build. Removing the skill from the loadout is a different experiment,
-because ownership can change other conditions and initialization; expose that
-only as a separate build-comparison feature.
+The shipped registry enables `allowReplayInference`. The service selects and
+hash-binds the installed inference bundle and its data. Missing simulator inputs,
+unsupported races, mismatches and engine failures therefore retain the full
+dashboard through the legacy inference worker. Unknown/unregistered game eras
+use an explicitly provisional replay-analysis policy, shown as Inferred analysis
+in the top bar. This makes no claim that the current formulas reproduce an
+unknown historical game's rules. Registered compatible historical engines retain
+priority. Invalid evidence, changed artifacts or revoked authorization still
+fail closed; the application never publishes stale or mislabeled simulator state.
 
-Run the entire field so lane choices, blocking, opponents, recovery/spurt changes
-and carryover can evolve. Define time saved as counterfactual raw finish time
-minus baseline raw finish time. Allow negative values. Also report place change,
-finish gap and team impact for debuffs. Define distance gain at a common time
-and document the finish clamp; do not integrate incomparable trajectories or
-label equivalent travel time as an actual finish-time change. Counterfactuals
-are expected to differ from the recording and never replace the authorized
-baseline replay.
-
-The current engine uses a shared sequential random stream. Equal seeds or a
-cloned RNG state do not guarantee equal later decisions after paths diverge.
-The first implementation should preserve native RNG behavior and identify
-the result as a conditional alternative execution. If users need expected build
-value, compare paired runs over a predetermined seed set and report uncertainty;
-never quietly substitute a single changed stream for an isolated effect claim.
-Event-aligned common random numbers are a possible later experimental mode,
-requiring stable event identities and explicit rules for new/missing events.
-They change the coupling between runs and must not alter the matched baseline.
-Synchronization and variance reduction require validation, rather than assuming
-that sharing a seed is sufficient ([L'Ecuyer, WSC 2015](https://informs-sim.org/wsc15papers/003.pdf)).
-
-### 3. Optimize the measured bottlenecks
-
-1. Aggregate effectiveness during the existing matched run and return small
-   component summaries. Reuse one baseline for all comparisons.
-2. Reuse a warm, app-owned Rust worker and parsed immutable course/skill data;
-   the upstream JSON-lines loop already supports multiple requests, whereas
-   our current bridge starts a process per execution. Batch the selected
-   runner's comparisons and omit replay frames/full decision traces from
-   counterfactual summaries. Retain bounded diagnostics for validation.
-3. Prioritize the selected runner, compute expensive impacts on demand, deduplicate
-   identical requests, and use a small CPU/memory-bounded pool. Cancel or detach
-   obsolete requests when the selected race changes; keep capture responsive.
-   Skip proven no-op effect-suppression scenarios, but do not apply that shortcut
-   to loadout-removal experiments.
-4. Only after full-rerun correctness and profiling, add checkpoints before the
-   first affected phase. Passive effects require initialization checkpoints.
-   Capture the entire field, all RNGs, timers, queues, ranks and control state;
-   rebind callbacks and shared ownership safely. `RaceField`/`RaceSolver` are not
-   simple isolated clones. Bound checkpoint memory and fall back to full reruns.
-5. Cache summaries by capture/setup digest, exact executable/data/instrumentation
-   identities, intervention, metric version and RNG policy. Display cached
-   results only after a fresh baseline authorization; revoke them on the same
-   changes that revoke the baseline. Authenticate saved hidden decisions using
-   the same service-owned cache mechanism as the baseline.
-
-Individual removal deltas are marginal effects and must not be added together.
-Calculate a combined all-selected-skills intervention for the total. If an
-additive per-skill allocation is later needed, offer a bounded sampled Shapley
-allocation as an estimate, with shared coalition caches and an uncertainty/
-runtime budget; do not attempt every subset by default.
-
-### 4. Acceptance gates and rollout
-
-First ship component effectiveness; next add on-demand full-field impact; then
-optimize with warm workers, batching and measured checkpoint benefits. Require
-no-op interventions and disabled probes to reproduce the baseline exactly.
-Compare optimized runs with the full-rerun reference, including passive skills,
-recovery/spurt changes, blocked direct-speed effects, overlapping activations,
-debuff immunity, failed wit, post-finish duration and RNG divergence. Test that
-runner order, concurrent requests and cancellation cannot change results or
-attach one race's results to another. Benchmark median/p95 latency, peak memory,
-output size and CPU use on representative fields before choosing default batch
-sizes or promising a response time. Keep the existing cards and graphs; show
-Effectiveness and Time saved there, with methods in expandable details.
+Tests cover the mathematical oracle, blocking caps, candidate probabilities,
+cache key invalidation, restoration without hidden-state substitution, dashboard
+projection, the version-bound fallback and existing inference workflows. The
+manual acceptance cases are in `simulator-ui-test-plan.md`.
