@@ -27,7 +27,7 @@ Automated gates: `npm test` includes a synthetic projection regression with deli
 19. Warm A → B → A for both matched and fallback dashboards. Check fresh service authorization but no new native run, full-trace transfer or analysis worker for retained entries. Repeat after restart to exercise the persistent path. Changing the diagnostics/runtime identity invalidates older baselines once; later opens must hit cache again.
 
 20. Check the per-status legend checkboxes on matched and inference races. Last spurt, Inward and Conserve power start off in telemetry, while replay still shows both. Enable a band, switch races and reload: the choice must persist. Reset defaults restores those three hidden bands. Turn all statuses off and verify empty rows disappear. Restore the original velocity/elevation/course/skill spacing; only status bands move down one bar. Traffic owns the bottom status lane. No “STATUSES” caption appears. Rushed and Exhausted share red; Dueling is pink and Release shares acceleration orange. Separate Extra pace up, Pre-spurt competition, Stamina limit break, Stamina keep and Secure lead under the later-mechanics notice.
-21. Verify the race date includes its year in the library and header. Hover values and bar segments: descriptions must identify the specific metric and amount, without sign explanations or long calculation prose. Detailed formulas belong in Stats → Formulas & inputs; scoring and accounting details belong in the FAQ/legend.
+21. Verify the race date includes its year in the library and header. Hover values and bar segments: descriptions must identify the specific metric and amount, without sign explanations or long calculation prose. Detailed formulas belong in each expandable stat in Stats; scoring and accounting details belong in the FAQ/legend.
 
 Previous tracing validation on 2026-10-18: all 39 system workflows passed; Python bridge tests
 passed (122 passed, one skipped); production Svelte checks had no errors or
@@ -76,7 +76,7 @@ screenshots remain outside Git.
 25. With background analysis enabled, close every viewer window. The service must process the newest race date first, discover another capture, and persist both comparison and complete dashboard calculations. Restart the service and reopen a warmed race: no native or inference worker should rerun. Foreground requests precede the remaining backlog, while a calculation already running finishes safely.
 26. Leave a dashboard open while at least twelve other races are analyzed. It must remain on that dashboard. Change capture evidence or an installed artifact: old derived values must be withdrawn and reauthorized, with recorded fields retained in the same UI if no engine qualifies. A brief connection error must not invent an unknown-version warning.
 27. Click the selected race again after seeking and selecting another runner: no request, spinner, selection change or time reset. Switch between two warmed races and measure the ready callback separately from a first disk load and a first calculation.
-28. Compare raw blocked seconds with traffic contact outlines. The color threshold remains 0.075 m/s; a long contact can have only a few colored ticks. Check transparent lane backgrounds, continuous color fades, the rotating legend triangle, and PD/PU or OT/SU guide markers. Toggle Position-keep guides off and on: markers and their hover lines hide together, the gap graph remains visible, and the choice survives reload. Sub-centimetre-per-second cuts must not print 0.00 / 0.00.
+28. Compare raw blocked seconds with traffic contact outlines. The color threshold remains 0.075 m/s; a long contact can have only a few colored ticks. Check transparent lane backgrounds, full-tick colors, the rotating legend triangle, and PD/PU or OT/SU guide markers. Toggle Position-keep guides off and on: markers and their hover lines hide together, the gap graph remains visible, and the choice survives reload. Sub-centimetre-per-second cuts must not print 0.00 / 0.00.
 29. Force a genuinely unsupported engine selection. Recorded results, runner build, skills, replay, and velocity/HP samples stay in the ordinary dashboard; targets, skill checks, effective stats and effectiveness remain blank. No current-engine formulas may run for those fields.
 
 Service follow-up validation (2026-10-18): all 41 functional workflows passed;
@@ -92,3 +92,21 @@ verified a same-race click preserves 31 s playback, the guide checkbox persists
 across reloads, and the scale runs from 0.075 to 0.6 m/s. Windows release smoke
 checks additionally exercise the bundled headless worker with system toolchains
 removed from PATH. Existing display caches rebuild once for the new format.
+
+
+30. Inspect the reserved traffic lane in both time and distance axes. Each traced tick occupies its full projected width at its own slowdown color; no label or fade should obscure its magnitude. Zero and sub-0.075 m/s cuts remain transparent, while contact outlines retain their duration. Hover across a blocked tick, a zero-cut blocked tick and a clear tick: one card directly below the lane must show the correct state, time, blocker and slowdown. Tab to the lane and use arrows/Home/End to inspect it by keyboard. Toggling Traffic hides both its paint and hit area.
+31. Runner skill cards show Passed/Failed/Not required for wit checks, with raw roll and threshold preserved in analysis data. In Stats, expand Skill activation chance and Skill-check Wit separately. Compare the chance to the simulator's actual threshold, including over-1200 raw Wit and mood; green passives and strategy aptitude must not contaminate the initialization value. Missing initial inputs stay unavailable without a traced threshold. Verify formula rows keep their compact collapsed height and work in both themes.
+32. Check that the FAQ contains the local carryover calculation, date-based engine selection and inference fallback explanations, without the removed recovery timing, skill duration, hill, rushed bonus, status source, exhaustion, HP accounting, start quality, debuff, failed-skill or replay-effect sections. Good start labels should be light green.
+
+
+Traffic/formula follow-up validation (2026-10-18): all 41 functional workflows
+passed, including full-tick paint boundaries on both linear and nonlinear axes,
+transparent low cuts, contact without a cut, and initial Wit before passive
+bonuses. The production build had no Svelte/TypeScript errors or warnings and
+passed the public artifact audit. An isolated matched Chukyo dashboard verified
+0.316 m/s colored contact, 0.006 m/s transparent contact, and 0.000 m/s clear
+points; keyboard inspection, both axes, and hiding the entire traffic hit area
+also passed. Skill cards show Passed, the individual activation formula displays
+93.10%, and collapsed formula rows measured 28 px. The revised FAQ and dark/light
+stat disclosures were checked with no browser console errors. Private fixtures
+and screenshots remain outside Git.

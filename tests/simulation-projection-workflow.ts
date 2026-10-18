@@ -14,7 +14,9 @@ import type { Race } from '../src/data/types';
 import { AnalysisClient, type AnalysisState } from '../src/analysis/client';
 import { AnalysisStore } from '../src/analysis/store';
 import { toPortableRace } from '../src/data/share';
-import { trafficIntervals, trafficAt, trafficActive, trafficColor, trafficGradient } from '../src/simulation/traffic';
+import { trafficIntervals, trafficAt, trafficActive, trafficColor } from '../src/simulation/traffic';
+import {trafficTimeline,trafficSampleAt,trafficCells} from '../src/simulation/traffic-lane';
+import type {MotionSample} from '../src/data/race-motion';
 import {powerSummary} from '../src/simulation/power';
 import {telemetrySkillEnd} from '../src/data/telemetry-skills';
 import {telemetryStatusKinds} from '../src/data/status-presentation';
@@ -80,10 +82,27 @@ assert.equal(trafficColor(traffic[0].traffic![0]),'#ffffff');
 assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.25,finalLoss:0}),'#ffec4a');
 assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.4,finalLoss:0}),'#ffa825');
 assert.notEqual(trafficColor({...traffic[0].traffic![0],selfLoss:.4}),trafficColor({...traffic[0].traffic![0],selfLoss:.5}),'Severity changes continuously between anchors');
-const gradient=trafficGradient(traffic[0],t=>t*100);
-assert.ok(gradient.some(s=>s.opacity===0)&&gradient.some(s=>s.opacity===1));
-assert.equal(gradient[0].opacity,0);assert.equal(gradient.at(-1)!.opacity,0);
-assert.ok(gradient.every((s,i)=>i===0||s.x>gradient[i-1].x),'One stop per point, with smooth interpolation instead of duplicated hard edges');
+const lane=trafficTimeline([
+  {time:0,blockingClamps:{self:.075,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
+  {time:.1,blockingClamps:{self:0,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
+  {time:.2,blockingClamps:{self:.4,final:.3},constraint:{kind:'recorded-block',runnerId:'r1'}},
+  {time:.3,blockingClamps:{self:.6,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
+  {time:.4,blockingClamps:{self:2,final:0},constraint:{kind:'none'}},
+  {time:.5,blockingClamps:{self:.074,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
+] as MotionSample[],.6);
+assert.equal(trafficSampleAt(lane,.15)?.blocked,true,'Keep contact even with zero instantaneous cut');
+assert.equal(trafficSampleAt(lane,.15)?.selfLoss,0);
+assert.equal(trafficSampleAt(lane,.45)?.blocked,false);
+assert.equal(trafficSampleAt(lane,.45)?.selfLoss,0,'A global speed ceiling is not traffic');
+assert.equal(trafficSampleAt(lane,-.1),null);assert.equal(trafficSampleAt(lane,.6),null);
+assert.deepEqual(trafficCells(lane,t=>t*100),[
+  {start:0,end:10,color:'#ffffff'},{start:20,end:30,color:'#ffa825'},{start:30,end:40,color:'#f04444'},
+],'Paint each full tick at its own magnitude; retain transparent zero/below-threshold gaps');
+assert.deepEqual(trafficCells(lane,t=>t*t*100),[
+  {start:0,end:.1*.1*100,color:'#ffffff'},{start:.2*.2*100,end:.3*.3*100,color:'#ffa825'},{start:.3*.3*100,end:.4*.4*100,color:'#f04444'},
+],'Use projected start/end boundaries on a nonlinear distance axis');
+assert.equal(trafficCells(lane,()=>null).length,0);
+
 assert.equal(trafficIntervals(trafficRows,.45)[0].end,.45,'Clamp to the runner finish');
 const ceiling=Array(43).fill(0);ceiling[m.dt]=.1;ceiling[m.blocker]=-1;ceiling[m.selfLoss]=2;
 assert.deepEqual(trafficIntervals([ceiling],.1),[],'Global speed ceiling without a blocker is not traffic loss');
@@ -112,6 +131,15 @@ const mechanics=runnerMechanics({...original,distance:2000},{...runners[0],strat
 assert.equal(mechanics.speed[0].value,20);assert.equal(mechanics.speed[1].value,20);assert.equal(mechanics.speed[2].value,19.6);
 const speedTerm=Math.sqrt(500*1234)*.002;
 assert.ok(Math.abs(mechanics.speed[4].value!-((20*.962+speedTerm+.2)*1.05+speedTerm+(450*673)**.597*.0001))<1e-10);
+const withWit={...runners[0],stats:{wisdom:1307},mood:5} as typeof runners[0];
+const initialFacts=runnerMechanics(original,withWit,null,detail.statBreakdown);
+const skillWit=initialFacts.other.find(f=>f.label==='Skill-check Wit')!.value!;
+assert.ok(Math.abs(skillWit-1303.64)<.001,'Half the points over 1200, then apply mood before green skills');
+assert.ok(Math.abs(initialFacts.other.find(f=>f.label==='Skill activation chance')!.value!-(100-9000/skillWit))<1e-8);
+assert.equal(runnerMechanics(original,withWit,null,detail.statBreakdown,93.1).other.find(f=>f.label==='Skill activation chance')!.value,93.1,'Prefer the executed threshold when available');
+assert.equal(runnerMechanics(original,runners[0],null,detail.statBreakdown).other.find(f=>f.label==='Skill activation chance')!.value,null,'Missing initial inputs must not be replaced by final race Wit');
+assert.equal(runnerMechanics(original,{...withWit,stats:{wisdom:1}} as typeof withWit,null,detail.statBreakdown).other.find(f=>f.label==='Skill activation chance')!.value,20);
+assert.equal(detail.skillRows[0].simulation?.wit[0].data.roll,4,'Keep the exact roll in the underlying trace');
 for(const mutate of [(r:any)=>r.mode='recorded_only',(r:any)=>r.simulation.status='mismatch',(r:any)=>r.simulation.modeled.decisionTrace.complete=false]){
   const changed=structuredClone(report);mutate(changed);assert.equal(projectSimulation(original,changed,null),null);
 }

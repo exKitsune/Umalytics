@@ -7,7 +7,7 @@ export interface MechanicFact {label:string;value:number|null;unit:string;formul
 const speedRates:Record<number,number[]>={1:[1,.98,.962],2:[.978,.991,.975],3:[.938,.998,.994],4:[.931,1,1],5:[1.063,.962,.95]};
 const accelerationRates:Record<number,number[]>={1:[1,1,.996],2:[.985,1,.996],3:[.975,1,1],4:[.945,1,.997],5:[1.17,.94,.956]};
 /** Readable baseline formulae, separate from the executed float32 tick state. */
-export function runnerMechanics(race:Race,runner:Runner,course:CourseReference|null,stats:RunnerStatBreakdown){
+export function runnerMechanics(race:Race,runner:Runner,course:CourseReference|null,stats:RunnerStatBreakdown,observedSkillChance:number|null=null){
   const bound=(v:number|null)=>v===null?null:Math.max(1,Math.min(2000,v));
   const d=race.distance??course?.distance,s=stats.stats,spd=bound(s.speed.final),pow=bound(s.power.final),guts=bound(s.guts.final),wit=bound(s.wisdom.final),stamina=bound(s.stamina.final);
   const distanceKey=d==null?null:d<=1400?'short':d<=1800?'mile':d<=2400?'middle':'long';
@@ -28,10 +28,20 @@ export function runnerMechanics(race:Race,runner:Runner,course:CourseReference|n
     fact('Minimum speed',b===null||guts===null?null:.85*b+Math.sqrt(200*guts)*.001,'m/s',`0.85 × B + √(200 × ${fmt(guts)}) × 0.001`,'The post-start speed floor. Start-dash and finish handling use their own rules.'),
     fact('Start-dash ceiling',b===null?null:.85*b,'m/s','0.85 × B','Start dash ends on reaching this self-speed threshold.')];
   const accel=['Early leg','Middle leg','Final leg'].map((name,i)=>fact(name+' acceleration',acceleration[i],'m/s²',`0.0006 × √(500 × ${fmt(pow)}) × ${accels?.[i]??'?'} × ${fmt(ground)} × ${fmt(distAccel)}`,'Flat-course baseline: power × style × surface aptitude × distance aptitude. Uphill uses 0.0004 instead of 0.0006; active acceleration effects are added afterward.'));
+  const rawWit=runner.stats?.wisdom??null,overcapWit=rawWit===null?null:rawWit>1200?1200+(rawWit-1200)/2:rawWit;
+  const mood=runner.mood==null?null:Math.max(-2,Math.min(2,runner.mood-3));
+  const checkWit=overcapWit===null||mood===null?null:Math.max(1,Math.min(2000,Math.fround(Math.fround(overcapWit)*Math.fround((10000+200*mood)*Math.fround(.0001)))));
+  const skillChance=observedSkillChance??(checkWit===null?null:Math.max(20,100-9000/checkWit));
   const other=[fact('Starting HP budget',d==null||stamina===null||stats.startingHp.strategyCoefficient===null?null:d+.8*stamina*stats.startingHp.strategyCoefficient,'HP',`${d??'?'} + 0.8 × ${fmt(stamina)} × ${fmt(stats.startingHp.strategyCoefficient)}`,'Distance plus stamina × running-style capacity. Actual starting HP appears above.'),
     fact('Final-leg HP multiplier',guts===null||guts<=0?null:1+200/Math.sqrt(600*guts),'×',`1 + 200 / √(600 × ${fmt(guts)})`,'Guts multiplier applied to ordinary HP drain in the final leg; lower is better. Other active HP modifiers are separate.'),
     fact('Expected section adjustment',maxRoll===null||b===null?null:maxRoll-b*.00325,'m/s',`B × (wit / 5500 × log10(0.1 × wit)) / 100 − B × 0.00325`,'Expected value of a section draw, not the actual roll. The matched section table below uses the executed values.'),
     fact('Lowest section adjustment',maxRoll===null||b===null?null:maxRoll-b*.0065,'m/s','section maximum − B × 0.0065','Lower bound for the section-speed random modifier.'),
     fact('Highest section adjustment',maxRoll,'m/s',`B × (${fmt(wit)} / 5500 × log10(0.1 × ${fmt(wit)})) / 100`,'Upper bound for the section-speed random modifier. Section modifiers stop during the selected last spurt.')];
+  other.unshift(
+    fact('Skill-check Wit',checkWit,'',`W = clamp((min(raw WIT, 1200) + max(raw WIT − 1200, 0) / 2) × mood, 1, 2000)`,`Raw WIT ${fmt(rawWit)}, mood multiplier ${mood===null?'?':fmt(1+.02*mood)}. Initial skill checks use this value before green skills and strategy aptitude.`),
+    fact('Skill activation chance',skillChance,'%',`max(20, 100 − 9000 / W)`,`W = ${fmt(checkWit)}. A random draw from 0 to 100 must be below this chance. Applies to skills requiring a wit check; conditions must also be satisfied.${observedSkillChance===null?'':' The displayed chance is the simulator’s recorded threshold.'}`),
+    fact('Downhill entry chance',wit===null?null:Math.min(100,wit*.04),'%',`min(100, ${fmt(wit)} × 0.04)`,`Chance per eligible one-second check to enter downhill mode, using current race Wit. Already-active downhill mode has separate exit checks.`));
+  speed.push(fact('Uphill loss per 1%',pow===null?null:200/pow,'m/s',`200 / ${fmt(pow)}`,'Target speed removed per 1% uphill slope, before other effects.'));
+  accel.push(fact('Start-dash acceleration',acceleration[0]===null?null:24+acceleration[0],'m/s²','24 + early-leg acceleration','Flat-course acceleration while start dash is active.'));
   return {speed,accel,other};
 }

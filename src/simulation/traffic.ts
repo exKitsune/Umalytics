@@ -4,7 +4,7 @@ import { motionIndex as m } from './trace';
 export const TRAFFIC_CLEAR_GAP = .25;
 export const TRAFFIC_MIN_SLOWDOWN = .075;
 export const TRAFFIC_MAX_SLOWDOWN = .6;
-export const trafficLegend = 'The outline shows blocking contact; contact can continue without reducing speed. Color appears only for cuts of at least 0.075 m/s. White → yellow → amber → red shows increasing slowdown, reaching red at 0.6 m/s. Transparent gaps are below the threshold. The scale uses the larger of the two blocking cuts, not their sum; it is not the difference between target and current speed.';
+export const trafficLegend = 'The bottom lane shows blocking contact with an outline and the speed cut at each tick with color. Hover anywhere along it for the blocking state and slowdown at that moment. Contact can continue with no speed cut. Color appears only for cuts of at least 0.075 m/s. White → yellow → amber → red shows increasing slowdown, reaching red at 0.6 m/s. Ticks below the threshold are transparent. The scale uses the larger of the two blocking cuts, not their sum; it is not the difference between target and current speed.';
 export const trafficSlowdown=(tick:TrafficTick|null)=>Math.max(tick?.selfLoss??0,tick?.finalLoss??0);
 const active=(tick:TrafficTick)=>(tick.near||tick.blocked)&&trafficSlowdown(tick)>=TRAFFIC_MIN_SLOWDOWN;
 
@@ -55,23 +55,4 @@ export function trafficColor(tick:TrafficTick|null):string {
   const upper=anchors.findIndex(([value])=>value>=severity),[low,from]=anchors[Math.max(0,upper-1)],[high,to]=anchors[upper];
   const blend=high===low?0:(severity-low)/(high-low);
   return '#'+from.map((value,index)=>Math.round(value+(to[index]-value)*blend).toString(16).padStart(2,'0')).join('');
-}
-/** Interpolate sample centres instead of duplicating hard-edged tick stops.
- * Only the paint is blended; activity and measured cuts remain discrete. */
-export function trafficGradient(interval:StatusInterval,project:(time:number)=>number|null){
-  const stops:{x:number;color:string;opacity:number}[]=[];
-  const ticks=interval.traffic??[];
-  const add=(time:number,color:string,opacity:number)=>{
-    const x=project(time);if(x===null)return;
-    const previous=stops.at(-1),before=stops.at(-2);
-    if(previous&&previous.x===x){stops[stops.length-1]={x,color,opacity};return;}
-    if(previous&&before&&previous.color===color&&before.color===color&&previous.opacity===opacity&&before.opacity===opacity)previous.x=x;
-    else stops.push({x,color,opacity});
-  };
-  if(ticks.length)add(ticks[0].start,trafficColor(ticks[0]),0);
-  for(const tick of ticks){
-    add((tick.start+tick.end)/2,trafficColor(tick),active(tick)?1:0);
-  }
-  if(ticks.length)add(ticks.at(-1)!.end,trafficColor(ticks.at(-1)!),0);
-  return stops;
 }
