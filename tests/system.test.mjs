@@ -696,4 +696,10 @@ test('whole skill catalog audit preserves every Global effect and withholds unkn
   assert.equal(report.skills,734);assert.equal(report.branches,788);assert.equal(report.effectRecords,971);assert.equal(report.effectTypes,22);
   assert.equal(report.wholeCatalog,'passed');assert.equal(report.deterministic,'passed');assert.equal(report.unknownCodes,'withheld');assert.equal(report.sourceMetadata,'unchanged');
 });
+
+test('matched simulator decisions remain distinct from observations and discrete over time',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/trace-view-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
+  assert.match(result.stdout,/Trace UI gates.*passed/);
+});
+
 });

@@ -25,6 +25,11 @@ def export_fixtures():
         }
         for name, era in [('old', 'old'), ('unknown', None), ('future_unsupported', 'future')]:
             results[name] = case.evaluate(era)[0]
+        case.registry['allowUnknownVersionSimulation'] = True
+        case.registry['unknownVersionSimulators'] = [{k:v for k,v in case.registry['engines'][0].items() if k not in ('kind','eraIds')}]
+        results['trial'] = case.evaluate(None)[0]
+        del case.registry['allowUnknownVersionSimulation']
+        del case.registry['unknownVersionSimulators']
         case.future_policy()
         results['future_inference'] = case.evaluate('future')[0]
         case.registry['engines'][0]['eraIds'].append('future')

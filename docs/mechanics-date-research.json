@@ -1,0 +1,70 @@
+{
+  "researchDateUtc": "2026-10-18",
+  "scope": "Global server; candidate race-mechanics boundaries only",
+  "productionPolicy": false,
+  "summary": "Two major Global race-mechanics changes are documented in the located announcements and contemporary discussion: November 11, 2025 and July 1, 2026. These findings identify research boundaries, not complete simulator or inference support windows.",
+  "boundaries": [
+    {
+      "label": "Global half-anniversary balance update",
+      "announcementDate": "2025-11-04",
+      "advertisedEffectiveAt": "2025-11-11T08:00:00Z",
+      "maintenanceExtensionUntil": "2025-11-11T10:00:00Z",
+      "confirmedEffectiveAt": null,
+      "reportedChanges": [
+        "Spot Struggle, Dueling, and Runaway aptitude",
+        "Guts-dependent last-spurt speed",
+        "Hills, final-corner positioning, navigation/passing behavior, and late recovery",
+        "Skill effects and activation conditions"
+      ],
+      "sources": ["nov-official", "nov-announcement-copy", "nov-discussion", "nov-extension-official", "nov-analysis"],
+      "uncertainty": "The initial 08:00 UTC time was superseded by maintenance extension to around 10:00 UTC. This research did not independently retrieve the final completion announcement. Do not treat the initially advertised time as a proven mechanics cutover."
+    },
+    {
+      "label": "Global July 2026 balance update",
+      "announcementDate": "2026-06-24",
+      "advertisedEffectiveAt": "2026-07-01T11:00:00Z",
+      "maintenanceWindow": ["2026-07-01T02:00:00Z", "2026-07-01T11:00:00Z"],
+      "completionReportedAt": "2026-07-01T11:00:00Z",
+      "reportedChanges": [
+        "Front Runner behavior depending on the presence of other Front Runners",
+        "Position-adjustment speed reduction, frequency, and mechanics",
+        "Rushing-related debuffs and effects of stats above 1200",
+        "Skill effects and activation conditions"
+      ],
+      "communityInterpretation": "Post-release guides broadly associate the package with Japanese second-anniversary balance changes; pre-release discussion described a mixture of Japanese 1.5- and second-anniversary changes. Neither description establishes identical implementations or dates across regions.",
+      "sources": ["july-official", "july-update-official", "july-maintenance-official", "july-discussion", "july-maintenance-discussion", "july-analysis", "july-completion-official", "official-social-aggregator"],
+      "uncertainty": "The 11:00 UTC completion text was retrieved through an aggregator of the official account; the original post was inaccessible to the web tool. Announcement copies warn about careers started around the update and state that saved race progression is unchanged."
+    }
+  ],
+  "engineEvidence": {
+    "revision": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+    "version": "v74",
+    "filesReviewed": ["docs/ACCURACY.md", "docs/FIELD-MECHANICS.md", "docs/MATHEMATICS.md", "README.md"],
+    "source": "https://github.com/daftuyda/GlobalSim/tree/efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+    "findings": "The pinned source documents Spot Struggle, Dueling, reconstructed positioning, spurt planning, and a Conserve Power interval ledger. Its accuracy report evaluates captured Global races and does not publish an original-race-date support interval. It explicitly retains approximations for unsupported Conserve Power cases and optional later stamina mechanics.",
+    "mappingStatus": "Post-July mechanics alignment is plausible from the source and contemporary race validation, but these facts do not prove a complete historical support interval. Engine implementation versions are separate from official game client versions."
+  },
+  "mappingRecommendations": [
+    "Use original race occurrence with established UTC offset and precision; preserve date evidence when reopening or exporting races.",
+    "Keep Global boundaries separate from Japanese anniversary dates and banner/scenario schedules.",
+    "Record announced, revised, and confirmed completion timestamps independently; retain ambiguity across maintenance transitions.",
+    "Store explicit user-approved bounded date ranges together with their evidence and distinct simulator/inference artifact identities.",
+    "Allow unknown-version simulator trials under the user's updated policy, but require independent recorded-output agreement before exposing simulated analysis; do not use that trial as an inference authorization or as proof of an official ruleset.",
+    "No later broad Global race-mechanics balance update was established by this search through October 17, 2026; absence from search results is not proof that none occurred."
+  ],
+  "sources": {
+    "nov-official": {"url": "https://\u0075mamusume.com/news/100040/", "type": "official announcement", "access": "403; identified through linked contemporary coverage"},
+    "nov-announcement-copy": {"url": "https://\u0075mamusume.gg/balance-adjustments-announcement/", "type": "third-party announcement reproduction", "publishedOrUpdated": "2025-11-04", "access": "search-index text retrieved"},
+    "nov-discussion": {"url": "https://www.reddit.com/r/\u0055maMusume/comments/1ou3r7h/en_11_november_game_balance_update_discussion/", "type": "contemporary community discussion quoting official extension", "publishedOrUpdated": "2025-11-11", "access": "retrieved"},
+    "nov-extension-official": {"url": "https://x.com/\u0075mamusume_eng/status/1988161318642479453", "type": "official social announcement", "access": "original unavailable; linked and transcribed in contemporary discussion"},
+    "nov-analysis": {"url": "https://gametora.com/\u0075mamusume/guides/half-anni-balance-patch", "type": "community analysis", "publishedOrUpdated": "2025-11-11", "access": "retrieved"},
+    "july-official": {"url": "https://\u0075mamusume.com/news/100082/", "type": "official balance announcement", "access": "403; linked and transcribed in contemporary discussion"},
+    "july-update-official": {"url": "https://\u0075mamusume.com/news/100081/", "type": "official update announcement", "access": "403; linked by post-release analysis"},
+    "july-maintenance-official": {"url": "https://\u0075mamusume.com/news/100080/", "type": "official maintenance announcement", "access": "linked and transcribed in contemporary discussion"},
+    "july-discussion": {"url": "https://www.reddit.com/r/\u0055maMusume/comments/1ue0o1d/more_balance_changes_coming_to_global/", "type": "contemporary community discussion quoting balance announcement", "publishedOrUpdated": "2026-06-24", "access": "retrieved"},
+    "july-maintenance-discussion": {"url": "https://www.reddit.com/r/\u0055maMusume/comments/1ue1amq/maintenance_announcement_for_1_jul_2026/", "type": "contemporary community discussion quoting maintenance announcement", "publishedOrUpdated": "2026-06-24", "access": "retrieved"},
+    "july-analysis": {"url": "https://gametora.com/\u0075mamusume/guides/july-2026-rebalance", "type": "community post-release analysis", "publishedOrUpdated": "2026-07-16", "access": "retrieved"},
+    "july-completion-official": {"url": "https://x.com/\u0075mamusume_eng/status/2072283573667971565", "type": "official social completion announcement", "access": "403; text retrieved from official-social aggregator"},
+    "official-social-aggregator": {"url": "https://www.gachadash.com/news?tag=maintenance", "type": "aggregated official social posts", "access": "retrieved; links to original posts retained"}
+  }
+}

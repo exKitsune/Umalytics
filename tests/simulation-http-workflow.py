@@ -41,6 +41,7 @@ def main():
     installed = json.loads((ROOT / 'simulation/installed-bundles.json').read_text())
     bundle = next(b for b in installed['bundles'] if b['kind'] == 'simulation' and b['engine_id'] == args.engine)
     inference = next(b for b in reversed(installed['bundles']) if b['kind'] == 'inference')
+    traced = bundle.get('decisionTraceSchema') == 'umalytics-decisions-v1'
     checks = {}
     with tempfile.TemporaryDirectory(prefix='sim-http-', dir=ROOT / '.cache') as folder:
         root = Path(folder)
@@ -49,12 +50,12 @@ def main():
             shutil.copytree(ROOT / relative, root / relative)
         (root / 'simulation/installed-bundles.json').write_text(json.dumps({'schemaVersion': 1, 'bundles': [bundle, inference]}))
         registry = {'schemaVersion': 1, 'registryId': 'synthetic-http-test-only',
-            'eras': [{'eraId': 'test', 'sequence': 1, 'region': 'synthetic-global', 'modes': ['practice'],
+            'eras': [{'eraId': 'test', 'sequence': 1, 'region': 'global', 'modes': ['practice'],
                       'reference': 'SYNTHETIC; no real compatibility assertion',
                       'window': {'from': '2000-01-01T00:00:00Z', 'until': '2001-01-01T00:00:00Z'}}],
             'engines': [{'engineId': row['engine_id'], 'version': row['version'], 'profile': row['profile'],
                 'kind': row['kind'], 'identity': {'artifactSha256': row['artifact_sha256'], 'dataSha256': row['data_sha256']},
-                'region': 'synthetic-global', 'modes': ['practice'], 'eraIds': ['test'],
+                'region': 'global', 'modes': ['practice'], 'eraIds': ['test'],
                 'reference': 'SYNTHETIC coverage of real installed artifacts'} for row in (bundle, inference)],
             'futureInferencePolicies': []}
         registry_path = root / 'simulation/engine-registry.json'
@@ -69,7 +70,7 @@ def main():
         capture['original_race'] = {'schemaVersion': 1, 'facts': {
             key: {'value': value, 'source': 'independently-confirmed-original-race',
                   'reference': 'SYNTHETIC TEST ONLY', **({'precisionMicros': 1000000} if key == 'occurredAt' else {})}
-            for key, value in {'region': 'synthetic-global', 'mode': 'practice', 'occurredAt': '2000-06-01T00:00:00Z'}.items()}}
+            for key, value in {'region': 'global', 'mode': 'practice', 'occurredAt': '2000-06-01T00:00:00Z'}.items()}}
         (store.inbox / 'selected.json').write_text(json.dumps([unknown, capture]))
         (store.inbox / 'unknown.json').write_text(json.dumps(unknown))
         server = LocalServer(('127.0.0.1', 0), make_handler(store))
@@ -120,15 +121,35 @@ def main():
                 assert details['report']['simulation']['modeled']
                 checks['realProcessAndComparedDetails'] = True
                 warm = begin()
-                assert warm['report']['mode'] == 'verified_simulation' and warm['report']['simulation']['cacheHit']
-                assert worker.call_count == 1 and compare.call_count == 2
-                checks['cachedOutputComparedAgain'] = True
+                assert warm['report']['mode'] == 'verified_simulation'
+                assert warm['report']['simulation']['cacheHit'] is (not traced)
+                expected_workers = 2 if traced else 1
+                expected_comparisons = 2
+                assert worker.call_count == expected_workers and compare.call_count == expected_comparisons
+                checks['freshTraceReexecuted' if traced else 'cachedOutputComparedAgain'] = True
+                if traced:
+                    assert details['report']['simulation']['capabilities']['hiddenState'] == 'simulated_trace'
+                    assert details['report']['simulation']['modeled']['decisionTrace']['complete']
                 cache_before = {p: p.read_bytes() for p in (store.data_dir / 'cache/globalsim').rglob('*.json')}
                 with patch.object(ReferenceData, 'load', side_effect=AssertionError('Unknown race loaded model references')):
                     assert begin('unknown')['report']['mode'] == 'recorded_only'
-                assert worker.call_count == 1 and compare.call_count == 2
+                assert worker.call_count == expected_workers and compare.call_count == expected_comparisons
                 assert cache_before == {p: p.read_bytes() for p in (store.data_dir / 'cache/globalsim').rglob('*.json')}
-                checks['unknownNoModelAccess'] = True
+                checks['unknownNoModelAccessWithoutTrialPolicy'] = True
+                if traced:
+                    registry['allowUnknownVersionSimulation'] = True
+                    registry_path.write_text(json.dumps(registry))
+                    trial = begin('unknown')
+                    assert trial['report']['mode'] == 'verified_simulation'
+                    assert trial['report']['compatibility']['mode'] == 'simulation_trial'
+                    assert trial['report']['simulation']['capabilities']['hiddenState'] == 'simulated_trace'
+                    assert not trial['report']['permissions']['inferenceExecutionPlan']
+                    expected_workers += 1
+                    expected_comparisons += 1
+                    assert worker.call_count == expected_workers and compare.call_count == expected_comparisons
+                    checks['unknownTrialMatchesWithoutInference'] = True
+                    del registry['allowUnknownVersionSimulation']
+                    registry_path.write_text(json.dumps(registry))
                 # Mutate only the disposable bundle: reject old authorization
                 # and decline execution even when a matching cache exists.
                 with (root / bundle['artifact']).open('ab') as stream:
@@ -136,7 +157,7 @@ def main():
                 stale(warm)
                 fallback = begin()
                 assert fallback['report']['mode'] == 'inference_plan'
-                assert worker.call_count == 1 and compare.call_count == 2
+                assert worker.call_count == expected_workers and compare.call_count == expected_comparisons
                 auth = request('/api/simulation/races/selected~1/inference', {'jobId': fallback['jobId']})
                 assert auth['authorized']
                 checks['tamperedSimulatorDeniedEligibleInferenceRetained'] = True

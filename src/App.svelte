@@ -182,9 +182,14 @@
     await saveJsonFile(filename,JSON.stringify(toPortableRace(analysisRace),null,2),'Race JSON');
   }
   async function exportAnalysis() {
-    if(!analysisGate)return;
-    await saveJsonFile('versioned-analysis.json',JSON.stringify({schemaVersion:1,source:analysisGate.mode==='inference_plan'?'Inferred':analysisGate.mode==='verified_simulation'?'Simulated':'Recorded diagnostics',
-      notice:analysisNotice(analysisGate),gate:analysisGate,analysis:historical??(analysis?preparedFor(analysis):null)},null,2),'Versioned analysis');
+    const gate=analysisGate;
+    if(!gate)return;
+    try{
+      const simulationDetail=gate.mode==='verified_simulation'?await analysisClient.simulatedDetails():null;
+      if(analysisGate!==gate||(gate.mode==='verified_simulation'&&!simulationDetail)){error='Simulation authorization changed. Reopen this race before exporting.';return;}
+      await saveJsonFile('versioned-analysis.json',JSON.stringify({schemaVersion:1,source:gate.mode==='inference_plan'?'Inferred':gate.mode==='verified_simulation'?'Simulated':'Recorded diagnostics',
+        notice:analysisNotice(gate),gate:simulationDetail??gate,analysis:historical??(analysis?preparedFor(analysis):null)},null,2),'Versioned analysis');
+    }catch{error='Analysis export is no longer authorized. Reopen this race.';}
   }
   async function downloadUmaJson() {
     if(!runner||!analysisRace)return;
@@ -285,7 +290,7 @@
     {#if race && analysisRace}
       <div class="workspace">
         <div class="notice" role="status" data-analysis-mode={analysisGate?.mode??'recorded_only'}>{analysisNotice(analysisGate)}</div>
-        {#if analysisGate?.mode==='verified_simulation'}{#key analysisGate.binding?.authorizationSha256}<ComparedSimulation report={analysisGate} load={()=>analysisClient.simulatedDetails()}/>{/key}{/if}
+        {#if analysisGate?.mode==='verified_simulation'}{#key analysisGate.binding?.authorizationSha256}<ComparedSimulation report={analysisGate} load={()=>analysisClient.simulatedDetails()} race={analysisRace} {reference} {selected} {time} onSeek={seek} onSelect={id=>selected=id}/>{/key}{/if}
         {#if analysisGate}<details class="panel"><summary>Analysis version and comparison details</summary><button onclick={exportAnalysis}>Export analysis and provenance</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:400px;overflow:auto">{JSON.stringify(analysisGate,null,2)}</pre></details>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
         <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/>{#if analysisRace.racedAt || analysisRace.savedReplay}<p class="race-run">{analysisRace.racedAt ? date(analysisRace.racedAt) : ''}{#if analysisRace.savedReplay}{analysisRace.racedAt ? ' · Saved Replay' : 'Saved Replay'}{/if}</p>{/if}</div><RaceTeams race={analysisRace} {reference} {selected} onSelect={id=>selected=id}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>

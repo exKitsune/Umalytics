@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
-  "registryId": "umalytics-engines-unconfigured-v1",
+  "registryId": "umalytics-engines-replay-trials-v2",
   "eras": [],
   "engines": [],
-  "futureInferencePolicies": []
+  "futureInferencePolicies": [],
+  "allowUnknownVersionSimulation": true
 }

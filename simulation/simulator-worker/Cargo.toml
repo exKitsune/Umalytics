@@ -8,6 +8,10 @@ description = "Pinned JSONL worker for the Umalytics observed-race validation br
 [dependencies]
 globalsim = { package = "race_engine_rs", git = "https://github.com/daftuyda/GlobalSim.git", rev = "efc2decdfeaff227ada0e9847f5deceb42c3b97f", default-features = false }
 
+# Prepared from the pinned revision plus the reviewed observation-only patch.
+[patch."https://github.com/daftuyda/GlobalSim.git"]
+race_engine_rs = { path = "../../.cache/globalsim-traced" }
+
 [profile.release]
 opt-level = 3
 lto = true

@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "originalArtifactSha256": "cfa215c90a55d9ff5b1c85e1005cca7155c8d2f02b1bec724329fd66aaef63c1",
+  "tracedArtifactSha256": "a920d0f68d3b215cd2838931ff55d5550601627388211be672815ad483e814a9",
+  "fixtures": [
+    {
+      "fixture": "56bf898d",
+      "originalFileSha256": "9dd4721665350c36ec44174c778d8211954bf83b21f25da32ad10a91be44633e",
+      "preparedInputSha256": "954138ae33c0c75a08537e4785222ab62a4d8574fea801c360b9085fff42959b",
+      "baselineEqualsOffEqualsOn": true,
+      "status": "verified",
+      "traceComplete": true,
+      "events": 10522,
+      "motion": 16703,
+      "spurtRolls": 3,
+      "witChecks": 140,
+      "bytes": 11135909,
+      "seconds": 1.625
+    },
+    {
+      "fixture": "2551cd36",
+      "originalFileSha256": "aaa9da58ab5ca9e230ca09f3166e0fdad93bfa60b8cba67100fb1c0c4fc881af",
+      "preparedInputSha256": "a5f4629fe7a60ee993d2fdcda5e4ce05cd8dce8f1dd1d8a78421e2a94066d79e",
+      "baselineEqualsOffEqualsOn": true,
+      "status": "verified",
+      "traceComplete": true,
+      "events": 8153,
+      "motion": 10295,
+      "spurtRolls": 0,
+      "witChecks": 147,
+      "bytes": 7507068,
+      "seconds": 0.61
+    },
+    {
+      "fixture": "626f5ca8",
+      "originalFileSha256": "c5c52cfb7ea933c6adb0c4fe51d7e59da60a50b9e6efc348aab408732ab55d81",
+      "preparedInputSha256": "e64ad4d9a56d1284443494e2e8286e05f869ec433cb0e5ae316c05df55cf0acf",
+      "baselineEqualsOffEqualsOn": true,
+      "status": "verified",
+      "traceComplete": true,
+      "events": 14743,
+      "motion": 23360,
+      "spurtRolls": 7,
+      "witChecks": 154,
+      "bytes": 15648042,
+      "seconds": 1.625
+    },
+    {
+      "fixture": "74c4abb6",
+      "originalFileSha256": "1098d0bda22858a61cca33d90e40e7fb5543678af1d9a44e9f99d079890166d9",
+      "preparedInputSha256": "f8f887acd6dc2beeb8e54bb139705dcdc888dfddb628f85f08453b577ad32daa",
+      "baselineEqualsOffEqualsOn": true,
+      "status": "verified",
+      "traceComplete": true,
+      "events": 6921,
+      "motion": 15693,
+      "spurtRolls": 0,
+      "witChecks": 147,
+      "bytes": 10061372,
+      "seconds": 0.812
+    },
+    {
+      "fixture": "adcc5b70",
+      "originalFileSha256": "f38fe3b69310992885ec4530dceeca5f0d57a08596b0dfad70fe686b3b5196e3",
+      "preparedInputSha256": "9c52f78c625d18507a3ec68f3c5f5f4c0895d7243cfc3717a71c55ee7331457b",
+      "baselineEqualsOffEqualsOn": true,
+      "status": "verified",
+      "traceComplete": true,
+      "events": 8294,
+      "motion": 17623,
+      "spurtRolls": 0,
+      "witChecks": 158,
+      "bytes": 11387955,
+      "seconds": 0.907
+    },
+    {
+      "fixture": "d16e7b46",
+      "originalFileSha256": "7e3235746ea48ec7280b170ca97fbf3df99fabe072ab7b4bc77fe1257efd6dbd",
+      "preparedInputSha256": "7785eecf09b5e4ecb8523b06512408873cf665942820c06bf8e7e1e0cb93c012",
+      "baselineEqualsOffEqualsOn": true,
+      "status": "verified",
+      "traceComplete": true,
+      "events": 11030,
+      "motion": 15680,
+      "spurtRolls": 6,
+      "witChecks": 156,
+      "bytes": 11035492,
+      "seconds": 1.094
+    },
+    {
+      "fixture": "c3a24961",
+      "originalFileSha256": "cc47da6c066f20b9f93abae6cdf12dcb4b32b920a1b3b2dbf4f2b7b71c171de9",
+      "preparedInputSha256": "54bd439935afbec2681e812050868a219479e8cbfedd96692b61b84be30ddc26",
+      "baselineEqualsOffEqualsOn": true,
+      "status": "mismatch",
+      "traceComplete": true,
+      "events": 7967,
+      "motion": 10473,
+      "spurtRolls": 0,
+      "witChecks": 103,
+      "bytes": 7533150,
+      "seconds": 0.687
+    },
+    {
+      "fixture": "74d99c26",
+      "originalFileSha256": "fe6387247a84e5cae6d5483b35791406ca0f6042943b29dde6da7a2607dbe8c5",
+      "status": "needs_input",
+      "engineExecuted": false
+    }
+  ],
+  "validatedAtUtc": "2026-10-18T02:24:32.019935+00:00",
+  "instrumentation": {
+    "upstreamCommit": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+    "schema": "umalytics-decisions-v1",
+    "files": {
+      "simulation/instrumentation/engine.patch": "ad194a890a35e7e17774e8cf019b8eb1c670ec899c15f52bd9c7e261affdd94e",
+      "simulation/instrumentation/decision_trace.rs": "195e7cd20ec9d43e190269c64e45bf5602cc1c74764aaccddd3364d9f15e5b96"
+    },
+    "sha256": "84cfc5057b224c677192fe4f70dab2a58e451077bf8c5f818840e2939da8deae",
+    "sourceSha256": "5e2b5421fc3e088a3772a37baf8ebccc3a24dde8c4ffa077d326585a92480056"
+  },
+  "scope": "Local private captures read only; only hashes and aggregate evidence published. No real date coverage asserted.",
+  "compatibility": {
+    "policy": "umalytics-original-race-selection-v2",
+    "unknownVersionSimulation": true,
+    "unknownVersionInference": false,
+    "registeredDateEras": 0
+  },
+  "application": {
+    "functionalTests": {
+      "passed": 37,
+      "failed": 0
+    },
+    "pythonTests": {
+      "run": 116,
+      "passed": 115,
+      "skipped": 1,
+      "failed": 0
+    },
+    "contractTests": {
+      "passed": 16,
+      "failed": 0
+    },
+    "typecheck": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "httpChecks": {
+      "realProcessAndComparedDetails": true,
+      "freshTraceReexecuted": true,
+      "unknownNoModelAccessWithoutTrialPolicy": true,
+      "unknownTrialMatchesWithoutInference": true,
+      "tamperedSimulatorDeniedEligibleInferenceRetained": true,
+      "policyChangeRevokesDetails": true
+    },
+    "nativeSmoke": {
+      "nativeExecutable": "passed",
+      "appDataInstallation": "passed",
+      "adjacentDataMigration": "passed",
+      "embeddedRuntimeHash": "passed",
+      "nativeLauncherFixture": "passed",
+      "desktopExportExplorerSelection": "skipped (headless)",
+      "courseSummary": "passed",
+      "residentTrayLifetime": "passed",
+      "singleInstanceBackground": "passed",
+      "nativeFrontendStorage": "passed",
+      "legacyProfileMigration": "passed",
+      "repeatedBackgroundWrites": "none",
+      "ownedShutdown": "passed",
+      "steamOwnedSessionShutdown": "passed",
+      "certificateTrustChanged": false,
+      "actualGameLaunched": false
+    },
+    "packagedService": {
+      "sha256": "342634ae85138770ba1c371b22d7c0bdd7b03fc2670617e51ae6b530afea2f0f",
+      "developerToolchainsOnPath": false,
+      "unknownTrialTracePassed": true,
+      "recordedOnlyGatePassed": true,
+      "inferenceArtifactPinsPassed": true,
+      "traceSchema": "umalytics-decisions-v1",
+      "traceEvents": 10522,
+      "traceMotion": 16703
+    },
+    "previewExecutableSha256": "bee5667ab59000f8afde4ee319894fcdf2e3025ba46fc045db7a623473506ef0",
+    "browserChecks": [
+      "unknown-version match opens simulator timeline automatically",
+      "runner labels include gates",
+      "discrete seeking",
+      "skill filter and pagination",
+      "known mismatch withholds decision panels"
+    ],
+    "nativeRetryNote": "Sandbox WebView initialization left a hung disposable test process; after stopping that exact process, the isolated unsandboxed native smoke completed successfully."
+  },
+  "upstreamRust": {
+    "baseline": {
+      "passed": 133,
+      "failed": 11,
+      "failures": [
+        "hp_policy::retail_tests::integrated_hp_drain_and_heals_match_python_bits",
+        "hp_policy::retail_tests::spurt_policy_uses_shared_stream_and_current_hp",
+        "race_solver::movement_tests::duel_partner_hp_and_former_participant_exit_rules",
+        "race_solver::movement_tests::duel_warmup_checks_order_and_retains_eligible_rival",
+        "race_solver::retail_impl::tests::complete_isolated_races_match_python_tick_bits",
+        "race_solver::retail_impl::tests::whole_field_races_match_python_tick_bits",
+        "retail_geometry::tests::captured_gates_and_per_runner_width_changes",
+        "retail_geometry::tests::python_port_vectors_match_bits_for_all_captured_courses",
+        "retail_lane::tests::lateral_acceleration_and_permissions_match_python_bits",
+        "retail_physics::tests::python_port_vectors_match_every_float32_bit",
+        "retail_spurt::tests::search_matches_python_plans_and_shared_draw_counts"
+      ]
+    },
+    "instrumented": {
+      "passed": 134,
+      "failed": 11,
+      "failures": [
+        "hp_policy::retail_tests::integrated_hp_drain_and_heals_match_python_bits",
+        "hp_policy::retail_tests::spurt_policy_uses_shared_stream_and_current_hp",
+        "race_solver::movement_tests::duel_partner_hp_and_former_participant_exit_rules",
+        "race_solver::movement_tests::duel_warmup_checks_order_and_retains_eligible_rival",
+        "race_solver::retail_impl::tests::complete_isolated_races_match_python_tick_bits",
+        "race_solver::retail_impl::tests::whole_field_races_match_python_tick_bits",
+        "retail_geometry::tests::captured_gates_and_per_runner_width_changes",
+        "retail_geometry::tests::python_port_vectors_match_bits_for_all_captured_courses",
+        "retail_lane::tests::lateral_acceleration_and_permissions_match_python_bits",
+        "retail_physics::tests::python_port_vectors_match_every_float32_bit",
+        "retail_spurt::tests::search_matches_python_plans_and_shared_draw_counts"
+      ]
+    },
+    "newFailures": 0,
+    "allPassing": false
+  }
+}

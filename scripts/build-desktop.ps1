@@ -38,8 +38,6 @@ $env:Path = (Split-Path $cargo) + ';' + $env:Path
 & $cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw 'Locked Rust dependency download failed.' }
 $env:CARGO_NET_GIT_FETCH_WITH_CLI = 'true'
-& $cargo build --release --locked --manifest-path simulation/simulator-worker/Cargo.toml
-if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator worker build failed.' }
 $simSource = Join-Path $workspace '.cache/globalsim-source'
 if (-not (Test-Path -LiteralPath $simSource)) {
     & git clone --no-checkout https://github.com/daftuyda/GlobalSim.git $simSource
@@ -49,6 +47,10 @@ if (-not (Test-Path -LiteralPath $simSource)) {
 # Limit the ownership exception to this invocation and this exact checkout.
 & git -c "safe.directory=$($simSource.Replace('\','/'))" -C $simSource checkout --detach efc2decdfeaff227ada0e9847f5deceb42c3b97f
 if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator resources are unavailable.' }
+& $python scripts/prepare-simulator.py --source $simSource
+if ($LASTEXITCODE -ne 0) { throw 'Simulator instrumentation preparation failed.' }
+& $cargo build --release --locked --manifest-path simulation/simulator-worker/Cargo.toml
+if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator worker build failed.' }
 & $python scripts/package-simulator.py --source $simSource --engine (Join-Path $env:CARGO_TARGET_DIR 'release/umalytics-globalsim-worker.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Simulator bundle verification failed.' }
 & $python desktop/generate_icon.py

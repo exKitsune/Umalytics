@@ -10,6 +10,8 @@ import tempfile
 import time
 from urllib.request import ProxyHandler, Request, build_opener
 
+ROOT = Path(__file__).resolve().parents[1]
+
 parser=argparse.ArgumentParser()
 parser.add_argument('executable',type=Path)
 parser.add_argument('--capture',type=Path)
@@ -80,6 +82,29 @@ with tempfile.TemporaryDirectory(prefix='umalytics-frozen-analysis-') as tempora
         assert not (data/'cache/globalsim').exists()
         assert not (data/'cache/simulation-work').exists()
         result.update(installed=status['installed'],recordedOnlyGatePassed=True,inferenceArtifactPinsPassed=True)
+        if args.capture:
+            # Copy the real capture into disposable storage. Production trial
+            # policy must work in a frozen install with no source/toolchain.
+            (data/'races/real.json').write_bytes(args.capture.read_bytes())
+            selected=request('races/real')
+            job=request('simulation/races/real',{'expectedEntrySha256':selected['sha256']})
+            for _ in range(400):
+                job=request('simulation/races/real?jobId='+job['jobId'])
+                if job['phase']=='complete':break
+                time.sleep(.05)
+            assert job['report']['mode']=='verified_simulation', job['report'].get('error')
+            assert job['report']['compatibility']['mode']=='simulation_trial'
+            assert not job['report']['permissions']['inferenceExecutionPlan']
+            details=request('simulation/races/real?jobId='+job['jobId']+'&include=payloads')
+            sim=details['report']['simulation']
+            assert sim['capabilities']['hiddenState']=='simulated_trace'
+            assert sim['identities']['code']['sourceSha256']['decisionTrace'] == hashlib.sha256(
+                (ROOT/'desktop/globalsim_bridge/decision_trace.py').read_bytes()).hexdigest()
+            trace=sim['modeled']['decisionTrace']
+            assert trace['complete'] and trace['dropped']==0 and trace['events'] and trace['motion']
+            result.update(productionAuthorization='verified_simulation',unknownTrialTracePassed=True,
+                          traceEvents=len(trace['events']),traceMotion=len(trace['motion']),
+                          traceSchema=trace['schema'])
     finally:
         if health and child.poll() is None:
             request('app/exit',{})

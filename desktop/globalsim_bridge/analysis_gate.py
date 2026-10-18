@@ -305,7 +305,7 @@ def evaluate_for_analysis(capture: dict, registry: dict,
                 _add_notice(report, _notice(notice['code'], notice['message']))
         # This return precedes binding lookup, reference loading, file hashing,
         # low-level evaluation, and every model cache/worker access.
-        if decision.get('mode') not in ('compatible', 'provisional_future_inference'):
+        if decision.get('mode') not in ('compatible', 'provisional_future_inference', 'simulation_trial'):
             report['binding'] = _selection_binding(decision, context_sha, None, None)
             return recorded_only()
         simulation_eligible = (decision.get('simulation', {}).get('eligible') is True

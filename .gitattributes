@@ -2,3 +2,5 @@
 public/data/* -text
 # Generated audits are compared byte-for-byte with CLI output.
 docs/*.json -text
+# Unified patches require a space on blank context lines.
+simulation/instrumentation/*.patch -whitespace

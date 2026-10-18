@@ -47,8 +47,8 @@ export interface SimulationCapabilities {
   skillEvents: CapabilityStatus;
   /** Compared observed event starts for the supported competition/conserve-power types. */
   competitionEvents: CapabilityStatus;
-  /** Stock worker output does not expose the requested private state/condition trace. */
-  hiddenState: 'not_provided';
+  /** Instrumented model decisions are distinct from captured original private state. */
+  hiddenState: 'not_provided' | 'simulated_trace';
 }
 
 export interface SimulationIdentities {
@@ -121,7 +121,7 @@ export interface CompatibilityDecision {
   evidenceSha256: string | null;
   selectionSha256: string | null;
   registryId: string | null;
-  mode: 'recorded_only' | 'compatible' | 'provisional_future_inference';
+  mode: 'recorded_only' | 'compatible' | 'provisional_future_inference' | 'simulation_trial';
   evidenceStatus: string;
   compatibilityClass: string;
   matchedEraId: string | null;
@@ -357,7 +357,7 @@ export function canUseSimulatedCapability(
 ): boolean {
   const diagnostic = report?.simulation;
   return matchesCurrentAnalysisSelection(report, selection)
-    && hasEligibleCompatibility(report)
+    && (hasEligibleCompatibility(report) || report?.compatibility?.mode === 'simulation_trial')
     && report?.mode === 'verified_simulation'
     && report.permissions.simulatedRecordedCapabilities === true
     && report.permissions.unversionedInference === false

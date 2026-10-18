@@ -44,6 +44,17 @@ class SimulationService:
         manifest = read_json(manifest_path) if manifest_path.exists() else {'schemaVersion': 1, 'bundles': []}
         if manifest.get('schemaVersion') != 1 or not isinstance(manifest.get('bundles'), list):
             raise ValueError('Invalid installed bundle manifest.')
+        if registry.get('allowUnknownVersionSimulation') is True:
+            candidates = [row for row in manifest['bundles'] if row.get('kind') == 'simulation'
+                          and row.get('profile') == 'v74' and row.get('decisionTraceSchema') == 'umalytics-decisions-v1']
+            # The last packaged trace-capable build is the preferred trial. This
+            # is app-owned configuration; browser/capture inputs cannot select it.
+            registry = {**registry, 'unknownVersionSimulators': [{
+                'engineId': row['engine_id'], 'version': row['version'], 'profile': row['profile'],
+                'identity': {'artifactSha256': row['artifact_sha256'], 'dataSha256': row['data_sha256']},
+                'region': 'global', 'modes': ['practice', 'team-trials', 'champions-meeting'],
+                'reference': 'User-authorized unknown-version trial; replay agreement required; no date coverage claimed.'
+            } for row in candidates[-1:]]}
         return registry, manifest
 
     def path(self, relative):
@@ -65,6 +76,7 @@ class SimulationService:
                     engine_path=self.path(row['artifact']), umalytics_root=self.path(row['appRoot']),
                     globalsim_root=self.path(row['resourceRoot']),
                     expected_engine_sha256=row['artifact_sha256'],
+                    decision_trace_schema=row.get('decisionTraceSchema'),
                     cache_root=self.service.data_dir / 'cache/globalsim' / namespace,
                     work_root=self.service.data_dir / 'cache/simulation-work'))
                 simulators[binding.engine_id] = binding

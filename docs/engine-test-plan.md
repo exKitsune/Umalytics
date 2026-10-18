@@ -5,10 +5,7 @@ executes its measured artifact, independently compares its output, and removes
 authorization when the evidence or implementation changes. A diagnostic
 `verified` result alone is insufficient.
 
-Production coverage is deliberately empty. Existing real captures remain
-recorded-only until documented original-race evidence and region/mode release
-coverage are registered. Synthetic test coverage must never be installed as
-production coverage.
+Real date coverage remains unconfigured. The updated production policy permits an installed simulator trial for unknown versions and exposes its decisions only after a complete recorded-field match and a complete trace. This does not authorize inference. Synthetic coverage must never be installed as production date evidence. See [simulator decisions](simulator-decisions.md).
 
 ## Automated checks before each engine upgrade
 
@@ -27,7 +24,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-desktop.ps1 -O
 | Check | Required evidence / failure condition |
 |---|---|
 | Real inference worker | `npm test` runs the compiled immutable worker through HTTP authorization. Cold results and fresh-worker cache restoration agree. Legacy cache, unknown race, changed policy and changed artifact cannot restore authorized analysis. Future warnings survive cache/reload. |
-| Independent compatibility | Python and TypeScript contracts cover old/current/future/unknown/conflicting evidence, half-open windows, ambiguous time precision, separate simulator/inference identities, historical bindings and explicit provisional policies. Unknown/unsupported selections touch no model references, worker or cache. |
+| Independent compatibility | Python and TypeScript contracts cover old/current/future/unknown/conflicting evidence, half-open windows, ambiguous time precision, separate simulator/inference identities, historical bindings and explicit provisional policies. Without an explicit unknown-version trial policy, unknown/unsupported selections touch no model resources. With that policy, only the app-bound simulator may run; inference remains denied. Conflicts and known unsupported eras never acquire trial eligibility. |
 | Capture preservation | Original course/distance aliases, conflicting 10805/10801 evidence, race-time value/offset/precision/provenance and original version observations survive collection, portable export, sharing and service import. Derived finish distance cannot become an initial simulator input. |
 | Packaging | The shared frontend carries its exact inference bundle to Windows; packaging verifies hashes, builds the locked simulator and embeds its reference resources. No developer checkout or toolchain is required by an installed user. |
 
@@ -52,10 +49,12 @@ Pass requires all of the following:
    and launches the exact manifest-listed executable once. Its measured hash
    matches; engine elapsed time is positive; the cold request has no cache hit.
 2. Independent comparison passes before modeled details are exposed. Summary
-   polling excludes replay arrays. A second request uses cached model output,
-   launches no process, and invokes comparison again.
-3. An unknown original version loads no model references, launches no process,
-   performs no comparison and leaves the simulation cache unchanged.
+   polling excludes replay arrays. Reopening a traced race executes again and
+   compares again; observation-only builds may reuse cached model output.
+3. With unknown-version trials disabled, an unknown original version loads no
+   model references, launches no process and leaves the cache unchanged. With
+   trials enabled, the bound simulator executes and can expose a complete trace
+   after comparison; inference remains unavailable.
 4. Appending bytes to the disposable executable revokes prior detail access
    with HTTP 409 and prevents another process launch, even with a populated
    cache. An independently eligible inference bundle remains authorized.
@@ -83,8 +82,9 @@ never alter initial conditions or loosen tolerances to recover green tests.
 
 The packaged test runs from unrelated temporary storage with developer tools
 removed from PATH. It proves the embedded simulator and inference artifacts
-are available and that the production unknown-version gate still denies
-analysis. Native smoke tests use a harmless launcher fixture, isolated app
+are available, policy-disabled unknown races still deny analysis, and production
+unknown-version trials can expose matching complete traces. Native smoke tests
+use a harmless launcher fixture, isolated app
 storage and temporary untrusted certificates. They check argument forwarding,
 proxy environment, tray lifetime, migration and shutdown. Close the installed
 app first if it owns ports 4317/4327; the test refuses to take those ports.
@@ -97,7 +97,8 @@ new real era supported; synthetic tests cannot establish that claim.
 
 | Scenario | Expected visible behavior |
 |---|---|
-| Unknown or contradictory original version | Recorded results, frames, events and seeking work; specific notice; no permanent loading skeleton or mechanics-derived panels. |
+| Unknown original version | Recorded viewing works; the configured trial can expose complete matching simulator decisions, with the unknown-version notice. No inference is authorized. |
+| Contradictory original version | Recorded results, frames, events and seeking work; conflict notice; no mechanics-derived panels. |
 | Compatible simulator and matching replay | Compared simulated fields appear with provenance; hidden state stays unavailable unless independently supported. |
 | Simulation mismatch or missing input; eligible inference | Only that eligible inference implementation is used; simulation rejection remains in diagnostics. |
 | Historical race with matching installed implementation | Actual historical worker/data identity is shown; no relabeled current bundle. |
@@ -120,3 +121,25 @@ An upgrade must update the Cargo revision/lock and pinned resource checkout
 together, rebuild measured bundles, rerun this plan, and review support mappings
 for simulators and inference independently. Preserve old bundles when existing
 historical coverage requires them.
+
+
+## Decision-trace acceptance
+
+1. Prepare the pinned instrumented source with `python scripts/prepare-simulator.py --source .cache/globalsim-source`, then build the locked worker. Check the manifest pins and isolated source identity.
+2. For every corpus capture, run the original pinned worker, patched worker with tracing off, and patched worker with tracing on. Remove only `decisionTrace`; require complete JSON output equality, unchanged prepared-input hash and unchanged comparison verdict. Keep the known mismatch and missing-input capture as negative controls.
+3. Require each actual wit roll to agree with its threshold/result; exempt skills must have no roll. Include failed ordinary lotteries and forced activation. Check condition/precondition stages, skipped predicates, activation ordering, cooldown and effect delivery.
+4. Include spurt success without any roll, multiple rejected candidates, accepted/rejected lottery rolls, fallback and recovery recalculation. Do not invent rolls for calculations that did not draw.
+5. Select a blocking tick in the UI. Compare both before/after clamp pairs against the worker row, verify blocker mapping after gate reordering, and inspect position-keep/near-lane timers. Show local clamp reductions without labeling their sum as finish-time loss.
+6. Real HTTP tests must cover known-version match, policy-disabled unknown, policy-enabled unknown match, no inference from a trial, fresh trace execution on reopening, identity tamper, policy invalidation and payload projection. A mismatch or incomplete trace must not show decision panels.
+7. In the browser, seek a time between ticks, switch runners and skills, page the decision log, reload the race, and switch to the known mismatch. Confirm discrete sampling, correct runner/skill labels and removal of simulator panels. Export the full trace with its provenance.
+8. Run application tests/build, Python gateway tests, TypeScript contracts, packaged worker/service smoke and native smoke. Compare upstream Rust failures against the untouched pin; any new failure blocks delivery. The current eleven pre-existing upstream failures are documented separately, not counted as passes.
+
+The full-output parity check is reproducible with a preserved original worker:
+
+```powershell
+python tests/decision-trace-parity.py --baseline <original-worker.exe> --engine <instrumented-worker.exe> --source .cache/globalsim-source --capture-dir $captureDir --capture $matchingCapture --output test-output/decision-trace-validation.json
+```
+
+The original seven fixtures are checked against the committed capture/input
+manifest; additional captures receive separate hashes and verdicts. This command
+also validates the trace schema and actual wit/spurt lottery results.

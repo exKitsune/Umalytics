@@ -57,12 +57,15 @@ class RuntimeConfig:
     # Supply from the trusted bundle build manifest in production. A measured
     # hash alone is not an attestation that an arbitrary binary came from Git.
     expected_engine_sha256: str | None = None
+    decision_trace_schema: str | None = None
 
     def __post_init__(self):
         for name in ("engine_path", "umalytics_root", "globalsim_root", "work_root", "cache_root"):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, Path(value).expanduser().resolve())
+        if self.decision_trace_schema not in (None, "umalytics-decisions-v1"):
+            raise ValueError("Unsupported decision trace schema")
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be finite and positive")
         for name in ("max_capture_bytes", "max_input_bytes", "max_output_bytes", "max_stderr_bytes"):
@@ -101,6 +104,7 @@ def _code_identities() -> tuple[dict, bool]:
         "runtime": Path(__file__),
         "adapter": Path(adapter.__file__),
         "comparator": Path(__file__).with_name("comparator.py"),
+        "decisionTrace": Path(__file__).with_name("decision_trace.py"),
     }
     hashes = {}
     complete = True
@@ -439,6 +443,9 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
         if len(payload) > config.max_input_bytes:
             return finish("unsupported", "INPUT_LIMIT", "Prepared input exceeds configured byte limit")
         report["inputSha256"] = _digest(payload[:-1])
+        # Keep the prepared-input audit hash independent of observation options.
+        if config.decision_trace_schema:
+            payload = _canonical({**initial, "decisionTrace": True}) + b"\n"
         code_identity, cache_eligible = _code_identities()
         engine_hash = _file_digest(config.engine_path)
         report["identities"] = {
@@ -450,7 +457,7 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
             "profile": _profile_identity(initial),
             "worker": {"expectedUpstreamRevision": UPSTREAM_REVISION, "sourceRevision": "expected/not attested",
                        "api": "globalsim::run_worker",
-                       "defaultProfileReliedOn": False},
+                       "defaultProfileReliedOn": False, "decisionTraceSchema": config.decision_trace_schema},
         }
         if config.expected_engine_sha256 is not None and config.expected_engine_sha256 != engine_hash:
             return finish("engine_error", "ENGINE_PIN_MISMATCH", "Configured executable does not match its trusted checksum",
@@ -463,7 +470,10 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
         report["cacheKey"] = _digest(_canonical(key_material))
         if not cache_eligible:
             report["warnings"].append("Code source identities unavailable; simulation cache is disabled.")
-        cache_path = _cache_path(config, report["cacheKey"]) if cache_eligible else None
+        # Recorded samples cannot independently authenticate cached hidden decisions.
+        # Trace requests execute afresh; ordinary observation-only runs retain
+        # their independently re-compared persistent model cache.
+        cache_path = _cache_path(config, report["cacheKey"]) if cache_eligible and not config.decision_trace_schema else None
         modeled = _read_cache(cache_path, report["cacheKey"], config.max_output_bytes)
         report["cacheHit"] = modeled is not None
         if modeled is None:
@@ -484,6 +494,15 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
             return finish("unsupported", "MISSING_ENGINE_CAPABILITY", "Simulator output lacks a required comparison capability",
                           {"missingRequiredCapabilities": comparison.get("missingRequiredCapabilities", [])})
         status = "verified" if comparison.get("allComparedChecksPass") is True else "mismatch"
+        if config.decision_trace_schema:
+            from .decision_trace import validate_trace
+            trace_error = validate_trace(modeled.get("decisionTrace"), len(initial.get("horses", [])))
+            report["traceValidation"] = {"schema": config.decision_trace_schema, "valid": trace_error is None,
+                                         "error": trace_error}
+            if trace_error is None and status == "verified" and config.expected_engine_sha256 == engine_hash:
+                report["capabilities"]["hiddenState"] = "simulated_trace"
+            elif trace_error:
+                report["warnings"].append("Decision trace unavailable: " + trace_error)
         if not report["cacheHit"]:
             try:
                 _write_cache(cache_path, report["cacheKey"], modeled, config.max_output_bytes)

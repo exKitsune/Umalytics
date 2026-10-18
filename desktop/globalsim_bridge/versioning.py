@@ -30,7 +30,7 @@ import re
 from typing import Any
 
 
-POLICY_VERSION = "umalytics-original-race-selection-v1"
+POLICY_VERSION = "umalytics-original-race-selection-v2"
 ORIGINAL_RULE_FIELDS = frozenset({"rulesetId", "gameBuild", "masterSha256"})
 EVIDENCE_FIELDS = frozenset({"region", "mode", "occurredAt"}) | ORIGINAL_RULE_FIELDS
 PROVENANCE_SOURCES = frozenset({"upstream-original-race", "independently-confirmed-original-race"})
@@ -135,11 +135,21 @@ def _scope(row: dict, evidence: dict) -> bool:
 def _registry(value: Any) -> dict:
     if value is None:
         raise CompatibilityError("REGISTRY_UNAVAILABLE", "No engine compatibility registry is available")
-    raw = _shape(value, {"schemaVersion", "registryId", "eras", "engines", "futureInferencePolicies"}, set(), "registry")
+    raw = _shape(value, {"schemaVersion", "registryId", "eras", "engines", "futureInferencePolicies"}, {"allowUnknownVersionSimulation", "unknownVersionSimulators"}, "registry")
     _require(type(raw["schemaVersion"]) is int and raw["schemaVersion"] == 1, "Unsupported registry schema")
     _name(raw["registryId"], "registryId")
     for key in ("eras", "engines", "futureInferencePolicies"):
         _require(isinstance(raw[key], list) and len(raw[key]) <= 1000, f"{key} must be a bounded list")
+    _require(type(raw.get("allowUnknownVersionSimulation", False)) is bool, "Unknown simulation policy must be boolean")
+    trials = raw.get("unknownVersionSimulators", [])
+    _require(isinstance(trials, list) and len(trials) <= 1, "Configure at most one preferred unknown-version simulator")
+    for trial in trials:
+        _shape(trial, {"engineId", "version", "profile", "identity", "region", "modes", "reference"}, set(), "trial")
+        for key in ("engineId", "version", "profile", "region"): _name(trial[key], "trial." + key)
+        _names(trial["modes"], "trial.modes")
+        _text(trial["reference"], "trial.reference")
+        _shape(trial["identity"], {"artifactSha256", "dataSha256"}, set(), "trial.identity")
+        for key, value in trial["identity"].items(): _sha(value, "trial." + key)
     eras, engines, policies = {}, {}, []
     for source in raw["eras"]:
         row = _shape(source, {"eraId", "sequence", "region", "modes", "reference"},
@@ -189,6 +199,12 @@ def _registry(value: Any) -> dict:
                  "Engine coverage contradicts era region/mode")
         _require(all(any(mode in eras[key]["modes"] for key in ids) for mode in modes), "Engine mode lacks registered era coverage")
         engines[ident] = deepcopy(row)
+    for trial in trials:
+        registered = engines.get(trial["engineId"])
+        if registered is not None:
+            _require(registered["kind"] == "simulation" and all(
+                trial[key] == registered[key] for key in ("version", "profile", "identity", "region")),
+                "A trial engineId must identify the same immutable registered simulator")
     entries = list(engines.values())
     for index, left in enumerate(entries):
         for right in entries[index + 1:]:
@@ -243,7 +259,7 @@ def _registry(value: Any) -> dict:
                 overlaps = any(eras[key]["_window"] is None or _overlap(timed["_window"], eras[key]["_window"])
                                for key in named["eraIds"])
             _require(not overlaps, "Future inference policies overlap")
-    return {"registryId": raw["registryId"], "eras": eras, "engines": engines, "policies": policies}
+    return {"registryId": raw["registryId"], "eras": eras, "engines": engines, "policies": policies, "trials": trials if raw.get("allowUnknownVersionSimulation") else []}
 
 
 def _evidence(value: Any, capture_sha256: str) -> dict:
@@ -467,6 +483,21 @@ def select_compatibility(capture_sha256: str, evidence: dict, registry: dict) ->
                         "This race belongs to a newer game update or rules period than the registered engines cover. Only observed replay data is shown. Simulation must wait for compatible coverage; inference requires compatible coverage or an explicit policy permitting a warned provisional estimate.",
                 }.get(code, "No compatible simulation or inference engine is registered for the original race rules. Only observed replay data is shown; no inference fallback is enabled.")
                 _notice(decision, code, message)
+        if status in ("unknown", "unmapped") and era is None and parsed_registry["trials"]:
+            trial = parsed_registry["trials"][0]
+            if (parsed_evidence.get("region") in (None, trial["region"])
+                    and (parsed_evidence.get("mode") is None or parsed_evidence["mode"] in trial["modes"])):
+                decision["simulation"] = _selected(trial)
+                decision["simulation"]["reasonCodes"] = ["UNKNOWN_VERSION_REPLAY_TRIAL"]
+                eligibility = {"engineId": trial["engineId"], "kind": "simulation", "eligible": True,
+                               "provisional": False, "reasonCodes": ["UNKNOWN_VERSION_REPLAY_TRIAL"]}
+                decision["engineEligibility"] = [row for row in decision["engineEligibility"]
+                                                 if row["engineId"] != trial["engineId"]] + [eligibility]
+                decision["mode"] = "simulation_trial"
+                decision["notices"] = []
+                decision["noticeCodes"] = []
+                _notice(decision, "UNKNOWN_VERSION_REPLAY_TRIAL",
+                    "Original game version is unknown. The installed simulator may explain this race only after all supported recorded fields match. Inference remains separately version-gated.")
         for kind in ("simulation", "inference"):
             if not decision[kind]["eligible"]:
                 decision[kind]["reasonCodes"] = [resolution if era is None else "NO_COMPATIBLE_" + kind.upper() + "_ENGINE"]
