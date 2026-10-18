@@ -72,9 +72,11 @@ Traffic SVG gradients also collapse identical adjacent stops without discarding
 transitions or faded clear gaps. Analysis JSON is formatted only when expanded.
 
 In an isolated local service using copied nine-runner Nakayama captures, a warm
-inference switch took 301 ms and return to the matched dashboard took 61 ms,
-measured from browser click to visible results. These are individual local UI
-measurements, not a general latency guarantee. The service recorded one native
-worker execution for the initial matched open and two comparisons after reopening;
-the second open did not rerun the native simulator. Cold opens and persistent
+inference switch took 314 ms and return to the matched dashboard took 1,063 ms,
+measured from browser click until the runner Stats control was available (not
+the result heading, which also appears in the loading skeleton). These are
+individual local UI measurements, not a general latency guarantee. The service
+recorded zero native worker executions after restarting with saved baselines;
+both the persistent restore and warm reopen performed fresh comparisons.
+Cold opens and persistent
 restores after restarting still pay validation, transfer and projection costs.
