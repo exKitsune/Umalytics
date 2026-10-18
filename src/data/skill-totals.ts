@@ -16,6 +16,11 @@ export function movementUse(effects:EffectUtilization[]){
 
 const cache=new WeakMap<RaceAnalysis,Map<string,ReturnType<typeof buildTotals>>>();
 export function skillTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null):ReturnType<typeof buildTotals>{
+  if(analysis.source==='simulation'){
+    const totals=preparedFor(analysis)?.runners[runnerId]?.totals;
+    if(!totals)throw new Error('Simulator skill totals are unavailable.');
+    return totals;
+  }
   const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&(courseId==null||courseId===race.courseId))return ready.totals;
   let saved=cache.get(analysis);if(!saved)cache.set(analysis,saved=new Map());
   const key=`${runnerId}/${courseId??race.courseId}`;

@@ -13,6 +13,7 @@
   import SkillMetrics from './SkillMetrics.svelte';
   import ConditionRules from './ConditionRules.svelte';
   import SkillBranchGraph from './SkillBranchGraph.svelte';
+  import SimulationChecks from './SimulationChecks.svelte';
   export let skillId:number;
   export let reference:ReferenceData|null;
   export let race:Race;
@@ -41,14 +42,15 @@
     {:else if row}<p class="outcome" class:active={row.effectiveActive}>{row.effectiveActive?'✓':'×'} {nonProcLabel(row,reference)}</p>{/if}
     {#if impact&&row?.effectiveActive&&(!componentMetrics.length||skill?.branches.some(b=>b.effects.some(e=>[9,21,22,27,31].includes(e.type))))}<section><h3>Effectiveness <small class="calculated">Calculated</small></h3><SkillImpact {impact} expanded motion={runner?motionSkillImpact(race,reference,analysis,runner.id,skillId):null}/></section>{/if}
     {#if runner}<SkillMetrics expanded metrics={componentMetrics}/>{/if}
+    {#if row?.simulation}<SimulationChecks checks={row.simulation.checks} {onSeek}/>{/if}
     {#if skill}
       <div class="activation-rule"><span>Activation</span><strong>{skill.activateLot===0?'Guaranteed if conditions are met':skill.activateLot===1?'Wit check':'Unknown'}</strong></div>
       {#each branches as {branch,index},i}
         {@const evaluated=row?.conditionEvaluation?.branches.find(b=>b.branchIndex===index)}
         {@const activation=row?.activations.find(a=>a.effectBranch===index||skill.branches.length===1)}
-        {@const levelNote=runner?levelBuffExplanation(reference,runner,skillId,branch.effects):null}
+        {@const levelNote=analysis.source!=='simulation'&&runner?levelBuffExplanation(reference,runner,skillId,branch.effects):null}
         {@const branched=skill.branches.length>1}
-        <section class="skill-effects"><h3>{branches.length>1?`Variant ${i+1}`:'Effects'}</h3>
+        <section class="skill-effects"><h3>{branches.length>1?`Variant ${i+1}`:analysis.source==='simulation'?'Effect definitions':'Effects'}</h3>
           <ul>{#each branch.effects as effect}{@const kind=velocityKind(effect.type)}<li>{#if kind}<SpeedTerm {kind} up={effect.rawValue>=0} text={effectText(effect,runner,skillId)}/>{:else}{effectText(effect,runner,skillId)}{/if}{#if teamScaleNote(runner,effect)}<small class="scale-note">{teamScaleNote(runner,effect)}</small>{/if}</li>{/each}</ul>
           {#if levelNote}<p class="level-note">{levelNote.detail}</p>{/if}
           <div class="duration"><span>Duration</span><strong>{activation?.timingKind==='instant'?'Instant':activation?.effectiveDuration!=null?`${Number(activation.effectiveDuration.toFixed(3))} s`:durationText(branch,race.distance)}</strong></div>
@@ -63,7 +65,7 @@
                 <ConditionRules expression={branch.condition} {reference} showCode={showConditionCode} fieldSize={race.runners.length} predicates={evaluated?.predicates??[]} {onSeek}/>
                 {#if evaluated?.firstOpportunity!=null&&!evaluated.staticOnly}<button class="seek-condition" onclick={()=>onSeek(evaluated.firstOpportunity!)}>▶ {evaluated.firstOpportunity.toFixed(2)} s</button>{/if}
               {/if}
-              {#if !activation&&!usedBranches.size&&summary?.state==='unknown'}<p class="muted">{summary.randomTrigger?'The random trigger is not in the replay.':summary.missingInputs.length?'Some required race details are missing.':'The replay cannot confirm every check.'}</p>{/if}
+              {#if !activation&&!usedBranches.size&&summary?.state==='unknown'}<p class="muted">{analysis.source==='simulation'?'This branch was not fully evaluated. See the simulation checks above.':summary.randomTrigger?'The random trigger is not in the replay.':summary.missingInputs.length?'Some required race details are missing.':'The replay cannot confirm every check.'}</p>{/if}
             </details>
           {/if}
         </section>

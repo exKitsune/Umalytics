@@ -73,6 +73,8 @@ export interface RaceEvent {
   params: number[];
 }
 export interface Race {
+  /** View projection only. Original captures never acquire this marker. */
+  analysisSource?: 'simulation';
   id: string;
   title: string;
   source: 'horseact' | 'response' | 'normalized' | 'demo';

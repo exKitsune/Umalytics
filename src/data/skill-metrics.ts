@@ -14,7 +14,7 @@ import { skillEffectDefinitions } from './skill-effect-catalog';
 /** Component quantities, not a percentage of causal finish-time effectiveness. */
 export interface SkillMetric {
   label:string; value:number|string|null; unit:string; detail:string;
-  evidence:'recorded'|'reference'|'sampled'|'unknown'; reason?:string;
+  evidence:'recorded'|'reference'|'sampled'|'simulated'|'unknown'; reason?:string;
 }
 type Effect=SkillReference['branches'][number]['effects'][number];
 interface Applied {id:number;effects:Effect[];start:number;end:number|null;passive:boolean;activation?:SkillActivation;inferred:boolean}
@@ -38,6 +38,7 @@ function missing(e:Effect):string {
 }
 /** Resolved applications are deliberately separate from equipped definitions. */
 export function metricsForSkill(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,skillId:number):SkillMetric[] {
+  if(analysis.source==='simulation')return preparedFor(analysis)?.runners[runnerId]?.metrics[skillId]??[];
   const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&skillId in ready.metrics)return ready.metrics[skillId];
   const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];
   if(!runner||!detail||!reference)return [];

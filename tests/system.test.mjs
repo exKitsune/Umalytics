@@ -42,6 +42,10 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+test('matched simulator output feeds the existing race UI without inference fallback',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/simulation-projection-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
+  assert.match(result.stdout,/Simulator projection:/);
+});
 test('last-spurt targets and choice odds follow imported HP and wit',async()=>{
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/spurt-odds-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
   const report=JSON.parse(result.stdout.trim());

@@ -10,6 +10,7 @@ import { proximityPressure } from './movement-context';
 
 export interface SpurtCandidate {speed:number;delay:number;time:number;probability:number}
 export interface SpurtChoice {
+  rolls?: { roll:number; threshold:number; passed:boolean; speed:number; start:number }[];
   candidates:SpurtCandidate[];matched:number|null;betterChance:number|null;
   decisionDistance:number|null;hp:number|null;checkChance:number|null;
   reason:string;deterministic:boolean;
@@ -20,6 +21,7 @@ export interface SpurtDecision extends SpurtChoice {
   observedTargetTime:number|null;targetEvidence:'plateau'|'maximum-reached'|null;
 }
 export interface SpurtComparison extends SpurtChoice {
+  source?: 'simulation';
   target:MotionBand|null;maximum:MotionBand|null;shortfall:MotionBand|null;
   initialTarget:number|null;initialTargetTime:number|null;
   targetTime:number|null;

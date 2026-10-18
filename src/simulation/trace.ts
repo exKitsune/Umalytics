@@ -44,3 +44,4 @@ export function blockingSummary(rows:readonly number[][]) {
     maximumFinalClamp:Math.max(sum.maximumFinalClamp,row[i.finalLoss]),
   }),{blockedSeconds:0,constrainedSeconds:0,maximumSelfClamp:0,maximumFinalClamp:0});
 }
+export type BlockingSummary = ReturnType<typeof blockingSummary>;

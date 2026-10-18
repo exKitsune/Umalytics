@@ -24,7 +24,22 @@
                      if !is_usable(&mut skill_usable, conditions, spec, h, i, skill_id, *level, prepared_roster) {
                          continue;
                      }
-@@ -819,6 +822,7 @@
+@@ -755,6 +758,14 @@
+     // Gives every solver live awareness of the rest of the field (order/
+     // rank, gaps to the horse ahead/behind) -- not part of the original TS
+     // engine, which has no notion of other horses at all.
++    for (i, solver) in solvers.iter().enumerate() {
++        let _trace = decision_trace::runner(Some(i), 0., "initial-stats");
++        decision_trace::event("initial-stats", || json::obj(vec![
++            ("speed", json::num(solver.horse.speed)), ("stamina", json::num(solver.horse.stamina)),
++            ("power", json::num(solver.horse.power)), ("guts", json::num(solver.horse.guts)),
++            ("wisdom", json::num(solver.horse.wisdom)),
++        ]));
++    }
+     // Snapshot adjusted initial stat ranks before runtime skill expiry/changes.
+     // Stable ties preserve roster order, matching the exported rank fields.
+     let parameter_orders: Vec<Vec<usize>> = (0..2).map(|stat| {
+@@ -819,6 +830,7 @@
          ranks.clear();
          ranks.extend((0..n).map(|i| field.order_of(i)));
          let leaders = style_leaders.update(&ranks);
@@ -32,7 +47,7 @@
          field.step_all(dt, visited);
          for &i in visited {
              let s = field.solvers[i].borrow();
-@@ -1336,6 +1340,7 @@
+@@ -1336,6 +1348,7 @@
          // as a failed run and falls back to the Python engine for that race.
          let outcome = (|| -> Result<Value, String> {
              let spec_json = request_parser.parse(&line)?;
@@ -40,7 +55,7 @@
              // v23: the retail runtime runs the field in gate order (see gate_order).
              let (spec_json, gate_perm) = gate_order(spec_json)?;
              let skill_data = match spec_json.get("skillData") {
-@@ -1409,8 +1414,10 @@
+@@ -1409,8 +1422,10 @@
              if let Some(perm) = &gate_perm {
                  restore_request_order(&mut result, perm);
              }

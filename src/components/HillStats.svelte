@@ -18,10 +18,10 @@
     ...(kind==='downhill'&&total?.modeledHpDelta!=null?[{text:`${Math.abs(total.modeledHpDelta).toFixed(1)} HP`,tone:total.modeledHpDelta<=0?'gain':'loss'}]:[]),
   ]) as ImpactBit[];
 </script>
-{#if rows.length}
+{#if rows.length||mode?.source==='simulation'&&mode.duration>0}
 <div class="hill-stats" data-hill-kind={kind} aria-label={`Combined ${kind} stats for ${name}`}>
   {#if kind==='downhill'&&mode}
-    <div class="fact"><span class="tag">DH</span><strong class="modeled" title={help}>{mode.duration.toFixed(1)}s</strong>{#if speedText}<span class="aside" title="Target speed gain while DH is active.">{speedText}</span>{/if}</div>
+    <div class="fact"><span class="tag">DH</span><strong class:modeled={mode.source!=='simulation'} title={mode.source==='simulation'?'Duration from actual simulator state ticks.':help}>{mode.duration.toFixed(1)}s</strong>{#if speedText}<span class="aside" title="Target speed gain while DH is active.">{speedText}</span>{/if}</div>
     <ModeImpactSummary value={mode}/>
   {:else}
     <div class="fact"><strong class="modeled" title={help}>{total?.modeledDistanceDelta==null?'—':signed(total.modeledDistanceDelta,2)} m</strong>{#if speedText}<span class="aside" title={kind==='uphill'?'Target speed loss across different hill grades. Higher power reduces the loss.':'Target speed gain while DH is active.'}>{speedText}</span>{/if}</div>

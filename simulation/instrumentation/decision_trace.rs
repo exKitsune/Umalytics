@@ -24,7 +24,9 @@ impl Drop for Scope { fn drop(&mut self) { if let Some(previous) = self.0.take()
 pub fn runner(horse: Option<usize>, time: f64, stage: &str) -> Scope {
     TRACE.with(|s| Scope(s.borrow_mut().as_mut().map(|t| {
         let old = t.context.clone();
-        t.context = Context { horse, time, stage: stage.into(), ..Context::default() }; old
+        // Constructors run before field_index is assigned. Keep the enclosing
+        // builder's runner identity through nested skill/effect scopes.
+        t.context = Context { horse: horse.or(old.horse), time, stage: stage.into(), ..Context::default() }; old
     })))
 }
 pub fn skill(id: &str, detail: usize, stage: &str) -> Scope {
@@ -128,6 +130,16 @@ pub const MOTION_COLUMNS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn constructor_events_keep_the_enclosing_runner() {
+        begin(true);
+        { let _r = runner(Some(2), 0., "build");
+          { let _s = runner(None, 0., "effects"); gate("passive", true); }
+          gate("restored", true); }
+        let result = finish(None).unwrap();
+        for event in result.get_array("events").unwrap() {
+            assert_eq!(event.get_i64("horseIndex").unwrap(), 2);
+        }
+    }
     #[test] fn scope_restores_and_series_only_merges_consecutive_checks() {
         begin(true);
         { let _r = runner(Some(1), 1., "runtime"); let _s = skill("100", 0, "condition");

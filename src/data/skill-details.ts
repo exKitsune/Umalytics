@@ -164,6 +164,7 @@ export function conditionSplit(row:SkillRow): ConditionSplit {
 }
 /** Short presentation of what an absent activation can actually establish. */
 export function nonProcLabel(row:SkillRow,reference:ReferenceData|null):string {
+  if(row.simulation)return row.activationCount?'Activated':row.simulation.wit.some(w=>w.data.checked&&w.data.passed===false)?'Wit check failed':row.conditionEvaluation?.state==='unmet'?'Conditions unmet':'Not activated';
   const failed = conditionSplit(row).unmet;
   if(row.activationCount)return 'Activated';
   if(row.activationStatus==='inferred-initial')return 'Activated · inferred';

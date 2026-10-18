@@ -27,7 +27,7 @@
   function select(index:number){selectedDecision=index;}
   $: points=choice?.candidates??[];
   $: distribution=choice?spurtDistribution(choice,distributionAxis):[];
-  $: luck=choice?spurtLuck(choice):null;
+  $: luck=value?.source!=='simulation'&&choice?spurtLuck(choice):null;
   $: minValue=distribution[0]?.value??0;
   $: maxValue=distribution.at(-1)?.value??1;
   $: maxProbability=Math.max(.01,...distribution.map(p=>p.probability));
@@ -56,9 +56,10 @@
   {#if value?.maximum&&choice&&'observedTarget' in choice&&choice.observedTarget!=null}<div class="target-compare"><span style={`width:${Math.min(100,choice.observedTarget/value.maximum.mid*100)}%`}></span></div><div class="compare-labels"><span>Target {choice.observedTarget.toFixed(2)}</span><span>Max {format(value.maximum)} m/s</span></div>{/if}
   {#if value?.decisions?.length}<div class="decisions" aria-label="Spurt decisions">{#each value.decisions as decision,index}<button class:chosen={choice===decision} aria-pressed={choice===decision} onclick={e=>{e.stopPropagation();select(index);void show();}}>{label(index)} · {decision.time.toFixed(2)} s</button>{/each}</div>{/if}
   {#if choice&&'time' in choice}<p>{choice.time.toFixed(2)}–{choice.end.toFixed(2)} s{#if choice.hp!=null}{` · ${Math.round(choice.hp)} HP`}{/if}</p>{/if}
-  {#if startInWindow}<p>Recorded start <strong>{startInWindow.time.toFixed(2)} s</strong> · {startInWindow.wait<=NORMAL_SPURT_START_DELAY?'on time':`${startInWindow.wait.toFixed(2)} s after this check`}{#if startInWindow.metres!=null}{` (${startInWindow.metres.toFixed(1)} m)`}{/if}</p>{/if}
-  {#if choice&&'observedTarget' in choice&&choice.observedTarget!=null}<p>{choice.targetEvidence==='maximum-reached'?'Reached maximum ':'Observed target '}<strong>{(choice.targetEvidence==='maximum-reached'?value?.maximum?.mid??choice.observedTarget:choice.observedTarget).toFixed(2)} m/s</strong>{#if choice.observedTargetTime!=null}{` at ${choice.observedTargetTime.toFixed(2)} s`}{/if}</p>{/if}
+  {#if startInWindow}<p>{value?.source==='simulation'?'Simulator start':'Recorded start'} <strong>{startInWindow.time.toFixed(2)} s</strong> · {startInWindow.wait<=NORMAL_SPURT_START_DELAY?'on time':`${startInWindow.wait.toFixed(2)} s after this check`}{#if startInWindow.metres!=null}{` (${startInWindow.metres.toFixed(1)} m)`}{/if}</p>{/if}
+  {#if choice&&'observedTarget' in choice&&choice.observedTarget!=null}<p>{value?.source==='simulation'?'Simulator target ':choice.targetEvidence==='maximum-reached'?'Reached maximum ':'Observed target '}<strong>{(choice.targetEvidence==='maximum-reached'?value?.maximum?.mid??choice.observedTarget:choice.observedTarget).toFixed(2)} m/s</strong>{#if choice.observedTargetTime!=null}{` at ${choice.observedTargetTime.toFixed(2)} s`}{/if}</p>{/if}
   {#if choice&&'observedTarget' in choice&&choice.observedTarget==null}<p>No clear speed reading in this window.</p>{/if}
+  {#if value?.source==='simulation'&&choice?.rolls?.length}<table aria-label="Actual last spurt rolls"><thead><tr><th>Roll</th><th>Threshold</th><th>Result</th><th>Target</th></tr></thead><tbody>{#each choice.rolls as roll}<tr><td>{roll.roll}</td><td>{roll.threshold.toFixed(2)}</td><td>{roll.passed?'Passed':'Failed'}</td><td>{roll.speed.toFixed(2)} m/s</td></tr>{/each}</tbody></table>{/if}
   {#if points.length>1}
     <div class="distribution-controls" aria-label="Spurt probability distribution"><strong>Chance by</strong><button class:chosen={distributionAxis==='speed'} aria-pressed={distributionAxis==='speed'} onclick={e=>{e.stopPropagation();distributionAxis='speed';}}>Target speed</button><button class:chosen={distributionAxis==='delay'} aria-pressed={distributionAxis==='delay'} onclick={e=>{e.stopPropagation();distributionAxis='delay';}}>Start delay</button></div>
     <svg viewBox="0 0 364 172" role="img" aria-label={`Spurt ${distributionAxis==='speed'?'target speed':'start delay'} probability distribution`}>

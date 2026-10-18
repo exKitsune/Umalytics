@@ -292,6 +292,7 @@ export function populateSkillImpacts(race:Race,reference:ReferenceData|null,cour
   }
 }
 export function visionDistanceAt(race:Race,runnerId:string,time:number,reference:ReferenceData|null,analysis:RaceAnalysis):{metres:number|null;detail:string} {
+  if(analysis.source==='simulation')return {metres:null,detail:'Vision distance is not emitted by this simulator trace.'};
   const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];if(!runner||!detail)return {metres:null,detail:'Runner unavailable.'};let metres=20;
   for(const row of detail.skillRows){const def=reference?.metadata.skills[row.skillId];if(!def){if(row.equipped)return {metres:null,detail:'Equipped vision effects unavailable.'};continue;}
     for(const [i,b] of def.branches.entries()){const index=b.branchIndex??i,vision=b.effects.filter(e=>e.type===8&&(e.targetType??1)===1);if(!vision.length||b.rawDuration>=0)continue;

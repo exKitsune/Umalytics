@@ -7,7 +7,7 @@ import { selfSpeedAt } from './mechanics-effects';
 import { atTime, trace } from './effect-sampling';
 import { effectiveStrategyCode } from './skill-details';
 
-export interface HpTimelinePoint { time:number; hp:number|null; evidence:'recorded'|'reference'|'unknown'; kind:'sample'|'bridge'|'jump-before'|'jump-after'|'unknown'; skillId?:number }
+export interface HpTimelinePoint { time:number; hp:number|null; evidence:'recorded'|'reference'|'simulated'|'unknown'; kind:'sample'|'bridge'|'jump-before'|'jump-after'|'unknown'; skillId?:number }
 interface Jump { time:number; amount:number; skillId:number; immunityUnresolved?:boolean }
 export interface HpSampledBridge {start:number;end:number;startHp:number;endHp:number;reason:string}
 export interface HpHitModelContext {analysis:Pick<RaceAnalysis,'runners'>;course:CourseReference|null}
@@ -59,6 +59,10 @@ export function hpTimeline(race:Race,runnerId:string,reference:ReferenceData|nul
   let byRef=caches.get(race);if(!byRef){byRef=new Map();caches.set(race,byRef);}
   let cache=byRef.get(reference);if(!cache){cache=new Map();byRef.set(reference,cache);}
   const key=`${runnerId}:${maximumHp??''}`;const saved=cache.get(key);if(saved)return saved;
+  if(race.analysisSource==='simulation'){
+    const points:HpTimelinePoint[]=race.frames.map(f=>({time:f.time,hp:f.runners.find(r=>r.runnerId===runnerId)?.hp??null,evidence:'simulated',kind:'sample'}));
+    cache.set(key,points);return points;
+  }
   const runner=race.runners.find(r=>r.id===runnerId);
   const samples=race.frames.map(f=>({time:f.time,sample:f.runners.find(r=>r.runnerId===runnerId)}));
   const first=samples[0];
@@ -124,6 +128,7 @@ export function hpTimeline(race:Race,runnerId:string,reference:ReferenceData|nul
 /** Display-only linear sampled HP segments. These are not reconstructed debuff
  * amounts or resolved immunity, and do not enter analytical effect attribution. */
 export function hpSampledBridges(race:Race,runnerId:string,reference:ReferenceData|null,maximumHp?:number|null,context?:HpHitModelContext):HpSampledBridge[]{
+  if(race.analysisSource==='simulation')return [];
   hpTimeline(race,runnerId,reference,maximumHp);
   const rows=bridgeCaches.get(race)?.get(reference)?.get(`${runnerId}:${maximumHp??''}`)??[];
   if(!context)return rows;

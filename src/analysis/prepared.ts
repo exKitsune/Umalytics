@@ -9,6 +9,7 @@ import type { SpurtComparison } from '../data/spurt-comparison';
 import type { SpeedChange } from '../data/speed-changes';
 
 export interface PreparedRunner {
+  blocking?: import('../simulation/trace').BlockingSummary;
   spurt: SpurtComparison;
   speedChanges: SpeedChange[];
   motion: RunnerMotion;

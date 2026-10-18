@@ -19,7 +19,7 @@ import { hpDepletionOnset } from './hp-timeline';
 import { rankSamples, runnerGap } from '../view-model';
 import type { RunnerStatBreakdown, HillImpact, ContributionTotal, SkillImpact, DebuffActivation, SlowdownAnalysis } from './effect-types';
 
-export type Evidence = 'recorded' | 'derived' | 'estimated' | 'unknown';
+export type Evidence = 'recorded' | 'derived' | 'estimated' | 'simulated' | 'unknown';
 export interface StatusInterval {
   kind: string; label: string; start: number; end: number | null;
   evidence: Evidence; detail: string; skillId?: number;
@@ -54,7 +54,7 @@ export interface RunnerSummary {
 export interface SkillActivation extends SkillTiming {
   skillId: number; start: number; end: number | null; duration: number | null;
   /** recorded: a replay skill event, including a start activation whose duration parameter is -1. estimated: an activation reconstructed without that event. */
-  activationEvidence?: 'recorded' | 'estimated';
+  activationEvidence?: 'recorded' | 'estimated' | 'simulated';
   /** Definition variant; the original recorded event ID remains skillId. */
   referenceSkillId?: number | null;
   durationEvidence: Evidence; effectBranch: number | null;
@@ -63,9 +63,10 @@ export interface SkillActivation extends SkillTiming {
   targetRunnerIds: string[];
 }
 export interface SkillRow {
+  simulation?: { checks: import('../simulation/trace').DecisionEvent[]; wit: import('../simulation/trace').DecisionEvent[] };
   skillId: number; equipped: boolean; activationCount: number; activations: SkillActivation[];
   nonProcReason: string; evidence: Evidence;
-  activationStatus: 'recorded' | 'inferred-initial' | 'inferred-passive' | 'conditions-met' | 'conditions-inferred' | 'conditions-unmet' | 'wit-failure-supported' | 'wit-failure-inferred' | 'unknown';
+  activationStatus: 'recorded' | 'simulated' | 'inferred-initial' | 'inferred-passive' | 'conditions-met' | 'conditions-inferred' | 'conditions-unmet' | 'wit-failure-supported' | 'wit-failure-inferred' | 'unknown';
   /** Applied at least once, including conditions-proven guaranteed passive effects.
    * This is not an invented recorded activation or a current-time active flag. */
   effectiveActive: boolean;
@@ -86,7 +87,7 @@ export interface RunnerAnalysis {
   receivedDebuffImpacts: SkillImpact[];
   receivedDebuffTotals: ContributionTotal;
 }
-export interface RaceAnalysis { runners: Record<string, RunnerAnalysis>; debuffs: DebuffActivation[]; warnings: string[] }
+export interface RaceAnalysis { source?: 'simulation'; runners: Record<string, RunnerAnalysis>; debuffs: DebuffActivation[]; warnings: string[] }
 const unresolvedContribution = (): ContributionTotal => ({ intervals:0,duration:0,assessedDuration:0,observedDistance:null,
   observedHpConsumed:null,observedHpRecovered:null,modeledDistanceDelta:null,modeledTimeDelta:null,modeledHpDelta:null,detail:'Reference contribution analysis is unavailable.' });
 

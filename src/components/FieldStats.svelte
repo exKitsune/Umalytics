@@ -73,7 +73,7 @@
     const known=rows.filter(r=>r.end!==null);
     return {text:known.length?`${known.reduce((n,r)=>n+r.end!-r.start,0).toFixed(1)}s`:'—',
       modeled:rows.some(r=>r.evidence==='estimated'),
-      title:rows.length?statusHelp(kind):modelBlock(id)??'No active interval found.'};
+      title:analysis.source==='simulation'?'Duration from actual simulator state ticks.':rows.length?statusHelp(kind):modelBlock(id)??'No active interval found.'};
   }
   function statusFact(id:string,kind:string,tag?:string){
     const d=duration(id,kind),gain=speedBit(id,kind);
@@ -170,7 +170,7 @@
   {#if !row.empty}{#if !modes[id]}<span class="note">Calculating gains…</span>{:else if mode(id,kind)}<ModeImpactSummary value={mode(id,kind)}/>{:else}<span class="note">Gain unavailable</span>{/if}{/if}
 {/snippet}
 <section class="panel field-stats" class:compact>
-  <div class="panel-heading"><strong>Race results</strong><span class="muted">Select a runner · dotted values use models</span></div>
+  <div class="panel-heading"><strong>Race results</strong><span class="muted">{analysis.source==='simulation'?'Simulator results · select a runner':'Select a runner · dotted values use models'}</span></div>
   <div class="field-scroll" use:pinFinish><table use:hoverCol data-col="">
     <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Rushed','Debuffs received','Blocked / Near'] as heading}<th title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Recorded gate delay versus the 0–100 ms draw.':undefined}>{heading}</th>{/each}</tr></thead>
     <tbody>{#each sorted as r}
@@ -207,7 +207,7 @@
         <td>{@render statusCell(ss, impact(r.id,'spot-struggle'))}</td>
         <td><div class="fact" class:empty={!s?.rushedDuration}><strong>{f(s?.rushedDuration)}</strong><span class="unit">s</span></div><ImpactLine bits={rushedBits(r.id)} modeled title={modelHelp}/></td>
         <td>{#if debuffs?.intervals}<div class="fact"><strong class="modeled" title={debuffHelp}>{debuffs.modeledHpDelta==null?'—':f(debuffs.modeledHpDelta,0)}</strong><span class="unit">HP</span></div><ImpactLine bits={[...(debuffs.modeledDistanceDelta==null?[]:[{text:`${signed(debuffs.modeledDistanceDelta,1)} m`,tone:signTone(debuffs.modeledDistanceDelta)}]),...(debuffs.modeledTimeDelta==null?[]:[{text:`${Math.abs(debuffs.modeledTimeDelta).toFixed(3)} s`,tone:signTone(-debuffs.modeledTimeDelta)}])]} modeled title={debuffHelp}/>{:else}—{/if}</td>
-        <td><div class="fact" title="Time with a recorded blocker. Speed loss is measured separately."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss' as const},{text:`${range(hole.time,3)} s`,tone:'loss' as const},...(hole.partial?[{text:'partial',tone:'' as const}]:[])]} modeled title="Distance lost around traffic, including recovery. Pace modes, skills and slopes are kept the same."/>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
+        <td><div class="fact" title="Time with a recorded blocker. Speed loss is measured separately."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss' as const},{text:`${range(hole.time,3)} s`,tone:'loss' as const},...(hole.partial?[{text:'partial',tone:'' as const}]:[])]} modeled title="Distance lost around traffic, including recovery. Pace modes, skills and slopes are kept the same."/>{:else if prepared?.runners[r.id]?.blocking}{@const clamps=prepared.runners[r.id].blocking!}<span class="note" title="Maximum actual speed reductions at separate self-speed and final-speed clamp stages. Not a counterfactual distance or finish-time loss.">Clamps {clamps.maximumSelfClamp.toFixed(2)} / {clamps.maximumFinalClamp.toFixed(2)} m/s</span>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
       </tr>
     {/each}</tbody>
   </table></div>

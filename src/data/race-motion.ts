@@ -20,6 +20,7 @@ export interface TargetStack {baseline:MotionBand;ceilings:Record<string,MotionB
 export interface MotionConstraint { kind: 'recorded-block' | 'geometry-block' | 'none' | 'unknown'; cap: number | null; runnerId: string | null; detail: string }
 export interface SectionCalibration { section: number; min: number; mid: number; max: number; evidence: 'calibrated' | 'bounded'; observations: number; detail: string }
 export interface MotionSample {
+  blockingClamps?: { self: number; final: number };
   time: number; distance: number | null; actual: number | null;
   currentSpeedDelta: number; selfActual: number | null;
   targetBase: MotionBand | null; targetActive: MotionBand | null;healthyTargetActive:MotionBand|null;healthyAccelerationRange:MotionBand|null;hpEmpty:boolean|null;
@@ -35,7 +36,7 @@ export interface MotionSample {
   /** Mean actual velocity over the preceding step, before endpoint impulses. */
   intervalFree?: MotionBand | null; intervalConstrained?: MotionBand | null;
   targetStack?:TargetStack|null;intervalTargetStack?:TargetStack|null;
-  evidence: 'calibrated' | 'reference' | 'bounded' | 'unknown'; reasons: string[]; assumptions: string[];
+  evidence: 'calibrated' | 'reference' | 'bounded' | 'simulated' | 'unknown'; reasons: string[]; assumptions: string[];
 }
 export interface RunnerMotion {
   samples: MotionSample[]; sections: SectionCalibration[];

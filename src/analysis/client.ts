@@ -9,6 +9,7 @@ import { attachPrepared, type PreparedRace } from './prepared';
 import { AnalysisStore, type CachePolicy, type CacheStatus } from './store';
 import type { AnalysisGateReport, AnalysisGateReportSummary, SimulationJob, SimulationJobDetails, InferencePlanRevalidation } from '../simulation/contracts';
 import { canUseInferencePlan, canUseSimulatedCapability } from '../simulation/contracts';
+import { projectSimulation } from '../simulation/project';
 declare const __ANALYSIS_REVISION__:string;
 export interface AnalysisState {busy:boolean;background:boolean;done:number;total:number;message:string}
 interface Authorization extends InferencePlanRevalidation {cacheKey:string;artifactUrl:string;dataUrl:string;uiRevision:string}
@@ -20,6 +21,7 @@ export class AnalysisClient {
   private disposed=false;
   private lease:ReturnType<typeof setTimeout>|null=null;
   private detailRequest:(()=>Promise<AnalysisGateReport|null>)|null=null;
+  private reference:ReferenceData|null=null;
   constructor(readonly store:AnalysisStore,private callbacks:{
     parsed:(race:Race,id:string)=>void; base:(race:Race,analysis:RaceAnalysis,id:string)=>void;
     ready:(value:PreparedRace,id:string)=>void; state:(state:AnalysisState)=>void;
@@ -28,7 +30,7 @@ export class AnalysisClient {
     historical?:(value:PreparedRace,id:string)=>void; reference?:(reference:ReferenceData)=>void;
     token?:()=>string|undefined;
   }){}
-  async configure(_reference:ReferenceData){}
+  async configure(reference:ReferenceData){this.reference=reference;}
   setLibrary(_library:LibraryEntry[],_assignments:Record<string,number>){} // No whole-library simulation warming.
   setPaused(_value:boolean){}
   interacting(){}
@@ -55,11 +57,18 @@ export class AnalysisClient {
       }
       if(!alive()||job.phase!=='complete')return;
       const report=job.report;this.callbacks.gate?.(report,entry.id);
-      if(canUseSimulatedCapability(report,'recordedResults',report.binding))this.detailRequest=async()=>{
+      if(canUseSimulatedCapability(report,'recordedResults',report.binding)){
+        this.state('Preparing simulator analysis…',true);
+        this.detailRequest=async()=>{
         const detail=await api<SimulationJobDetails>(`${endpoint}?jobId=${job.jobId}&include=payloads`);
         if(!alive()||!canUseSimulatedCapability(detail.report,'recordedResults',report.binding))return null;
         return detail.report;
-      };
+        };
+        const detail=await this.detailRequest();if(!alive())return;
+        const projected=detail?projectSimulation(race,detail,this.reference):null;
+        if(projected){attachPrepared(projected);this.callbacks.ready(projected,entry.id);}
+        this.state(projected?'Simulator analysis ready':'Recorded replay ready');
+      }
       if(report.mode==='inference_plan'&&canUseInferencePlan(report,report.binding)){
         const authorize=()=>api<Authorization>(`${endpoint}/inference`,{jobId:job.jobId},token);
         const auth=await authorize();if(!alive())return;

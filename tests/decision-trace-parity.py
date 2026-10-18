@@ -68,6 +68,8 @@ def main():
             assert validate_trace(trace,len(initial['horses'])) is None
             for event in trace['events']:
                 data=event['data']
+                if event['kind'] in ('skill-activated','effect-applied','condition','initial-stats'):
+                    assert event['horseIndex'] is not None, 'Runner identity was lost in a constructor scope'
                 if event['kind']=='skill-wit':
                     assert (data['roll'] is None) == (not data['checked'])
                     assert data['passed'] == (not data['checked'] or data['roll'] < data['threshold'])

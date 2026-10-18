@@ -8,6 +8,7 @@ export interface PositionKeepGuideSpan {id:PositionKeepGuide['id'];start:number;
 export interface PositionKeepGuideSample {time:number;guides:PositionKeepGuide[]}
 
 export function positionKeepGuideTimeline(race:Race,analysis:RaceAnalysis,selected:string):PositionKeepGuideSample[]{
+  if(analysis.source==='simulation')return [];
   return race.frames.flatMap(frame=>{
     const guides=positionKeepGuides(race,analysis,selected,frame.time);
     return guides.length?[{time:frame.time,guides}]:[];
@@ -55,6 +56,7 @@ export function positionKeepGuides(race:Race,analysis:RaceAnalysis,selected:stri
 /** Visible portions of a threshold guide, not inferred active mode intervals.
  * Split at interpolated passes and the exact end of section 10. */
 export function positionKeepGuideSpans(race:Race,analysis:RaceAnalysis,selected:string):PositionKeepGuideSpan[]{
+  if(analysis.source==='simulation')return [];
   if(!race.distance)return [];
   const limit=race.distance*10/24,spans:PositionKeepGuideSpan[]=[],last=new Map<PositionKeepGuide['id'],PositionKeepGuideSpan>();
   for(let i=1;i<race.frames.length;i++){
