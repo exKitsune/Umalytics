@@ -460,7 +460,7 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
         report["inputSha256"] = _digest(payload[:-1])
         # Keep the prepared-input audit hash independent of observation options.
         if config.decision_trace_schema:
-            payload = _canonical({**initial, "decisionTrace": True}) + b"\n"
+            payload = _canonical({**initial, "decisionTrace": True, "traceConservePower": True}) + b"\n"
         code_identity, cache_eligible = _code_identities()
         engine_hash = _file_digest(config.engine_path)
         report["identities"] = {

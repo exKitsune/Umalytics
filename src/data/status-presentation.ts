@@ -2,6 +2,8 @@ import type { StatusInterval } from './analytics';
 import type { MotionSample } from './race-motion';
 const labels: Record<string, [string, string]> = {
   traffic: ['Traffic', 'Traffic'],
+  'conserve-power': ['Conserve power', 'Conserve'], 'release-conserve-power': ['Release power', 'Release'],
+  'force-in':['Force in','Inward'],'extra-pace-up':['Extra pace up','Extra PU'],'stamina-limit-break':['Stamina limit break','Limit'],
   'pace-up': ['Pace up', 'PU'], 'pace-down': ['Pace down', 'PD'],
   'speed-up': ['Speed up', 'SU'], overtake: ['Overtake', 'OT'],
   'spot-struggle': ['Spot struggle', 'SS'], 'downhill-mode': ['Downhill mode', 'DH'],
@@ -10,6 +12,7 @@ const labels: Record<string, [string, string]> = {
   'hp-empty': ['Exhausted', 'Exhausted'], 'downhill-section': ['Downhill section', 'GRADE'],
 };
 const baseKind = (kind: string) => kind.replace(/-model$/, '');
+export const telemetryStatusKinds = new Set(['pace-up','pace-down','speed-up','overtake','extra-pace-up','spot-struggle','downhill-mode','dueling','rushed','front-block','near-slowdown','traffic','lane-bonus','hp-empty','conserve-power','release-conserve-power','force-in','last-spurt','stamina-limit-break','compete-before-spurt','stamina-keep','secure-lead']);
 export function statusLabel(kind: string): string {
   return labels[baseKind(kind)]?.[0] ?? baseKind(kind).replaceAll('-', ' ').replace(/^./, c => c.toUpperCase());
 }

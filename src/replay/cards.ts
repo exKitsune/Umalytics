@@ -23,7 +23,7 @@ export function replayCards(options:ReplayOptions,runnerId:string,time:number,sa
   const runner=options.analysis?.runners[runnerId];
   if(runner){
     for(const status of combinedStatusIntervals(runner.intervals,{includeModels:true})){
-      if(status.kind==='downhill-section'||status.traffic&&!trafficActive(status,time))continue; // Grade is terrain, never DH activity.
+      if(['downhill-section','rushed-boost'].includes(status.kind)||status.traffic&&!trafficActive(status,time))continue; // Grade is terrain; boosted rushing stays within Rushed.
       const end=status.end;
       add({id:`status:${status.kind}:${status.start}`,kind:'status',label:statusLabel(status.kind),iconKey:'',color:status.traffic?trafficColor(trafficAt(status,time)):statusColor(status.kind),start:status.start,end,observedUntil:status.observedUntil,
         visualOnly:end===null&&time>=(status.observedUntil??status.start),detail:`${status.evidence==='estimated'?'Modeled status. ':''}${status.detail}${end===null?' End unknown; 2.5s display dwell only.':''}`});

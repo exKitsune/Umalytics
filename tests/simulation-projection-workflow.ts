@@ -15,6 +15,11 @@ import { AnalysisClient, type AnalysisState } from '../src/analysis/client';
 import { AnalysisStore } from '../src/analysis/store';
 import { toPortableRace } from '../src/data/share';
 import { trafficIntervals, trafficAt, trafficActive, trafficColor, trafficGradient } from '../src/simulation/traffic';
+import {powerSummary} from '../src/simulation/power';
+import {telemetrySkillEnd} from '../src/data/telemetry-skills';
+import {telemetryStatusKinds} from '../src/data/status-presentation';
+import {statusLegend,statusHelp} from '../src/data/analysis-copy';
+import {runnerMechanics} from '../src/data/runner-mechanics';
 
 const report=JSON.parse(execFileSync('python',['tests/globalsim/export_contract_fixtures.py'],{encoding:'utf8',windowsHide:true})).trial;
 const runners=[0,1].map(index=>({id:`r${index}`,index,gate:2-index,name:`Runner ${index}`,charaId:null,cardId:null,trainer:null,strategy:null,finishTime:9,finishOrder:2-index,skills:[{id:123,level:1},{id:456,level:1}]}));
@@ -66,7 +71,9 @@ assert.equal(trafficActive(traffic[0],.15),true,'Actual nearby-runner checks kee
 assert.equal(trafficActive(traffic[0],.35),false,'A joined clear gap is not a claimed traffic state');
 assert.equal(trafficAt(traffic[0],-.01),null);assert.equal(trafficAt(traffic[0],.5),null);
 assert.equal(trafficColor(trafficAt(traffic[0],.25)),trafficColor({...traffic[0].traffic![2],finalLoss:0}),'Never add the two cuts');
-assert.equal(trafficColor(trafficAt(traffic[0],.45)),'#e28f7f');
+assert.equal(trafficColor(trafficAt(traffic[0],.45)),'#f04444');
+assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:0,finalLoss:0}),'#fff34f');
+assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.5,finalLoss:0}),'#ffb02e');
 assert.ok(trafficGradient(traffic[0],t=>t*100).some(s=>s.opacity<1));
 assert.equal(trafficIntervals(trafficRows,.45)[0].end,.45,'Clamp to the runner finish');
 const ceiling=Array(43).fill(0);ceiling[m.dt]=.1;ceiling[m.blocker]=-1;ceiling[m.selfLoss]=2;
@@ -75,6 +82,21 @@ const trafficAnalysis={...result.analysis,runners:{...result.analysis.runners,r0
 assert.ok(replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',.25,result.race.frames[0].runners[0]).some(c=>c.label==='Traffic'));
 assert.ok(!replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',.35,result.race.frames[0].runners[0]).some(c=>c.label==='Traffic'));
 assert.equal(ready.totals.score,null,'Unavailable counterfactual effectiveness is not zero');
+assert.ok(ready.speedChanges.length>0&&ready.speedChanges.every(c=>c.reasons.length&&c.reasons.every(r=>r.evidence==='simulated'&&r.start<=c.start&&r.end>=c.end)),'Every executed tick has a directly traced explanation, including steady/ordinary acceleration');
+assert.ok(ready.speedChanges.some(c=>c.reasons.some(r=>r.detail?.includes('Self/final cuts 2.0000 / 0.2500'))));
+const passive={...detail.skillActivations[0],timingKind:'passive' as const,start:1,effectiveEnd:100,end:100};
+assert.equal(telemetrySkillEnd(passive),4);assert.equal(passive.effectiveEnd,100,'Only the marker is shortened, never the passive mechanics');
+assert.equal(telemetrySkillEnd(detail.skillActivations[0]),1);
+const powerEvents=[event('skill-activated',8,{},'asitame'),event('effect-applied',8,{type:31,modifier:.12,duration:1.7},'asitame'),event('effect-ended',9.73,{},'asitame')];
+const power=powerSummary(powerEvents,{finalStatus:'supported',finalGauge:20,timeline:[{kind:'clockStarted',t:.1},{kind:'gainBlocked',t:2},{kind:'cooldownStarted',t:3,nextGainAt:5.5},{kind:'accumulationCutoff',t:6},{kind:'release',t:8,gauge:20,usedLegacyFallback:false,distance:1300}]},10);
+assert.deepEqual(power.intervals.filter(i=>i.kind==='conserve-power').map(i=>[i.start,i.end]),[[.1,2],[4.5,6]]);
+assert.equal(power.releases[0].end,9.73);assert.equal(power.releases[0].acceleration,.12);assert.equal(power.releases[0].gauge,20);
+assert.equal(powerSummary([],undefined,10).accumulationSeconds,null,'Absent ledger is not an invented zero');
+for(const kind of telemetryStatusKinds){if(kind==='traffic')continue;assert.ok(statusLegend.some(i=>i.kind===kind),`Missing legend: ${kind}`);assert.notEqual(statusHelp(kind),'Time spent in this status.');}
+const mechanics=runnerMechanics({...original,distance:2000},{...runners[0],strategyCode:1,aptitudes:{middle:'A',turf:'A'}}, {surface:1} as any,detail.statBreakdown);
+assert.equal(mechanics.speed[0].value,20);assert.equal(mechanics.speed[1].value,20);assert.equal(mechanics.speed[2].value,19.6);
+const speedTerm=Math.sqrt(500*1234)*.002;
+assert.ok(Math.abs(mechanics.speed[4].value!-((20*.962+speedTerm+.2)*1.05+speedTerm+(450*673)**.597*.0001))<1e-10);
 for(const mutate of [(r:any)=>r.mode='recorded_only',(r:any)=>r.simulation.status='mismatch',(r:any)=>r.simulation.modeled.decisionTrace.complete=false]){
   const changed=structuredClone(report);mutate(changed);assert.equal(projectSimulation(original,changed,null),null);
 }
@@ -121,6 +143,12 @@ try{
   const details=await nextRequest();assert.match(details.url,/include=payloads/);assert.equal(busy(),true);
   assert.equal(readyIds.length,0);details.reply(job(report));await opening;
   assert.equal(busy(),false);assert.deepEqual(readyIds,['first']);
+  opening=client.open(entry('first'));(await nextRequest()).reply(stored);
+  (await nextRequest()).reply(job(report));await opening;
+  assert.deepEqual(readyIds,['first','first']);assert.equal(requests.length,0,'Fresh gate reuses prepared dashboard without transferring the trace or starting a worker');
+  opening=client.open(entry('first'));(await nextRequest()).reply({...stored,sha256:'b'.repeat(64)});
+  (await nextRequest()).reply(job(report));
+  const changed=await nextRequest();assert.match(changed.url,/include=payloads/);changed.reply(job(report));await opening;
   // Terminal fallback and failure must never leave a permanent skeleton.
   for(const mode of ['recorded_only','simulation_mismatch']){
     opening=client.open(entry(mode));(await nextRequest()).reply(stored);

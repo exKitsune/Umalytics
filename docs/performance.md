@@ -61,3 +61,20 @@ The HP timeline/plot and bridge import/export workflows also passed.
 The offline race-analysis CLI now rejects using its capture path as the report
 path, matching the motion-analysis CLI. The whole-file CLI workflow checks that
 rejection leaves capture bytes unchanged and that a separate report still works.
+
+## Warm simulator dashboards (2026-10-18)
+
+The client retains three prepared dashboards, keyed by current capture hash and
+service authorization. Warm opens still submit a new gate/comparison and retain
+the revocation lease, but skip full trace transfer, projection, decompression and
+effect-removal calculations. Polling starts at 60 ms and backs off to 350 ms.
+Traffic SVG gradients also collapse identical adjacent stops without discarding
+transitions or faded clear gaps. Analysis JSON is formatted only when expanded.
+
+In an isolated local service using copied nine-runner Nakayama captures, a warm
+inference switch took 301 ms and return to the matched dashboard took 61 ms,
+measured from browser click to visible results. These are individual local UI
+measurements, not a general latency guarantee. The service recorded one native
+worker execution for the initial matched open and two comparisons after reopening;
+the second open did not rerun the native simulator. Cold opens and persistent
+restores after restarting still pay validation, transfer and projection costs.

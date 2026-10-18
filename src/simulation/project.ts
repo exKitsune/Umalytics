@@ -14,6 +14,8 @@ import { decisionTrace, motionIndex as m, motionAt, blockingSummary, type Decisi
 import { rankSamples, runnerGap } from '../view-model';
 import { statusLabel } from '../data/status-presentation';
 import { trafficIntervals } from './traffic';
+import {powerSummary} from './power';
+import {explainTraceSpeed} from './speed-explanations';
 
 const unavailable='Requires a separate counterfactual simulation; not measured by this execution trace.';
 const exact=(value:number):MotionBand=>({min:value,mid:value,max:value});
@@ -48,7 +50,7 @@ function intervals(rows:number[][],stop:number):StatusInterval[] {
 /** cp_acc is a precomputed magnitude, not an active-state flag. These internal
  * effects use their actual activation/expiry callbacks instead. */
 function internalIntervals(events:DecisionEvent[],stop:number):StatusInterval[] {
-  const names:Record<string,string>={asitame:'release-conserve-power',staminasyoubu:'stamina-limit-break'};
+  const names:Record<string,string>={staminasyoubu:'stamina-limit-break'};
   return events.filter(e=>e.kind==='skill-activated'&&e.skillId in names).map(e=>{
     const expiry=events.find(x=>x.sequence>e.sequence&&x.kind==='effect-ended'&&x.skillId===e.skillId);
     return {kind:names[e.skillId],label:statusLabel(names[e.skillId]),start:e.time,end:Math.min(stop,expiry?.time??stop),evidence:'simulated',detail:'Internal engine effect activation and expiry callbacks.'};
@@ -188,7 +190,8 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
   for(const runner of runners){
     const events=trace.events.filter(e=>e.horseIndex===runner.index),rows=trace.motion.filter(r=>r[m.horse]===runner.index),stop=runner.finishTimeRaw??race.duration;
     if(!rows.length)throw new Error('Simulator motion is incomplete.');
-    const states=[...intervals(rows,stop),...internalIntervals(events,stop)].sort((a,b)=>a.start-b.start),{rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events),activations=skillRows.flatMap(s=>s.activations);
+    const power=powerSummary(events,objects(modeled.conservePowerDiagnostics).find(d=>d.horseIndex===runner.index),stop);
+    const states=[...intervals(rows,stop),...internalIntervals(events,stop),...power.intervals].sort((a,b)=>a.start-b.start),{rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events),activations=skillRows.flatMap(s=>s.activations);
     const samples=frames.filter(f=>f.time<=stop+.067).map((f,index)=>{const s=f.runners.find(s=>s.runnerId===runner.id)!,before=frames[index-1]?.runners.find(s=>s.runnerId===runner.id),dt=index?f.time-frames[index-1].time:0;
       const hpDelta=before?.hp==null||s.hp===null?null:s.hp-before.hp;
       return {time:f.time,distance:s.distance,speed:s.speed,hp:s.hp,lane:s.lane,leadGap:runnerGap(race,f.runners,runner.id),rank:sampleRanks.get(f)!.get(runner.id)??null,
@@ -207,7 +210,8 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
       intervals:states,skillActivations:activations,skillRows,samples,statusImpacts:[],statBreakdown:{stats,startingHp:{observed:first?.hp??null,modeled:first?.hp??null,difference:0,staminaContribution:null,distanceContribution:null,strategyCoefficient:null,detail:'Initial HP emitted by the simulator.'},evidence:'simulated',detail:'Engine initial stats.'},hillImpacts:[],hillTotals:{uphill:total(),downhill:total()},skillImpacts:[],receivedDebuffImpacts:[],receivedDebuffTotals:total()};
     analysis.runners[runner.id]=detail;
     const modes:PreparedRunner['modes']=[...new Set(states.map(s=>s.kind))].map(kind=>({source:'simulation',kind,intervals:states.filter(s=>s.kind===kind).length,duration:states.filter(s=>s.kind===kind).reduce((n,s)=>n+s.end!-s.start,0),reachableExtraDistance:null,reachableExtraTime:null,reachableExtraHp:null,assessedReachableExtraDistance:null,assessedReachableExtraTime:null,assessedReachableExtraHp:null,assessedDuration:0,coverage:0,carryoverDuration:0,complete:false,reachableRange:null,detail:unavailable}));
-    prepared.runners[runner.id]={motion,inferredMotion:motion,modes,spurt:spurtValue,blocking,speedChanges:[],metrics,impacts:Object.fromEntries(skillRows.map(s=>[s.skillId,null])),
+    const sections=race.distance?Array.from({length:24},(_,i)=>{const start=race.distance!*i/24,end=race.distance!*(i+1)/24,row=rows.find(r=>r[m.position]>=start&&r[m.position]<end&&!r[m.spurt]);return row?{section:i+1,start,end,modifier:row[m.section],base:row[m.base]}:null;}).filter((s):s is NonNullable<typeof s>=>s!==null):[];
+    prepared.runners[runner.id]={power,sections,motion,inferredMotion:motion,modes,spurt:spurtValue,blocking,speedChanges:explainTraceSpeed(race,runner,reference,rows,events),metrics,impacts:Object.fromEntries(skillRows.map(s=>[s.skillId,null])),
       totals:{skills:skillRows.map(s=>({skillId:s.skillId,motion:null,score:null,coverage:0,active:0,assessed:0})),benefit:null,score:null,coverage:0,active:0,assessed:0}} satisfies PreparedRunner;
     for(const a of activations){
       race.events.push({time:a.start,type:'skill',runnerId:runner.id,skillId:a.skillId,label:'Simulated skill activation',params:[runner.index,a.skillId,a.duration??-1,a.effectBranch??0]});

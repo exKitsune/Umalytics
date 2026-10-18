@@ -23,6 +23,11 @@ export class AnalysisClient {
   private lease:ReturnType<typeof setTimeout>|null=null;
   private detailRequest:(()=>Promise<AnalysisGateReport|null>)|null=null;
   private reference:ReferenceData|null=null;
+  private prepared=new Map<string,{hash:string;authorization:string;recorded:Race;value:PreparedRace;reference:ReferenceData|null}>();
+  private remember(id:string,hash:string,authorization:string,recorded:Race,value:PreparedRace,reference=this.reference){
+    this.prepared.delete(id);this.prepared.set(id,{hash,authorization,recorded,value,reference});
+    while(this.prepared.size>3)this.prepared.delete(this.prepared.keys().next().value!);
+  }
   constructor(readonly store:AnalysisStore,private callbacks:{
     parsed:(race:Race,id:string)=>void; base:(race:Race,analysis:RaceAnalysis,id:string)=>void;
     ready:(value:PreparedRace,id:string)=>void; state:(state:AnalysisState)=>void;
@@ -40,11 +45,11 @@ export class AnalysisClient {
   async simulatedDetails(){return this.detailRequest?this.detailRequest():null;}
   async open(entry:LibraryEntry,_override?:number){
     this.stop();const generation=this.generation,alive=()=>!this.disposed&&generation===this.generation;
-    this.callbacks.gate?.(null,entry.id);this.callbacks.recorded?.(entry.id);this.state('Analyzing race',true);
+    this.callbacks.gate?.(null,entry.id);this.callbacks.recorded?.(entry.id);this.state(this.prepared.has(entry.id)?'Loading saved analysis':'Analyzing race',true);
     let storedHash=entry.sha256;
     try{
       let race=entry.race;
-      if(entry.remoteId){const stored=await api<{data:unknown;sha256:string}>(`races/${encodeURIComponent(entry.remoteId)}`);storedHash=stored.sha256;const races=parseRaceJson(stored.data);if(races.length!==1)throw new Error('Select one saved race entry.');race=races[0];}
+      if(entry.remoteId){const stored=await api<{data:unknown;sha256:string}>(`races/${encodeURIComponent(entry.remoteId)}`);storedHash=stored.sha256;const prior=this.prepared.get(entry.id);if(prior?.hash===storedHash)race=prior.recorded;else{const races=parseRaceJson(stored.data);if(races.length!==1)throw new Error('Select one saved race entry.');race=races[0];}}
       if(!alive())return;
       if(!race)throw new Error('Recorded race is unavailable.');
       this.callbacks.parsed(race,entry.id);
@@ -52,23 +57,30 @@ export class AnalysisClient {
       if(!entry.remoteId||!storedHash||!token){this.state('Recorded replay ready');return;}
       const endpoint=`simulation/races/${encodeURIComponent(entry.remoteId)}`;
       let job=await api<SimulationJob>(endpoint,{expectedEntrySha256:storedHash},token);
+      let pollDelay=60;
       while(alive()&&job.phase!=='complete'){
-        await new Promise(resolve=>setTimeout(resolve,350));
+        await new Promise(resolve=>setTimeout(resolve,pollDelay));pollDelay=Math.min(350,pollDelay*1.5);
         if(!alive())return;job=await api<SimulationJob>(`${endpoint}?jobId=${job.jobId}`);
       }
       if(!alive()||job.phase!=='complete')return;
       const report=job.report;this.callbacks.gate?.(report,entry.id);
+      const remembered=this.prepared.get(entry.id),warm=remembered?.hash===storedHash&&remembered.authorization===report.binding?.authorizationSha256?remembered:null;
       if(canUseSimulatedCapability(report,'recordedResults',report.binding)){
-        this.state('Analyzing race',true);
+        this.state('Loading saved analysis',true);
         this.detailRequest=async()=>{
         const detail=await api<SimulationJobDetails>(`${endpoint}?jobId=${job.jobId}&include=payloads`);
         if(!alive()||!canUseSimulatedCapability(detail.report,'recordedResults',report.binding))return null;
         return detail.report;
         };
+        if(warm){
+          attachPrepared(warm.value);this.callbacks.ready(warm.value,entry.id);this.state('Simulator analysis ready');
+          this.remember(entry.id,storedHash,report.binding!.authorizationSha256,race,warm.value);
+        }else{
         const detail=await this.detailRequest();if(!alive())return;
         const cacheKey=detail&&this.reference?await digest(JSON.stringify(['replay-math-v1',__ANALYSIS_REVISION__,detail.binding?.authorizationSha256])):null;
         const cached=cacheKey?await this.store.get(cacheKey).catch(()=>null):null;
         if(!alive())return;
+        this.state(cached?'Loading saved analysis':'Analyzing race',true);
         let packed:Uint8Array|undefined;
         const projected=detail&&this.reference?await new Promise<PreparedRace>((resolve,reject)=>{
           const worker=this.worker=new Worker(new URL('../simulation/analysis-worker.ts',import.meta.url),{type:'module'});
@@ -78,19 +90,24 @@ export class AnalysisClient {
         }):detail?projectSimulation(race,detail,this.reference):null;
         if(!alive())return;
         if(this.reference){const fresh=await api<SimulationJob>(`${endpoint}?jobId=${job.jobId}`);if(!alive())return;if(fresh.phase!=='complete'||!canUseSimulatedCapability(fresh.report,'recordedResults',report.binding))throw new Error('Simulation authorization changed. Reopen the race.');}
-        if(projected){attachPrepared(projected);this.callbacks.ready(projected,entry.id);}
+        if(projected){attachPrepared(projected);this.callbacks.ready(projected,entry.id);this.remember(entry.id,storedHash,report.binding!.authorizationSha256,race,projected);}
         this.state(projected?'Simulator analysis ready':'Recorded replay ready');
         if(packed&&cacheKey)await this.store.put({key:cacheKey,raceId:detail?.simulation?.cacheKey??entry.id,date:new Date().toISOString(),revision:__ANALYSIS_REVISION__},packed).then(status=>this.callbacks.cache(status)).catch(()=>{});
         this.refresh().catch(()=>{});
+        }
       }
       else if(report.mode==='inference_plan'&&canUseInferencePlan(report,report.binding)){
         const authorize=()=>api<Authorization>(`${endpoint}/inference`,{jobId:job.jobId},token);
         const auth=await authorize();if(!alive())return;
         if(!auth.authorized||!auth.plan)throw new Error('Inference unavailable.');
+        if(warm&&warm.value.authorization?.cacheKey===auth.cacheKey&&auth.uiRevision===__ANALYSIS_REVISION__){
+          if(warm.reference)this.callbacks.reference?.(warm.reference);attachPrepared(warm.value);this.callbacks.ready(warm.value,entry.id);this.state('Ready');
+          this.remember(entry.id,storedHash,report.binding!.authorizationSha256,race,warm.value,warm.reference);
+        }else{
         // Never restore legacy unqualified entries or look up cache before authorization.
         const cached=await this.store.get(auth.cacheKey).catch(()=>null);if(!alive())return;
         await authorize();if(!alive())return;
-        this.state('Analyzing race',true);
+        this.state(cached?'Loading saved analysis':'Analyzing race',true);
         const execute=(payload:Uint8Array|null)=>{
           const worker=this.worker=new Worker(auth.artifactUrl,{type:'module'});
           worker.onmessage=async event=>{
@@ -105,6 +122,7 @@ export class AnalysisClient {
               if(auth.uiRevision===__ANALYSIS_REVISION__){
                 this.callbacks.reference?.(event.data.reference);attachPrepared(value);
                 rememberAnalysis(value.race,event.data.reference,value.analysis);this.callbacks.ready(value,entry.id);
+                this.remember(entry.id,storedHash!,report.binding!.authorizationSha256,race!,value,event.data.reference);
               }else this.callbacks.historical?.(value,entry.id);
               this.state('Ready');
               this.callbacks.cache(await this.store.put({key:auth.cacheKey,raceId:entry.id,date:entry.receivedAt,revision:auth.uiRevision},event.data.packed));
@@ -115,6 +133,7 @@ export class AnalysisClient {
           worker.postMessage({type:'run',raceId:entry.remoteId,entrySha256:storedHash,jobId:job.jobId,cacheKey:auth.cacheKey,token,cached:payload});
         };
         execute(cached);
+        }
       }else this.state('Recorded replay ready');
       const check=async()=>{
         try{
@@ -127,7 +146,7 @@ export class AnalysisClient {
     }catch(error){if(alive()){this.stop();this.callbacks.recorded?.(entry.id);this.callbacks.gate?.(null,entry.id);this.state('Recorded replay ready');this.callbacks.error(String(error));}}
   }
   async policy(policy:CachePolicy){this.callbacks.cache(await this.store.change({action:'policy',policy:{...policy,background:false}}));}
-  async purge(){this.stop();this.callbacks.cache(await this.store.change({action:'purge'}));this.state('Cache cleared');}
+  async purge(){this.stop();this.prepared.clear();this.callbacks.cache(await this.store.change({action:'purge'}));this.state('Cache cleared');}
   async refresh(){this.callbacks.cache(await this.store.status());}
-  dispose(){this.disposed=true;this.stop();}
+  dispose(){this.disposed=true;this.stop();this.prepared.clear();}
 }

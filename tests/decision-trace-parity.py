@@ -41,7 +41,7 @@ def main():
 
     def run(engine, initial, traced=False):
         start=time.monotonic()
-        request={**initial, **({'decisionTrace':True} if traced else {})}
+        request={**initial, **({'decisionTrace':True,'traceConservePower':True} if traced else {})}
         process=subprocess.run([str(engine.resolve())], input=json.dumps(request)+'\n', text=True,
             capture_output=True, timeout=90, env=environment, creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         assert process.returncode==0, process.stderr[:1000]
@@ -64,6 +64,10 @@ def main():
             off,_,_=run(args.engine,initial)
             on,seconds,size=run(args.engine,initial,True)
             trace=on.pop('decisionTrace')
+            power=on.pop('conservePowerDiagnostics')
+            assert on.pop('conservePowerDiagnosticVersion')==1
+            assert len(power)==len(initial['horses'])
+            assert all(isinstance(row['timeline'],list) for row in power)
             assert baseline==off==on, 'Observation instrumentation changed race output'
             assert validate_trace(trace,len(initial['horses'])) is None
             for event in trace['events']:

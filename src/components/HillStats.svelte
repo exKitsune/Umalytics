@@ -24,8 +24,8 @@
     <div class="fact"><span class="tag">DH</span><strong class:modeled={mode.source!=='simulation'} title={mode.source==='simulation'?'Duration from actual simulator state ticks.':help}>{mode.duration.toFixed(1)}s</strong>{#if speedText}<span class="aside" title="Target speed gain while DH is active.">{speedText}</span>{/if}</div>
     <ModeImpactSummary value={mode}/>
   {:else}
-    <div class="fact"><strong class="modeled" title={help}>{total?.modeledDistanceDelta==null?'—':signed(total.modeledDistanceDelta,2)} m</strong>{#if speedText}<span class="aside" title={kind==='uphill'?'Target speed loss across different hill grades. Higher power reduces the loss.':'Target speed gain while DH is active.'}>{speedText}</span>{/if}</div>
-    <ImpactLine bits={costBits} modeled title={help}/>
+    <div class="fact"><strong class="modeled" title="Calculated movement difference from the uphill speed penalty, holding the replay context fixed. The adjacent speed is the target modifier, not metres lost.">{total?.modeledDistanceDelta==null?'—':signed(total.modeledDistanceDelta,2)} m</strong>{#if speedText}<span class="aside" title={kind==='uphill'?'Target speed loss across different hill grades. Higher power reduces the loss.':'Target speed gain while DH is active.'}>{speedText}</span>{/if}</div>
+    <ImpactLine bits={costBits} modeled title={kind==='uphill'?'Fixed-context comparison removing the uphill penalty.':'Fixed-context downhill-mode comparison.'}/>
   {/if}
 </div>
 {:else}—{/if}

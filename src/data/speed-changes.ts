@@ -5,7 +5,7 @@ import {trace,atTime,crossing} from './effect-sampling';
 import {runnerName,skillName,type ReferenceData} from './reference';
 import {statusLabel,substantialNearIntervals} from './status-presentation';
 
-export interface SpeedChangeReason {label:string;evidence:'recorded'|'model'|'position';start:number;end:number;detail?:string}
+export interface SpeedChangeReason {label:string;evidence:'recorded'|'model'|'position'|'simulated';start:number;end:number;detail?:string}
 export interface SpeedChange {start:number;end:number;from:number;to:number;reasons:SpeedChangeReason[]}
 const activeEnd=(i:{end:number|null;estimatedEnd?:number|null;observedUntil?:number})=>i.end??i.estimatedEnd??i.observedUntil??Infinity;
 

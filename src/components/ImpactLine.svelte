@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type ImpactBit = {text:string; tone?:'gain'|'loss'|''};
+  export type ImpactBit = {text:string; tone?:'gain'|'loss'|'';title?:string};
 </script>
 <script lang="ts">
   export let bits:ImpactBit[];
@@ -11,9 +11,10 @@
   };
   const isTime=(bit:{text:string})=>/ s$/.test(bit.text);
   const quiet=(bit:{text:string})=>isTime(bit)||bit.text==='No gain'||bit.text==='partial';
+  const help=(bit:ImpactBit)=>bit.title??`${/ m$/.test(bit.text)?'Calculated movement difference, in metres.':isTime(bit)?'Equivalent travel-time difference; not a predicted change in finish time.':/ HP$/.test(bit.text)?'Calculated HP difference over the active window. Positive means HP saved; negative means extra HP spent.':bit.text==='partial'?'Only the supported part of the interval is included.':'No measurable movement gain in the supported comparison.'}${title?` ${title}`:''}`;
 </script>
 {#if bits.length}
-  <p class="impact-line" class:modeled {title}>{#each bits as bit,i}{#if i}<span class="dot" aria-hidden="true">·</span>{/if}<span class:gain={bit.tone==='gain'&&!quiet(bit)} class:loss={bit.tone==='loss'&&!quiet(bit)} class:quiet={quiet(bit)}>{signed(bit)}</span>{/each}</p>
+  <p class="impact-line" class:modeled>{#each bits as bit,i}{#if i}<span class="dot" aria-hidden="true">·</span>{/if}<span title={help(bit)} class:gain={bit.tone==='gain'&&!quiet(bit)} class:loss={bit.tone==='loss'&&!quiet(bit)} class:quiet={quiet(bit)}>{signed(bit)}</span>{/each}</p>
 {/if}
 <style>
   .impact-line{display:flex;flex-wrap:nowrap;align-items:baseline;gap:2px 0;margin:3px 0 0;font-size:var(--font-11);font-weight:550;font-variant-numeric:tabular-nums;line-height:1.35;white-space:nowrap;color:var(--text)}

@@ -28,10 +28,10 @@
             {#if typeof delta==='number'&&delta!==0}<span class:gain={delta>0} class:loss={delta<0}>{label} {signed(delta)}</span>{/if}
           {/each}
         </div>
-        {#if key==='wisdom'&&witMean!==null&&witMax!==null&&baseSpeed!==null}<div class="wit-speed" title={`Expected target-speed adjustment before the selected final spurt. Each of the 24 sections draws between ${speed(witMax-baseSpeed*.0065)} and ${speed(witMax)}. Actual rolls are not recorded.`}><span>Avg. section speed</span><strong>{speed(witMean)}</strong></div>{/if}
+        {#if key==='wisdom'&&witMean!==null&&witMax!==null&&baseSpeed!==null}<div class="wit-speed" title={`Expected target-speed adjustment before the selected final spurt. Each of the 24 sections draws between ${speed(witMax-baseSpeed*.0065)} and ${speed(witMax)}. This is the expected mean; the actual matched section values appear below.`}><span>Avg. section speed</span><strong>{speed(witMean)}</strong></div>{/if}
       </div>
     {/each}
-    <div class="hp-breakdown"><strong>Starting HP <span>{f(breakdown.startingHp.observed)}</span></strong>{#if breakdown.evidence!=='simulated'}<p>Distance plus 0.8 × stamina × style.</p>{#if distance!==null&&stamina!==null&&styleRate!==null}<p class="formula">{f(distance)} + 0.8 × {f(stamina)} × {styleRate.toFixed(3)} = {f(breakdown.startingHp.modeled)}</p>{:else if breakdown.startingHp.modeled!==null}<p class="formula">Model {f(breakdown.startingHp.modeled)}</p>{/if}{/if}</div>
+    <div class="hp-breakdown"><strong>Starting HP <span>{f(breakdown.startingHp.observed)}</span></strong><p>Distance plus 0.8 × stamina × style.</p>{#if distance!==null&&stamina!==null&&styleRate!==null}<p class="formula">{f(distance)} + 0.8 × {f(stamina)} × {styleRate.toFixed(3)} = {f(breakdown.startingHp.modeled)}</p>{:else if breakdown.startingHp.modeled!==null}<p class="formula">Model {f(breakdown.startingHp.modeled)}</p>{/if}</div>
   </section>
 {/if}
 <style>

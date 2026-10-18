@@ -10,7 +10,6 @@ import {modeImpactsFor} from '../data/status-mode-impact';
 import {motionSkillImpact,activationImpact} from '../data/motion-skill-impact';
 import {metricsForSkill} from '../data/skill-metrics';
 import {skillTotals,movementUse} from '../data/skill-totals';
-import {explainSpeedChanges} from '../data/speed-changes';
 import {atTime} from '../data/effect-sampling';
 import {registerReplayMotion,activationMotionKey} from '../data/race-motion';
 import {measureMotionBenefit} from '../data/motion-benefit';
@@ -45,6 +44,8 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
     breakdown.startingHp={...breakdown.startingHp,observed:hp,modeled:hp,staminaContribution:contribution,difference:hp!=null&&contribution!=null&&race.distance!=null?hp-contribution-race.distance:null,
       detail:'Starting HP from the matched engine; distance and stamina components use the fixed-context HP formula.'};
     detail.statBreakdown=breakdown;
+    breakdown.evidence='simulated';
+    breakdown.detail='Effective stats from the matched simulator; individual bonus stages are a mathematical decomposition.';
     detail.cornerPath=cornerPathFor(race,runner,course);
     const winner=race.runners.find(r=>r.finishOrder===1),finish=winner?.finishTimeRaw;
     if(finish!=null){const first=atTime(race,winner!.id,finish)?.distance,own=atTime(race,runner.id,finish)?.distance;detail.summary.finishGapDistance=first!=null&&own!=null?first-own:null;}
@@ -113,7 +114,7 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
     Object.assign(display,{slowdown:{blocking:slowdown(motion.trafficLoss),exhaustion:slowdown(motion.exhaustionLoss)},statusImpacts:detail.statusImpacts,hillImpacts:detail.hillImpacts,hillTotals:detail.hillTotals,
       skillImpacts:detail.skillImpacts,receivedDebuffImpacts:detail.receivedDebuffImpacts,receivedDebuffTotals:detail.receivedDebuffTotals});
     Object.assign(ready,{motion,inferredMotion:motion,modes,impacts,metrics,totals:skillTotals(race,reference,calculation,runner.id),
-      speedChanges:explainSpeedChanges(race,reference,calculation,runner,motion)});
+    });
   }
   analysis.debuffs=calculation.debuffs;
   return value;

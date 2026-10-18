@@ -1,17 +1,19 @@
 # Saved analysis
 
-The viewer prepares race analysis in a worker. It shows the course and runners first, then fills in results and runner details. Telemetry and skill panels mount when they approach the viewport. During opening and preparation, placeholders reserve the result table, replay and selected-runner columns using the same responsive layout.
+The viewer prepares race analysis in a worker. During opening, the dashboard skeleton says “Analyzing race” or “Loading saved analysis”; it does not briefly show a replay-only page. Telemetry and skill panels mount when they approach the viewport.
 
-Completed analysis is compressed and saved. The desktop app uses one SQLite file at `cache/analysis.sqlite` inside its data directory. The web viewer uses IndexedDB. Reopening a saved result restores the calculations; it does not run them again. Three recently opened races also stay in memory. A persistent hit still needs disk reading, a worker start, decompression and transfer into the viewer. It sends only the packed result to the worker. An in-memory hit needs no worker.
+The service saves authenticated simulator baselines separately from compressed mathematical summaries in `cache/analysis.sqlite`. The browser uses IndexedDB for mathematical summaries when no desktop cache is available. A persistent simulator hit still needs disk reading, independent comparison, trace transfer, worker projection and decompression. The saved summaries avoid recalculating the expensive effect-removal analysis; they never replace trace decisions or frames.
+
+Three recently opened dashboards also stay in memory, for both simulation and inference. Every open still checks the current capture hash and obtains fresh service authorization. If the content and authorization match, the client reuses the prepared dashboard without fetching the full trace, starting an analysis worker or decompressing summaries. Inference additionally revalidates its version-bound cache key and UI revision. A changed binding cannot reuse the memory entry.
 
 Cache keys include the analysis source revision, reference data, race identity and content, and any manual course choice. Analysis or reference changes discard stale entries. Portrait or stylesheet changes do not. Corrupt entries are recalculated.
 
 ## Background work
 
-Saved races are prepared newest first, one at a time. Background calculations yield between stages and pause during playback or interaction. Selecting the race being prepared promotes that worker. Selecting another race stops the old job and starts the selected race; the old race can be prepared again later. A stopped worker cannot replace the selected race.
+The simulator-first client analyzes the selected race on demand. It does not warm the whole race library in the background. The local collection service still receives and stores new races; following a new race opens and analyzes it. Switching selection cancels the previous client worker and guards against late replies replacing the current dashboard.
 
-The cache is unlimited by default. Settings can retain the newest number of races or limit disk usage in MB. Clearing the cache preserves races and tags and pauses background preparation so the cache does not immediately refill. Browser storage remains subject to browser quota and eviction.
+The cache is unlimited by default. Settings can retain the newest number of races or limit disk usage in MB. Clearing the cache preserves races and tags, clears the prepared memory entries, and does not trigger library-wide preparation. Browser storage remains subject to browser quota and eviction.
 
 ## Verification
 
-The worker workflow compares its outputs with the synchronous analysis, saves and restores a compressed result in a fresh worker, checks foreground promotion and preemption, verifies that persistent restores send no raw replay or reference data, and verifies reference invalidation. The desktop workflow exercises the real cache HTTP endpoints, disk limits, restart persistence and purge while preserving race files.
+The projection workflow verifies fresh authorization before memory reuse, no full payload request on a warm open, invalidation after a capture change and late-response guards. Derived-cache tests prevent restored summaries from replacing simulator facts. Desktop workflows exercise real cache HTTP endpoints, disk limits, restart persistence and purge while preserving race files.

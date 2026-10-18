@@ -2,7 +2,7 @@ import type { StatusInterval, TrafficTick } from '../data/analytics';
 import { motionIndex as m } from './trace';
 
 export const TRAFFIC_CLEAR_GAP = .25;
-export const trafficLegend = 'Amber: nearby traffic or no speed cut. Red: a speed cut of 1 m/s or more. Color uses the larger of the two blocking cuts, never their sum. Faded sections are brief clear gaps.';
+export const trafficLegend = 'Bright yellow: nearby, 0 m/s cut. Amber: 0.5 m/s. Red: 1 m/s or more. Each point uses the larger of the two blocking cuts, never their sum. Faded sections are brief clear gaps.';
 const active=(tick:TrafficTick)=>tick.near||tick.blocked;
 
 /** Group display labels, never infer a blocked/near state across a clear gap. */
@@ -48,14 +48,20 @@ export function trafficActive(interval:StatusInterval,time:number):boolean {
 }
 export function trafficColor(tick:TrafficTick|null):string {
   const severity=Math.min(1,Math.max(tick?.selfLoss??0,tick?.finalLoss??0));
-  const from=[210,161,90],to=[226,143,127];
-  return '#'+from.map((value,index)=>Math.round(value+(to[index]-value)*severity).toString(16).padStart(2,'0')).join('');
+  const from=severity<.5?[255,243,79]:[255,176,46],to=severity<.5?[255,176,46]:[240,68,68];
+  const blend=severity<.5?severity*2:(severity-.5)*2;
+  return '#'+from.map((value,index)=>Math.round(value+(to[index]-value)*blend).toString(16).padStart(2,'0')).join('');
 }
 /** Sharp tick boundaries preserve clear gaps; colors change with actual loss. */
 export function trafficGradient(interval:StatusInterval,project:(time:number)=>number|null){
-  return (interval.traffic??[]).flatMap(tick=>{
+  const stops:{x:number;color:string;opacity:number}[]=[];
+  for(const tick of interval.traffic??[]){
     const start=project(tick.start),end=project(tick.end);
-    return start===null||end===null?[]:[{x:start,color:trafficColor(tick),opacity:active(tick)?1:.08},
-      {x:end,color:trafficColor(tick),opacity:active(tick)?1:.08}];
-  });
+    if(start===null||end===null)continue;
+    const color=trafficColor(tick),opacity=active(tick)?1:.08,previous=stops.at(-1);
+    // Constant spans need two stops, not thousands of identical SVG nodes.
+    if(previous&&previous.x===start&&previous.color===color&&previous.opacity===opacity)previous.x=end;
+    else stops.push({x:start,color,opacity},{x:end,color,opacity});
+  }
+  return stops;
 }

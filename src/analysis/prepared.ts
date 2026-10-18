@@ -9,6 +9,8 @@ import type { SpurtComparison } from '../data/spurt-comparison';
 import type { SpeedChange } from '../data/speed-changes';
 
 export interface PreparedRunner {
+  power?: import('../simulation/power').PowerSummary;
+  sections?: {section:number;start:number;end:number;modifier:number;base:number}[];
   blocking?: import('../simulation/trace').BlockingSummary;
   spurt: SpurtComparison;
   speedChanges: SpeedChange[];
