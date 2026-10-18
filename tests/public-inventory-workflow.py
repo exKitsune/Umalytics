@@ -64,4 +64,12 @@ with tempfile.TemporaryDirectory(prefix='public-inventory-') as directory:
     audit()
     audit(staged=True)
 
+    # Even force-staged private simulator backups must fail the index gate.
+    backup = folder / 'backups' / 'simulator' / 'src.rs'
+    backup.parent.mkdir(parents=True)
+    backup.write_text('// private recovery source\n', encoding='utf-8')
+    assert 'private/generated file path' in audit(success=False)
+    subprocess.run(['git', 'add', '--force', 'backups'], cwd=folder, check=True)
+    assert 'private/generated file path' in audit(staged=True, success=False)
+
 print('Publication workflow passed: source/index gates, binary text, filenames and lossless JSON.')

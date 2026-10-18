@@ -5,6 +5,11 @@ $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location -LiteralPath $workspace
 $python = Join-Path $workspace '.cache/proxy-venv/Scripts/python.exe'
 if (-not (Test-Path -LiteralPath $python)) { throw 'Build Python environment is missing; see docs/desktop-package.md.' }
+$simSource = Join-Path $workspace '.cache/globalsim-saved'
+# CI supplies this exact checkout from the private backup repository. Local
+# builds can restore the same checkout from backups; never fetch public upstream.
+& $python scripts/simulator_source.py --source $simSource
+if ($LASTEXITCODE -ne 0) { throw 'Saved simulator source verification failed.' }
 & $python desktop/generate_manifest.py
 if ($LASTEXITCODE -ne 0) { throw 'Reference manifest generation failed.' }
 $buildInfo = Get-Content -LiteralPath 'desktop/build-info.json' -Raw | ConvertFrom-Json
@@ -37,19 +42,9 @@ $env:Path = (Split-Path $cargo) + ';' + $env:Path
 # the combined offline license bundle inside the service.
 & $cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw 'Locked Rust dependency download failed.' }
-$env:CARGO_NET_GIT_FETCH_WITH_CLI = 'true'
-$simSource = Join-Path $workspace '.cache/globalsim-source'
-if (-not (Test-Path -LiteralPath $simSource)) {
-    & git clone --no-checkout https://github.com/daftuyda/GlobalSim.git $simSource
-    if ($LASTEXITCODE -ne 0) { throw 'Simulator resource checkout failed.' }
-}
-# This task-owned cache may have been created by the sandbox build account.
-# Limit the ownership exception to this invocation and this exact checkout.
-& git -c "safe.directory=$($simSource.Replace('\','/'))" -C $simSource checkout --detach efc2decdfeaff227ada0e9847f5deceb42c3b97f
-if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator resources are unavailable.' }
 & $python scripts/prepare-simulator.py --source $simSource
 if ($LASTEXITCODE -ne 0) { throw 'Simulator instrumentation preparation failed.' }
-& $cargo build --release --locked --manifest-path simulation/simulator-worker/Cargo.toml
+& $cargo build --release --locked --offline --manifest-path simulation/simulator-worker/Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator worker build failed.' }
 & $python scripts/package-simulator.py --source $simSource --engine (Join-Path $env:CARGO_TARGET_DIR 'release/umalytics-globalsim-worker.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Simulator bundle verification failed.' }

@@ -30,7 +30,7 @@ No real date ranges were invented. Enter documented original-occurrence windows,
 
 ## Reproducible instrumentation
 
-The upstream Git dependency remains pinned at `efc2decdfeaff227ada0e9847f5deceb42c3b97f`. `scripts/prepare-simulator.py` extracts that exact Git archive into an isolated source cache and applies `simulation/instrumentation/engine.patch` plus `decision_trace.rs`. It never edits the upstream checkout. Cargo uses the reviewed local patch. Package manifests pin the executable, data, patch files and prepared source. The runtime requires the installed trace schema, complete bounded rows, correct runner mappings and a fresh successful comparison.
+`simulation/source-lock.json` pins the traced source in the private `exKitsune/GlobalSim` repository and separately records its original v74 parent and instrumented source hash. See [backup and CI setup](simulator-backup.md). `scripts/prepare-simulator.py` stages that exact traced Git archive and verifies its instrumentation manifest against `simulation/instrumentation/engine.patch`, `decision_trace.rs` and the locked source hash. It does not reapply the patch or edit the saved checkout. Cargo uses a direct local path dependency and builds the worker offline. Package manifests pin the executable, data, original/traced commits and instrumentation. The runtime still requires the installed trace schema, complete bounded rows, correct runner mappings and a fresh successful comparison.
 
 Simulation output, including decision traces, is saved across race switches and service restarts. Before cache access, the service freshly selects compatibility and binds the capture, context, evidence, registry/policy and installed manifest. The runtime key also includes prepared inputs, measured executable, reference and bridge identities. Each open independently compares saved output against recorded observations and validates the trace; no saved verdict authorizes the UI. A service-owned installation secret authenticates the cache key and modeled digest with HMAC-SHA256, because recorded samples alone cannot authenticate hidden decisions. Unsigned, damaged or differently signed traces are cache misses. Without a usable secret, trace execution remains available but caching is disabled. Active selections are revoked on capture, policy, manifest, executable or reference changes.
 
@@ -48,34 +48,27 @@ There is no dependency-update notification monitor configured. The Git revision 
 
 ## Tracking and applying upstream updates
 
-Subscribe to the [upstream commit feed](https://github.com/daftuyda/GlobalSim/commits/main.atom)
-in an RSS/Atom reader, or check the [commit history](https://github.com/daftuyda/GlobalSim/commits/main/).
-As checked on October 17, 2026, upstream's latest commit is our pinned v74
-revision, and its GitHub Releases list is empty. GitHub's Watch → Custom →
-Releases setting is useful if upstream starts publishing formal releases, but
-does not cover its current commit-only updates. No subscription is created by
-building or installing Umalytics.
+The former upstream repository became unavailable on October 18, 2026. Its
+public release and commit feeds cannot currently provide reliable notifications.
+The private backup preserves our saved version; it does not automatically receive
+future upstream changes. New versions require authorized source access and an
+explicit mirror update. No update subscription is created by building Umalytics.
 
-A quick manual check requires no checkout changes:
-
-```powershell
-git ls-remote https://github.com/daftuyda/GlobalSim.git refs/heads/main
-```
-
-Compare the returned SHA to the revision in `simulation/simulator-worker/Cargo.toml`.
+When access is available, compare the new commit with `simulation/source-lock.json`.
 For an upgrade, request: “Update GlobalSim to <commit or version>, preserve the
-decision traces, run the engine acceptance plan, and commit and push after it
-passes.” Updating this integration requires these coordinated changes:
+decision traces, run the engine acceptance plan, and let me review before committing
+or pushing.” Updating this integration requires these coordinated changes:
 
 1. Review upstream mechanics/API/data changes and rebase the observation patch.
-2. Update the Cargo revision/lock, archive/build revision, adapter/runtime pins,
+2. Commit the reviewed traced update to the private repository and update its source lock,
+   Cargo lock if needed, adapter/runtime pins,
    packaged version/profile and applicable reference hashes together. A version
    label alone does not establish a game's date range.
 3. Rebuild, verify original = trace-off = trace-on output, compare the real
    capture corpus, and run the [acceptance plan](engine-test-plan.md).
 4. Register supported dates independently for simulation and inference. Retain
    historical bundles needed by existing registrations.
-5. Push the tested change. The passing release workflow builds and publishes a
+5. Obtain user review approval, then commit and push the tested change. The passing release workflow builds and publishes a
    Umalytics desktop update containing the new worker and resources. Installed
    users receive it through the existing application updater, without Rust,
    Python or Git installations.
@@ -93,7 +86,7 @@ runner/course data. Observed outcomes are reserved for the independent comparato
 
 The service starts a separate Rust worker using JSON lines over standard input
 and output. Our small worker calls the upstream library; an isolated source
-archive plus the observation patch supplies its implementation. It is not a
+archive containing the reviewed observation hooks supplies its implementation. It is not a
 remote simulation API or a browser port. Instrumentation reads actual decision
 sites without drawing more randomness or evaluating conditions again.
 

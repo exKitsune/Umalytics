@@ -7,7 +7,7 @@ import sys
 from public_json import PATTERN as PUBLIC_NAME_PATTERN
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE_PREFIXES = ('captures/', 'research/', '.cache/', 'artifacts/', 'test-output/',
+PRIVATE_PREFIXES = ('backups/', 'captures/', 'research/', '.cache/', 'artifacts/', 'test-output/',
     'node_modules/', 'dist/', 'Umalytics-data/', 'UmaTrace-data/', '.aws/', '.ssh/', '.codex/')
 PRIVATE_EXTENSIONS = {'.pem', '.key', '.pfx', '.p12', '.cer', '.crt', '.pcap', '.pcapng',
     '.har', '.etl', '.exe', '.dll', '.pdb', '.sqlite', '.sqlite3', '.db', '.mdb', '.dmp',

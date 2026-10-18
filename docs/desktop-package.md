@@ -126,8 +126,14 @@ Rust, Node.js, and Python 3.12. Use a local build environment:
 python -m venv .cache/proxy-venv
 .cache/proxy-venv/Scripts/python.exe -m pip install -r desktop/requirements-build.txt
 npm ci
+# Restore the pinned simulator checkout as described in simulator-backup.md first.
+python scripts/simulator_source.py --source .cache/globalsim-saved
 powershell -ExecutionPolicy Bypass -File scripts/build-desktop.ps1
 ```
+
+The simulator source comes from the private backup or local Git bundle; see
+[simulator backup and Actions setup](simulator-backup.md). It is verified before
+preparation and compiled offline from a local path dependency.
 
 The script generates the data manifest and icon, builds the Svelte SPA, packages
 the collector with PyInstaller, embeds that binary into the Tauri executable,

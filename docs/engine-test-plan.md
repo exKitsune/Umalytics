@@ -69,8 +69,8 @@ from actual engine use in the production request path.
 ## Original diagnostic corpus and packaged application
 
 ```powershell
-python simulation/run_fixture_regressions.py --captures $captureDir --engine $simBundle.artifact --umalytics . --globalsim .cache/globalsim-source --engine-sha256 $simBundle.artifact_sha256 --output test-output/globalsim-regression.json
-python tests/globalsim/test_course_capture.py --umalytics-root . --globalsim-root .cache/globalsim-source --capture-dir $captureDir --baseline-report simulation/evidence/bridge-regression-results.json --output test-output/course-capture-validation.json
+python simulation/run_fixture_regressions.py --captures $captureDir --engine $simBundle.artifact --umalytics . --globalsim .cache/globalsim-saved --engine-sha256 $simBundle.artifact_sha256 --output test-output/globalsim-regression.json
+python tests/globalsim/test_course_capture.py --umalytics-root . --globalsim-root .cache/globalsim-saved --capture-dir $captureDir --baseline-report simulation/evidence/bridge-regression-results.json --output test-output/course-capture-validation.json
 python tests/simulation-packaged-workflow.py .cache/desktop-service/UmaTraceService.exe --capture $matchingCapture --engine $simBundle.engine_id --output test-output/packaged-simulation-validation.json
 python desktop/smoke_packaged.py .cache/desktop-service/UmaTraceService.exe --headless
 python desktop/smoke_native.py .cache/dist/Umalytics-IntegrationPreview.exe --headless
@@ -110,15 +110,17 @@ new real era supported; synthetic tests cannot establish that claim.
 
 ## Upstream updates
 
-The Cargo dependency and resource checkout are pinned to GlobalSim commit
-`efc2decdfeaff227ada0e9847f5deceb42c3b97f`. Umalytics currently has no upstream
+The saved source lock pins traced commit `231f346a46b569dd4d0f91a0046326275667d1c7`,
+its v74 parent `efc2decdfeaff227ada0e9847f5deceb42c3b97f`, and the instrumented
+source hash. Resource pins still identify the original v74 data. Umalytics currently has no upstream
 dependency notification job or automated update PR configuration. Its desktop
 updater checks Umalytics releases, not new GlobalSim commits.
 
-GitHub's Watch → Custom → Releases option on the upstream repository can
-notify about releases; it does not cover commits that have no release. Commit
-monitoring or automated update PRs would need a separate configured monitor.
-An upgrade must update the Cargo revision/lock and pinned resource checkout
+The former upstream repository is currently unavailable. The private backup
+preserves this version but does not mirror future updates automatically. See
+[saved-source recovery and CI setup](simulator-backup.md). New source requires
+authorized upstream access and a deliberate mirror update.
+An upgrade must update the source lock, Cargo lock when needed and resource pins
 together, rebuild measured bundles, rerun this plan, and review support mappings
 for simulators and inference independently. Preserve old bundles when existing
 historical coverage requires them.
@@ -126,7 +128,7 @@ historical coverage requires them.
 
 ## Decision-trace acceptance
 
-1. Prepare the pinned instrumented source with `python scripts/prepare-simulator.py --source .cache/globalsim-source`, then build the locked worker. Check the manifest pins and isolated source identity.
+1. Prepare the pinned instrumented source with `python scripts/prepare-simulator.py --source .cache/globalsim-saved`, then build the locked worker. Check the manifest pins and isolated source identity.
    Instrumentation files must retain identical bytes under Git's Windows CRLF,
    LF and input-only checkout settings; the checkout regression runs in CI.
 2. For every corpus capture, run the original pinned worker, patched worker with tracing off, and patched worker with tracing on. Remove only `decisionTrace`; require complete JSON output equality, unchanged prepared-input hash and unchanged comparison verdict. Keep the known mismatch and missing-input capture as negative controls.
@@ -140,7 +142,7 @@ historical coverage requires them.
 The full-output parity check is reproducible with a preserved original worker:
 
 ```powershell
-python tests/decision-trace-parity.py --baseline <original-worker.exe> --engine <instrumented-worker.exe> --source .cache/globalsim-source --capture-dir $captureDir --capture $matchingCapture --output test-output/decision-trace-validation.json
+python tests/decision-trace-parity.py --baseline <original-worker.exe> --engine <instrumented-worker.exe> --source .cache/globalsim-saved --capture-dir $captureDir --capture $matchingCapture --output test-output/decision-trace-validation.json
 ```
 
 The original seven fixtures are checked against the committed capture/input

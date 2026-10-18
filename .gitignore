@@ -57,3 +57,6 @@ simulation/installed-bundles.json
 docs/*-investigation.md
 
 simulation/analysis/
+
+# Durable local simulator backups, including Git history.
+/backups/

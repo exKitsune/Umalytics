@@ -107,6 +107,7 @@ jobs:
           python desktop/generate_manifest.py --check
           python tests/history-retirement-workflow.py
           python tests/simulator-checkout-workflow.py
+          python tests/simulator-source-workflow.py
       - name: Run every platform-neutral system workflow once
         run: npm test
       - name: Validate independent simulator and inference compatibility gates
@@ -138,6 +139,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12.10'
+      - name: Read saved simulator source lock
+        id: simulator-source
+        env:
+          GLOBALSIM_SOURCE_DEPLOY_KEY: ${{ secrets.GLOBALSIM_SOURCE_DEPLOY_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GLOBALSIM_SOURCE_DEPLOY_KEY)) {
+            throw 'Set GLOBALSIM_SOURCE_DEPLOY_KEY to the read-only deploy key for the private simulator backup; see docs/simulator-backup.md.'
+          }
+          python scripts/simulator_source.py --github-output $env:GITHUB_OUTPUT
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid simulator source lock.' }
+      - name: Check out pinned simulator from private backup
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.simulator-source.outputs.repository }}
+          ref: ${{ steps.simulator-source.outputs.revision }}
+          path: .cache/globalsim-saved
+          ssh-key: ${{ secrets.GLOBALSIM_SOURCE_DEPLOY_KEY }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify saved simulator source
+        run: |
+          python scripts/simulator_source.py --source .cache/globalsim-saved
+          if ($LASTEXITCODE -ne 0) { throw 'Saved simulator source verification failed.' }
       - uses: actions/setup-node@v4
         with:
           node-version: '22.20.0'
@@ -155,16 +179,15 @@ jobs:
         with:
           path: .cache/pip
           key: Windows-2022-x64-python3.12.10-pip-v1-${{ hashFiles('desktop/requirements-build.txt') }}
-      - name: Restore Cargo sources
+      - name: Restore Cargo registry sources
         id: cargo-sources
         uses: actions/cache/restore@v4
         with:
           path: |
             .cache/cargo/registry
-            .cache/cargo/git
-          key: Windows-2022-x64-rust1.90.0-sources-v1-${{ hashFiles('src-tauri/Cargo.lock', 'tests/updater-helper/Cargo.lock', 'simulation/simulator-worker/Cargo.lock') }}
+          key: Windows-2022-x64-rust1.90.0-sources-v2-${{ hashFiles('src-tauri/Cargo.lock', 'tests/updater-helper/Cargo.lock', 'simulation/simulator-worker/Cargo.lock') }}
           restore-keys: |
-            Windows-2022-x64-rust1.90.0-sources-v1-
+            Windows-2022-x64-rust1.90.0-sources-v2-
       - name: Restore compiled Cargo dependencies
         id: cargo-targets
         uses: actions/cache/restore@v4
@@ -308,13 +331,12 @@ jobs:
         with:
           path: .cache/pip
           key: ${{ steps.pip-cache.outputs.cache-primary-key }}
-      - name: Save Cargo sources even after build or test failure
+      - name: Save Cargo registry sources even after build or test failure
         if: always() && steps.python-deps.outcome == 'success' && steps.rust.outcome == 'success' && steps.cargo-sources.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             .cache/cargo/registry
-            .cache/cargo/git
           key: ${{ steps.cargo-sources.outputs.cache-primary-key }}
       - name: Save compiled dependencies even after build or test failure
         if: always() && steps.python-deps.outcome == 'success' && steps.rust.outcome == 'success' && steps.cargo-targets.outputs.cache-hit != 'true'
