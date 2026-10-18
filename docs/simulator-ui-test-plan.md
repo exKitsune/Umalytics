@@ -25,3 +25,16 @@ Automated gates: `npm test` includes a synthetic projection regression with deli
 17. Scrub matched telemetry through steady speed, phase changes, acceleration, skill application/expiry, traffic clamps and HP exhaustion. Every executed tick has an explanation with its actual target and velocity pipeline; none falls back to “Cause unresolved.” Target speed is a thin solid light/dark line. Inference may still express genuine uncertainty.
 18. Hover each result metric separately: elapsed time versus finish gap, HP spent versus recovered, status duration versus speed bonus, corner distance versus equivalent time. In Stats, verify phase targets, maximum/selected spurt, acceleration, HP/wit formula inputs and actual section values. Spurt duration is finish time minus start time. Analysis details and meaningful race notes use matching collapsible panels; routine course provenance lives inside analysis details.
 19. Warm A → B → A for both matched and fallback dashboards. Check fresh service authorization but no new native run, full-trace transfer or analysis worker for retained entries. Repeat after restart to exercise the persistent path. Changing the diagnostics/runtime identity invalidates older baselines once; later opens must hit cache again.
+
+Validation on 2026-10-18: all 39 system workflows passed; Python bridge tests
+passed (122 passed, one skipped); production Svelte checks had no errors or
+warnings. The six runnable private parity fixtures retained identical race
+output with decision and power tracing enabled; five matched, the known mismatch
+remained a mismatch, and the seventh fixture still required missing input.
+The real Nakayama dashboard displayed power accumulation/release, three-second
+passive markers, complete legend explanations and a 33.9 s spurt lasting from
+86.7 s to the 120.570 s finish. An isolated no-proxy service verified cached
+simulator and inference dashboards. Restart this development service after a
+frontend rebuild: it snapshots static assets at startup, so hot-replacing its
+inference manifest alone intentionally fails the UI-version compatibility check.
+Private captures and screenshots were not committed.
