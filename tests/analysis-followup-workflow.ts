@@ -34,6 +34,8 @@ assert.equal(simulationRestriction(prereq,result).label,'Prerequisite unmet');
 const staticFail=[definition('distance_type==3&order<=3'),{...e('static-condition',0,false,'build-condition'),data:{predicate:'distance_type',operator:'==',argument:3,dynamic:false,windows:[]}},e('trigger-window',10,false)];
 result=simulationConditions(staticFail)!;assert.equal(result.state,'unmet');assert.equal(result.branches[0].predicates[0].state,'unmet');assert.equal(result.branches[0].predicates[1].state,'unknown');
 assert.match(simulationRestriction(staticFail,result).detail,/Medium/);
+const startup=[definition('track_id==10005'),{...e('static-condition',0,true,'build-condition'),data:{predicate:'track_id',operator:'==',argument:10005,dynamic:false,windows:[[0,2500]]}},e('condition',0,true),e('activation-ready',0,true),{...e('skill-activated',0,true),data:{position:0}}];
+assert.equal(simulationConditions(startup,[])!.branches[0].predicates[0].state,'met','The activation position proves a startup passive before movement samples exist');
 const wit=[{...e('skill-wit',0,false),data:{checked:true,passed:false}}];assert.equal(simulationRestriction(wit,null).label,'Wit check failed');
 assert.equal(simulationRestriction([definition('order==1')],null).label,'Check unavailable','Missing evidence cannot be invented as a failed condition or roll');
 

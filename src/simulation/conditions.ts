@@ -21,6 +21,9 @@ export function simulationConditions(events:DecisionEvent[],motion:number[][]=[]
     const histories=new Map<string,DecisionEvent[]>();
     for(const e of dynamic){const key=`${e.stage==='precondition'?'precondition':'condition'}:${e.kind}`;const list=histories.get(key)??[];list.push(e);histories.set(key,list);}
     const latch=checks.find(e=>e.kind==='precondition-latched'&&passed(e));
+    // Startup passives execute before the first motion tick; their activation
+    // callback still records the exact position used by the window check.
+    const positionAt=(point:{tick:number;time:number})=>motionAt(motion,point.time)?.[m.position]??checks.find(e=>e.kind==='skill-activated'&&e.tick===point.tick)?.data.position;
     const eligible=ready.some(passed);
     let state:'met'|'unmet'|'unknown'=met?'met':condition.length?'unmet':'unknown';
     const candidates=new Map<number,number>();
@@ -45,9 +48,9 @@ export function simulationConditions(events:DecisionEvent[],motion:number[][]=[]
       // opportunity proves the filter passed; an empty region does not identify
       // which earlier filter emptied it.
       if(!checked&&compiled?.data.dynamic===false&&point){
-        const position=motionAt(motion,point.time)?.[m.position];
+        const position=positionAt(point);
         const windows=compiled.data.windows;
-        if(position!=null&&Array.isArray(windows)&&windows.some(w=>Array.isArray(w)&&position>=Number(w[0])&&position<Number(w[1]))){result='met';observed='Satisfied';}
+        if(typeof position==='number'&&Array.isArray(windows)&&windows.some(w=>Array.isArray(w)&&position>=Number(w[0])&&position<Number(w[1]))){result='met';observed='Satisfied';}
       }
       if(!checked&&compiled?.data.dynamic===false&&!String(def.data[role]).includes('@')){
         const prior=checks.filter(e=>e.kind==='static-condition'&&e.stage===compiled.stage&&e.sequence<compiled.sequence).at(-1);
@@ -58,8 +61,8 @@ export function simulationConditions(events:DecisionEvent[],motion:number[][]=[]
       }
       const trigger=checks.find(e=>e.kind==='sampled-trigger'&&e.data.field===role&&`${e.data.predicate}==${e.data.argument}`===expression);
       if(!checked&&trigger&&point){
-        const position=motionAt(motion,point.time)?.[m.position];
-        if(position!=null&&Array.isArray(trigger.data.windows)&&trigger.data.windows.some(w=>Array.isArray(w)&&position>=Number(w[0])&&position<Number(w[1]))){result='met';observed='Sampled window reached';}
+        const position=positionAt(point);
+        if(typeof position==='number'&&Array.isArray(trigger.data.windows)&&trigger.data.windows.some(w=>Array.isArray(w)&&position>=Number(w[0])&&position<Number(w[1]))){result='met';observed='Sampled window reached';}
       }
       predicates.push({expression,key:expression.split(/[<>=!]/)[0],meaning:conditionLabel(expression,null,fieldSize),mechanicsState:'understood',observation:'Engine condition check',limitation:null,
         state:result,observed,time:checked?point!.time:null,role});
