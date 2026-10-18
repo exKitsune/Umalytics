@@ -12,7 +12,7 @@ The original dashboard is the acceptance surface: race results, track replay and
 8. In an isolated updater fixture, exercise available, downloading, waiting-for-game and restarting states. Check dark/light themes and 150% text. The sidebar card must remain readable, aligned above Settings and disabled while installation is pending; no actual updater is triggered by this fixture.
 9. Open an uncached race. Keep the dashboard skeleton, visible “Analyzing race” label and spinner throughout parsing, queueing, comparison and payload loading. Never flash the fallback replay while work is pending. Success replaces the skeleton with the dashboard; mismatch, missing setup and network failure leave the loading state. Switch races during each phase and confirm late responses cannot replace the current selection.
 10. Open A, B, then A again and restart the service before reopening A. Confirm the saved output is reused with zero new engine starts and a fresh comparison on each open. Change evidence, policy, engine or reference identity and confirm stale output is rejected. Alter only a cached hidden roll and recompute its plain checksum: the service must reject it and rerun. Settings must count saved simulations, enforce the shared number/size limit and clear both caches while preserving original race files and tags.
-11. Select a runner with repeated blocking and nearby-runner checks. Telemetry and the status list should show grouped Traffic episodes rather than separate Blocked/Near labels. Check both chart axes: bright yellow means nearby/no measured cut, amber is 0.5 m/s, and red means the larger blocking-stage cut reaches 1 m/s; the stages are never added. The color changes within each box and the status legend/sidebar show a labeled scale. Clear gaps up to 0.25 s are faded inside an episode, excluded from blocked-time totals, and show no active Traffic chip or replay card. Longer gaps split episodes. Check finish clipping and that the global speed ceiling without a blocker is not labeled traffic loss.
+11. Select a runner with repeated blocking and nearby-runner checks. Telemetry and the status list should show grouped Traffic episodes rather than separate Blocked/Near labels. Check both chart axes: cuts below 0.15 m/s are hidden, white starts at 0.15 m/s, yellow is 0.35 m/s, amber is 0.65 m/s, and red is 1 m/s or more. Use the larger blocking-stage cut; never add the stages. Colors interpolate smoothly within each box, with transparent fades at the edges and below-threshold gaps and the status legend/sidebar show a labeled scale. Clear gaps up to 0.25 s are faded inside an episode, show no active Traffic chip or replay card. Raw blocked-time and loss calculations remain unchanged by this display threshold. Longer gaps split episodes. Check finish clipping and that the global speed ceiling without a blocker is not labeled traffic loss.
 
 Automated gates: `npm test` includes a synthetic projection regression with deliberately different recorded and simulated values, slot mapping, original-capture preservation, replay cards, states, skills, rolls and version-bound inference fallback. `tests/decision-trace-parity.py` compares original == instrumented-off == instrumented-on across private captures and verifies initialization event ownership. Python bridge tests, the HTTP/packaged workflows, Windows native smoke and the release workflow remain required. Private captures and screenshots stay outside Git.
 
@@ -26,7 +26,10 @@ Automated gates: `npm test` includes a synthetic projection regression with deli
 18. Hover each result metric separately: elapsed time versus finish gap, HP spent versus recovered, status duration versus speed bonus, corner distance versus equivalent time. In Stats, verify phase targets, maximum/selected spurt, acceleration, HP/wit formula inputs and actual section values. Spurt duration is finish time minus start time. Analysis details and meaningful race notes use matching collapsible panels; routine course provenance lives inside analysis details.
 19. Warm A → B → A for both matched and fallback dashboards. Check fresh service authorization but no new native run, full-trace transfer or analysis worker for retained entries. Repeat after restart to exercise the persistent path. Changing the diagnostics/runtime identity invalidates older baselines once; later opens must hit cache again.
 
-Validation on 2026-10-18: all 39 system workflows passed; Python bridge tests
+20. Check the per-status legend checkboxes on matched and inference races. Last spurt and Inward start off in telemetry, while replay still shows both. Enable a band, switch races and reload: the choice must persist. Reset defaults restores those two hidden bands. Turn all statuses off and verify empty status rows collapse without overlapping elevation, course, phase or skill rows.
+21. Verify the race date includes its year in the library and header. Hover values and bar segments: descriptions must identify the specific metric and amount, without sign explanations or long calculation prose. Detailed formulas belong in Stats → Formulas & inputs; scoring and accounting details belong in the FAQ/legend.
+
+Previous tracing validation on 2026-10-18: all 39 system workflows passed; Python bridge tests
 passed (122 passed, one skipped); production Svelte checks had no errors or
 warnings. The six runnable private parity fixtures retained identical race
 output with decision and power tracing enabled; five matched, the known mismatch
@@ -38,3 +41,14 @@ simulator and inference dashboards. Restart this development service after a
 frontend rebuild: it snapshots static assets at startup, so hot-replacing its
 inference manifest alone intentionally fails the UI-version compatibility check.
 Private captures and screenshots were not committed.
+
+Status-display validation on 2026-10-18: all 39 system workflows passed, including
+the minimum-cut boundary, continuous color interpolation, transparent gaps,
+preference decoding and replay independence. The final production build passed
+Svelte/TypeScript checks with no errors or warnings. An isolated no-proxy service
+and real Nakayama capture verified the year in both dates, saved checkbox choices
+after a reload and race change, default-hidden Last spurt/Inward, spurt cards in
+replay at 95 s, traffic toggle removal, collapsed hidden rows, Reset defaults,
+and dark/light legend contrast. The selected traffic fixture had measured peaks
+of 0.81 and 0.23 m/s; a runner whose peak was 0.0863 m/s had no Traffic bands.
+Tooltip calculation details now live in the FAQ, legend and expandable formulas.

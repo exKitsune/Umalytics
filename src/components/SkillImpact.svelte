@@ -43,13 +43,13 @@
     </div>
     {#if expanded&&recovery}<div class="recovery-timing"><div class="carryover-heading">Recovery timing</div><dl>
       <dt>Timing</dt><dd>{({ 'before-late':'Before final leg','before-recorded-spurt':'Before spurt','during-recorded-spurt':'During spurt','no-recorded-spurt':'No spurt recorded','unknown':'Unknown' } as Record<string,string>)[recovery.spurtState]}</dd>
-      {#if recovery.referenceBudgetBefore!=null&&recovery.referenceBudgetAfter!=null}<dt title="Calculated HP coverage for maximum spurt speed. This does not confirm the speed chosen by the game.">Max-spurt HP budget</dt><dd>{Math.round(recovery.referenceBudgetBefore*100)}% → {Math.round(recovery.referenceBudgetAfter*100)}%</dd>
+      {#if recovery.referenceBudgetBefore!=null&&recovery.referenceBudgetAfter!=null}<dt title="HP available for maximum spurt speed.">Max-spurt HP budget</dt><dd>{Math.round(recovery.referenceBudgetBefore*100)}% → {Math.round(recovery.referenceBudgetAfter*100)}%</dd>
         <dt>Budget result</dt><dd>{({unlocked:'Covered by recovery','already-covered':'Already covered','still-short':'Still short'} as Record<string,string>)[recovery.referenceBudgetOutcome]??'Unknown'}</dd>
       {/if}
       {#if recovery.remainingDistance!=null}<dt>Distance left</dt><dd>{recovery.remainingDistance.toFixed(0)} m</dd>{/if}
       {#if recovery.secondsBeforeRecordedSpurt!=null&&recovery.secondsBeforeRecordedSpurt>0}<dt>Before spurt</dt><dd>{recovery.secondsBeforeRecordedSpurt.toFixed(2)} s</dd>{/if}
-      {#if recovery.recordedSpurtDelayDistance!=null&&recovery.recordedSpurtDelayDistance>0}<dt title="Distance from the start of the final leg to the recorded spurt. This is race context, not loss caused by this recovery.">Spurt delay</dt><dd>{recovery.recordedSpurtDelayDistance.toFixed(1)} m</dd>{/if}
-      {#if recovery.recalculationOpportunity===true}<dt title="Recovery occurred in the final leg. The replay does not report whether the game changed its spurt plan.">Spurt change</dt><dd>Possible</dd>{/if}
+      {#if recovery.recordedSpurtDelayDistance!=null&&recovery.recordedSpurtDelayDistance>0}<dt title="Distance before the final spurt starts.">Spurt delay</dt><dd>{recovery.recordedSpurtDelayDistance.toFixed(1)} m</dd>{/if}
+      {#if recovery.recalculationOpportunity===true}<dt title="Recovery during the final leg.">Spurt change</dt><dd>Possible</dd>{/if}
       {#if recovery.observedSelfSpeedBefore!=null&&recovery.observedSelfSpeedAfter!=null}<dt title="Speed around the recovery, including other active effects.">Nearby speed</dt><dd>{recovery.observedSelfSpeedBefore.toFixed(2)} → {recovery.observedSelfSpeedAfter.toFixed(2)} m/s</dd>{/if}
       {#if recovery.observedAccelerationBefore!=null&&recovery.observedAccelerationAfter!=null}<dt title="Acceleration around the recovery, including other active effects.">Nearby acceleration</dt><dd>{recovery.observedAccelerationBefore.toFixed(2)} → {recovery.observedAccelerationAfter.toFixed(2)} m/s²</dd>{/if}
     </dl></div>{/if}
@@ -58,8 +58,8 @@
       <div class="carryover-heading">Carryover gain{carryover.distanceDelta==null&&carryover.distanceDeltaMin!=null?' · target scenarios':''}</div>
       <div class="impact-stats">
         {#if carryover.entrySpeedDelta!=null}<span title="Speed advantage at the start of the carryover period.">{signed(carryover.entrySpeedDelta,'m/s')}</span>{/if}
-        {#if carryover.distanceDelta!=null}<span>{signed(carryover.distanceDelta,'m')}</span>{:else if carryover.distanceDeltaMin!=null&&carryover.distanceDeltaMax!=null}<span title="Comparison at low and high target speeds.">{distanceRange(carryover.distanceDeltaMin,carryover.distanceDeltaMax)}</span>{/if}
-        {#if carryover.timeDelta!=null}<span>{Math.abs(carryover.timeDelta).toFixed(3)} s {carryover.timeDelta>0?'lost':'saved'}</span>{:else if carryover.timeDeltaMin!=null&&carryover.timeDeltaMax!=null}<span title="Comparison at low and high target speeds.">{timeRange(carryover.timeDeltaMin,carryover.timeDeltaMax)}</span>{/if}
+        {#if carryover.distanceDelta!=null}<span>{signed(carryover.distanceDelta,'m')}</span>{:else if carryover.distanceDeltaMin!=null&&carryover.distanceDeltaMax!=null}<span title="Estimated carryover benefit range.">{distanceRange(carryover.distanceDeltaMin,carryover.distanceDeltaMax)}</span>{/if}
+        {#if carryover.timeDelta!=null}<span>{Math.abs(carryover.timeDelta).toFixed(3)} s {carryover.timeDelta>0?'lost':'saved'}</span>{:else if carryover.timeDeltaMin!=null&&carryover.timeDeltaMax!=null}<span title="Estimated carryover benefit range.">{timeRange(carryover.timeDeltaMin,carryover.timeDeltaMax)}</span>{/if}
       </div>
     </div>{/if}
   </div>

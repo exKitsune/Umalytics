@@ -1,5 +1,4 @@
 <script lang="ts">
-  import {statHelp} from '../data/analysis-copy';
   import type { RunnerStatBreakdown,StatKey } from '../data/effect-types';
   import GameIcon from './GameIcon.svelte';
   export let breakdown:RunnerStatBreakdown|null|undefined;
@@ -17,9 +16,9 @@
 </script>
 {#if breakdown}
   <section class="stat-breakdown" aria-label="Race stat breakdown">
-    <div class="breakdown-heading"><strong>Race stats</strong>{#if breakdown.evidence!=='simulated'}<small title={breakdown.detail}>Model</small>{/if}</div>
+    <div class="breakdown-heading"><strong>Race stats</strong>{#if breakdown.evidence!=='simulated'}<small title="Estimated race stats.">Model</small>{/if}</div>
     {#each Object.entries(names) as [key,name]}{@const stat=breakdown.stats[key as StatKey]}
-      <div class="stat-breakdown-row" title={stat.detail}>
+      <div class="stat-breakdown-row" title={`${name}: ${f(stat.raw)} base → ${f(stat.final)} race stat`}>
         <div class="stat-heading"><GameIcon name={`stat-${key}`} size={16}/><strong>{name}</strong><span>{f(stat.raw)} <small>→</small> {f(stat.final)}</span></div>
         {#if stat.final===null}<p class="withheld">{stat.detail.match(/Final [^.]+\./)?.[0]??'Final stat withheld.'}</p>{/if}
         <div class="stat-changes">
@@ -28,7 +27,7 @@
             {#if typeof delta==='number'&&delta!==0}<span class:gain={delta>0} class:loss={delta<0}>{label} {signed(delta)}</span>{/if}
           {/each}
         </div>
-        {#if key==='wisdom'&&witMean!==null&&witMax!==null&&baseSpeed!==null}<div class="wit-speed" title={`Expected target-speed adjustment before the selected final spurt. Each of the 24 sections draws between ${speed(witMax-baseSpeed*.0065)} and ${speed(witMax)}. This is the expected mean; the actual matched section values appear below.`}><span>Avg. section speed</span><strong>{speed(witMean)}</strong></div>{/if}
+        {#if key==='wisdom'&&witMean!==null&&witMax!==null&&baseSpeed!==null}<div class="wit-speed" title={`Average wit-based target-speed bonus: ${speed(witMean)}.`}><span>Avg. section speed</span><strong>{speed(witMean)}</strong></div>{/if}
       </div>
     {/each}
     <div class="hp-breakdown"><strong>Starting HP <span>{f(breakdown.startingHp.observed)}</span></strong><p>Distance plus 0.8 × stamina × style.</p>{#if distance!==null&&stamina!==null&&styleRate!==null}<p class="formula">{f(distance)} + 0.8 × {f(stamina)} × {styleRate.toFixed(3)} = {f(breakdown.startingHp.modeled)}</p>{:else if breakdown.startingHp.modeled!==null}<p class="formula">Model {f(breakdown.startingHp.modeled)}</p>{/if}</div>

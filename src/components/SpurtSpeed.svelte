@@ -42,8 +42,8 @@
 <button bind:this={button} class="spurt-speed" aria-label={`Last spurt target for ${name}`} onmouseenter={show} onmouseleave={hide} onfocus={show} onblur={hide} onclick={e=>{e.stopPropagation();show();}} onkeydown={dismiss}>
   {#if startDistance===-1}<div class="fact"><strong>None</strong></div>
   {:else}
-    <div class="fact">{#if group&&group.indices.length>1}<span class="tag" title="HP supports the same maximum at these checks. The speed reading comes from the later clear window.">Full</span>{/if}<strong class="target" title={group?.targetTime!=null?`Baseline target read at ${group.targetTime.toFixed(2)} s.`:'No clear target speed before the next recovery.'}>{target!=null?target.toFixed(2):'—'}</strong><span class="unit">m/s</span><span class="aside">max {format(value?.maximum)}</span>{#if target!=null&&value?.maximum&&value.maximum.mid-target>=.025}<span class="shortfall">−{(value.maximum.mid-target).toFixed(2)}</span>{/if}</div>
-    <div class="spurt-meta">{#if startDistance!=null}<span>{startDistance.toFixed(0)} m</span>{/if}{#if value?.delaySeconds!=null}<span class="timing" class:on-time={normalDelay} title={`Recorded start ${value.delaySeconds.toFixed(3)} s after late entry. Offsets up to ${NORMAL_SPURT_START_DELAY.toFixed(2)} s count as normal timing here.`}>{normalDelay?'On time':`delay ${value.delaySeconds.toFixed(2)} s`}</span>{/if}</div>
+    <div class="fact">{#if group&&group.indices.length>1}<span class="tag" title="Maximum spurt speed supported by HP.">Full</span>{/if}<strong class="target" title={group?.targetTime!=null?`Target speed at ${group.targetTime.toFixed(2)} s.`:'No clear target speed before the next recovery.'}>{target!=null?target.toFixed(2):'—'}</strong><span class="unit">m/s</span><span class="aside">max {format(value?.maximum)}</span>{#if target!=null&&value?.maximum&&value.maximum.mid-target>=.025}<span class="shortfall">−{(value.maximum.mid-target).toFixed(2)}</span>{/if}</div>
+    <div class="spurt-meta">{#if startDistance!=null}<span>{startDistance.toFixed(0)} m</span>{/if}{#if value?.delaySeconds!=null}<span class="timing" class:on-time={normalDelay} title={`Spurt starts ${value.delaySeconds.toFixed(3)} s into the final leg.`}>{normalDelay?'On time':`delay ${value.delaySeconds.toFixed(2)} s`}</span>{/if}</div>
   {/if}
 </button>
 </div>
@@ -74,7 +74,7 @@
     <p>Model probabilities · each tick is a possible choice.</p>
     {#if value?.source==='simulation'&&choice?.matched!=null}<div class="odds"><span>{pct(points[choice.matched].probability)} chance of this choice</span>{#if choice.betterChance!=null}<span>{pct(choice.betterChance)} chance of a better spurt</span>{/if}</div>{/if}
     {#if choice?.decisionDistance!=null}<p>Decision at {choice.decisionDistance.toFixed(0)} m</p>{/if}
-    {#if luck}<div class="odds"><span>{pct(luck.probability)} chance of this choice</span><span>{pct(luck.betterChance)} chance of a better spurt</span><span title="Inferred from the matched choice's order. Checks happen within this decision, not once per elapsed second.">{luck.failedMin===luck.failedMax?luck.failedMin:`${luck.failedMin}–${luck.failedMax}`} failed wit checks · inferred</span></div>{/if}
+    {#if luck}<div class="odds"><span>{pct(luck.probability)} chance of this choice</span><span>{pct(luck.betterChance)} chance of a better spurt</span><span title="Estimated failed wit checks for this decision.">{luck.failedMin===luck.failedMax?luck.failedMin:`${luck.failedMin}–${luck.failedMax}`} failed wit checks · inferred</span></div>{/if}
   {:else if points.length===1}
     <p>{choice?.rolls?.length?'One feasible candidate; actual rolls are shown above.':'No wit roll in this decision.'}</p>
   {/if}

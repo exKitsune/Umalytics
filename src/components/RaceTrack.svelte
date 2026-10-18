@@ -38,7 +38,7 @@
     {#each dots as dot}
       {#if dot.point && dot.runner}
         <g role="button" tabindex="0" aria-label={`Select ${runnerName(reference,dot.runner)}, ${dot.sample.distance?.toFixed(1)} metres${dot.sample.lane===null?', lane unknown':`, recorded lane ${dot.sample.lane.toFixed(3)}, spacing estimated`}`} onclick={() => onSelect(dot.sample.runnerId)} onkeydown={e => {if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect(dot.sample.runnerId)}}} style="cursor:pointer">
-          <title>{runnerName(reference,dot.runner)} · {dot.sample.distance?.toFixed(1)} m{dot.sample.lane===null?' · lane unknown':` · recorded lane ${dot.sample.lane.toFixed(3)} · spacing estimated`}</title>
+          <title>{runnerName(reference,dot.runner)} · {dot.sample.distance?.toFixed(1)} m{dot.sample.lane===null?' · lane unknown':` · lane ${dot.sample.lane.toFixed(3)}`}</title>
           <circle cx={dot.point.x} cy={dot.point.y} r={selected===dot.sample.runnerId?17:13} fill={runnerColors[dot.runner.index%runnerColors.length]} stroke={selected===dot.sample.runnerId?'var(--text)':'var(--panel)'} stroke-width={selected===dot.sample.runnerId?3:2} />
           {#if !compact}<text x={dot.point.x} y={dot.point.y+5} text-anchor="middle" fill="#14231c" style="font-size:var(--font-15)" font-weight="800">{dot.runner.gate ?? dot.runner.index+1}</text>{/if}
         </g>

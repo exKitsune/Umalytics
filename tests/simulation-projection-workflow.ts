@@ -18,6 +18,7 @@ import { trafficIntervals, trafficAt, trafficActive, trafficColor, trafficGradie
 import {powerSummary} from '../src/simulation/power';
 import {telemetrySkillEnd} from '../src/data/telemetry-skills';
 import {telemetryStatusKinds} from '../src/data/status-presentation';
+import {decodeHiddenStatuses,defaultHiddenStatuses} from '../src/data/telemetry-statuses';
 import {statusLegend,statusHelp} from '../src/data/analysis-copy';
 import {runnerMechanics} from '../src/data/runner-mechanics';
 
@@ -60,21 +61,28 @@ const trafficRows=Array.from({length:10},(_,index)=>{
   const row=Array(43).fill(0);row[m.time]=index/10;row[m.dt]=.1;
   row[m.blocker]=[0,2,4,8].includes(index)?1:-1;
   row[m.nearFrontSeconds]=index===1?.1:0;row[m.nearBehindSeconds]=index===9?.1:0;
-  row[m.selfLoss]=[.2,0,.8,0,1.6,0,0,0,.1,0][index];row[m.finalLoss]=index===2?.6:0;
+  row[m.selfLoss]=[.15,0,.8,0,1.6,0,0,0,.149,0][index];row[m.finalLoss]=index===2?.6:0;
   return row;
 });
 const traffic=trafficIntervals(trafficRows,1);
-assert.equal(traffic.length,2,'Rapid blocked/near transitions and short clear gaps share one label');
+assert.equal(traffic.length,1,'Rapid substantial cuts share a label, while negligible cuts are hidden');
 assert.equal(traffic[0].start,0);assert.equal(traffic[0].end,.5);
-assert.equal(traffic[1].start,.8,'A longer clear gap separates episodes');
-assert.equal(trafficActive(traffic[0],.15),true,'Actual nearby-runner checks keep the band continuous');
+trafficRows[8][m.selfLoss]=.35;
+assert.equal(trafficIntervals(trafficRows,1)[1].start,.8,'A longer clear gap separates substantial episodes');
+assert.equal(trafficActive(traffic[0],.05),true,'The minimum slowdown is inclusive');
+assert.equal(trafficActive(traffic[0],.15),false,'Proximity without a speed cut stays transparent');
 assert.equal(trafficActive(traffic[0],.35),false,'A joined clear gap is not a claimed traffic state');
 assert.equal(trafficAt(traffic[0],-.01),null);assert.equal(trafficAt(traffic[0],.5),null);
 assert.equal(trafficColor(trafficAt(traffic[0],.25)),trafficColor({...traffic[0].traffic![2],finalLoss:0}),'Never add the two cuts');
 assert.equal(trafficColor(trafficAt(traffic[0],.45)),'#f04444');
-assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:0,finalLoss:0}),'#fff34f');
-assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.5,finalLoss:0}),'#ffb02e');
-assert.ok(trafficGradient(traffic[0],t=>t*100).some(s=>s.opacity<1));
+assert.equal(trafficColor(traffic[0].traffic![0]),'#ffffff');
+assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.35,finalLoss:0}),'#ffec4a');
+assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.65,finalLoss:0}),'#ffa825');
+assert.notEqual(trafficColor({...traffic[0].traffic![0],selfLoss:.4}),trafficColor({...traffic[0].traffic![0],selfLoss:.5}),'Severity changes continuously between anchors');
+const gradient=trafficGradient(traffic[0],t=>t*100);
+assert.ok(gradient.some(s=>s.opacity===0)&&gradient.some(s=>s.opacity===1));
+assert.equal(gradient[0].opacity,0);assert.equal(gradient.at(-1)!.opacity,0);
+assert.ok(gradient.every((s,i)=>i===0||s.x>gradient[i-1].x),'One stop per point, with smooth interpolation instead of duplicated hard edges');
 assert.equal(trafficIntervals(trafficRows,.45)[0].end,.45,'Clamp to the runner finish');
 const ceiling=Array(43).fill(0);ceiling[m.dt]=.1;ceiling[m.blocker]=-1;ceiling[m.selfLoss]=2;
 assert.deepEqual(trafficIntervals([ceiling],.1),[],'Global speed ceiling without a blocker is not traffic loss');
@@ -92,6 +100,12 @@ const power=powerSummary(powerEvents,{finalStatus:'supported',finalGauge:20,time
 assert.deepEqual(power.intervals.filter(i=>i.kind==='conserve-power').map(i=>[i.start,i.end]),[[.1,2],[4.5,6]]);
 assert.equal(power.releases[0].end,9.73);assert.equal(power.releases[0].acceleration,.12);assert.equal(power.releases[0].gauge,20);
 assert.equal(powerSummary([],undefined,10).accumulationSeconds,null,'Absent ledger is not an invented zero');
+assert.deepEqual([...defaultHiddenStatuses()],['last-spurt','force-in']);
+assert.deepEqual(decodeHiddenStatuses(null),defaultHiddenStatuses());
+assert.deepEqual(decodeHiddenStatuses('broken'),defaultHiddenStatuses());
+assert.deepEqual([...decodeHiddenStatuses('[]')],[],'Explicitly showing all statuses survives reload');
+assert.deepEqual([...decodeHiddenStatuses('["traffic","unknown"]')],['traffic'],'Only recognized hidden statuses are restored');
+assert.ok(replayCards({race:result.race,analysis:result.analysis} as any,'r0',1.5,result.race.frames[1].runners[0]).some(c=>c.label==='Last spurt'),'Telemetry defaults never hide the replay spurt');
 for(const kind of telemetryStatusKinds){if(kind==='traffic')continue;assert.ok(statusLegend.some(i=>i.kind===kind),`Missing legend: ${kind}`);assert.notEqual(statusHelp(kind),'Time spent in this status.');}
 const mechanics=runnerMechanics({...original,distance:2000},{...runners[0],strategyCode:1,aptitudes:{middle:'A',turf:'A'}}, {surface:1} as any,detail.statBreakdown);
 assert.equal(mechanics.speed[0].value,20);assert.equal(mechanics.speed[1].value,20);assert.equal(mechanics.speed[2].value,19.6);

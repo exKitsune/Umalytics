@@ -3,7 +3,7 @@ import type { ReplayCard, ReplayOptions, ReplayScene } from './model';
 import type { RunnerSample } from '../data/types';
 import { combinedStatusIntervals, statusLabel } from '../data/status-presentation';
 import { skillName, runnerName } from '../data/reference';
-import { statusColor, statusHelp } from '../data/analysis-copy';
+import { statusColor, statusDescription } from '../data/analysis-copy';
 import { iconSource, skillIconKey } from '../data/game-icons';
 import { placeReplayCards } from './layout';
 
@@ -65,8 +65,8 @@ export function replayCardHelp(options:ReplayOptions,value:ReplayCard):string {
     const source=options.race.runners.find(r=>r.id===value.sourceRunnerId);
     return `From ${source?runnerName(options.reference,source):'another runner'}. Targeted by this skill. ${value.detail.startsWith('Same-team')?'Same team; immune to this debuff.':'Effect depends on immunity.'}`;
   }
-  if(value.kind==='status')return `${statusHelp(value.id.split(':')[1])}${value.detail.startsWith('Modeled')?' Calculated from replay data.':''}${value.visualOnly?' Timing unavailable; briefly shown for visibility.':''}`;
-  return value.end===value.start?'Instant effect.':value.end===null?'Timing unavailable; briefly shown for visibility.':value.visualOnly?'Effect ended; briefly retained for visibility.':'Remaining effect duration.';
+  if(value.kind==='status')return `${statusDescription(value.id.split(':')[1])}${value.end!==null?` ${(value.end-value.start).toFixed(2)} s.`:''}`;
+  return value.end===value.start?'Instant effect.':value.end===null?'Duration unavailable.':value.visualOnly?'Effect ended.':'Remaining effect duration.';
 }
 export const layoutReplayCards=placeReplayCards;
 

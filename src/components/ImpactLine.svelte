@@ -11,7 +11,7 @@
   };
   const isTime=(bit:{text:string})=>/ s$/.test(bit.text);
   const quiet=(bit:{text:string})=>isTime(bit)||bit.text==='No gain'||bit.text==='partial';
-  const help=(bit:ImpactBit)=>bit.title??`${/ m$/.test(bit.text)?'Calculated movement difference, in metres.':isTime(bit)?'Equivalent travel-time difference; not a predicted change in finish time.':/ HP$/.test(bit.text)?'Calculated HP difference over the active window. Positive means HP saved; negative means extra HP spent.':bit.text==='partial'?'Only the supported part of the interval is included.':'No measurable movement gain in the supported comparison.'}${title?` ${title}`:''}`;
+  const help=(bit:ImpactBit)=>bit.title??`${title?`${title} · `:''}${/ m$/.test(bit.text)?`Distance ${bit.tone==='loss'?'lost':'gained'}`:isTime(bit)?`Travel time ${bit.tone==='loss'?'lost':'saved'}`:/ HP$/.test(bit.text)?`HP ${bit.tone==='loss'?'spent':'saved'}`:bit.text==='partial'?'Only part of the interval could be assessed.':'No measurable movement benefit.'}${/ (m|s|HP)$/.test(bit.text)?`: ${signed(bit)}`:''}`;
 </script>
 {#if bits.length}
   <p class="impact-line" class:modeled>{#each bits as bit,i}{#if i}<span class="dot" aria-hidden="true">·</span>{/if}<span title={help(bit)} class:gain={bit.tone==='gain'&&!quiet(bit)} class:loss={bit.tone==='loss'&&!quiet(bit)} class:quiet={quiet(bit)}>{signed(bit)}</span>{/each}</p>

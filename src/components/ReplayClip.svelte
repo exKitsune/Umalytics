@@ -43,7 +43,7 @@
 <div class="clip-controls" class:attention={open&&attention} bind:this={root}>
   {#if open}
     <div class="clip-heading">
-      <div><strong>Create a replay clip</strong><small title="The browser draws the current course view, labels and minimap onto a hidden canvas at the chosen size, then encodes MP4. No screen capture, microphone or audio permissions. Recording takes the selected interval divided by its playback rate.">MP4 · hidden canvas · no audio · records in real time</small></div>
+      <div><strong>Create a replay clip</strong><small title="Export this interval as an MP4 video.">MP4 · hidden canvas · no audio · records in real time</small></div>
       <button class="icon-button" aria-label="Close clip tools" onclick={close}>×</button>
     </div>
     <div class="clip-fields">

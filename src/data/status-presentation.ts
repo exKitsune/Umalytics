@@ -4,6 +4,7 @@ const labels: Record<string, [string, string]> = {
   traffic: ['Traffic', 'Traffic'],
   'conserve-power': ['Conserve power', 'Conserve'], 'release-conserve-power': ['Release power', 'Release'],
   'force-in':['Force in','Inward'],'extra-pace-up':['Extra pace up','Extra PU'],'stamina-limit-break':['Stamina limit break','Limit'],
+  'compete-before-spurt':['Compete before spurt','Compete'],'stamina-keep':['Stamina keep','Keep'],'secure-lead':['Secure lead','Lead'],
   'pace-up': ['Pace up', 'PU'], 'pace-down': ['Pace down', 'PD'],
   'speed-up': ['Speed up', 'SU'], overtake: ['Overtake', 'OT'],
   'spot-struggle': ['Spot struggle', 'SS'], 'downhill-mode': ['Downhill mode', 'DH'],

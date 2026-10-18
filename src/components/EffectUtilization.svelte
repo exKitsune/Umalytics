@@ -20,22 +20,22 @@
   $: result=score===null?'Unavailable':scenario&&coverage>0&&percentage(scenario.min/coverage)!==percentage(scenario.max/coverage)?`${percentage(scenario.min/coverage)}–${percentage(scenario.max/coverage)}% effective`:`${percentage(score)}% effective`;
 </script>
 <div class="effect-use" class:expanded data-effect-kind={effect.kind}>
-  <div class="heading"><span title={scored?'Earlier speed skills reach full credit first. Later skills get half credit while accelerating from normal speed toward their ceiling. Blocked time and speed below normal count as zero.':undefined}>{label}</span><strong>{result}{#if carryMeters>0.05} <b class="carry-figure">Carryover gain +{carryMeters.toFixed(2)} m</b>{/if}{#if carry>0.02} <b class="carry-figure">+{Math.round(carry*100)}%</b>{/if}</strong></div>
+  <div class="heading"><span>{label}</span><strong>{result}{#if carryMeters>0.05} <b class="carry-figure">Carryover gain +{carryMeters.toFixed(2)} m</b>{/if}{#if carry>0.02} <b class="carry-figure">+{Math.round(carry*100)}%</b>{/if}</strong></div>
   {#if total!==null&&total>0}<div class="meter" role="img" aria-label={`${label} use: ${result}`}>
-    <i class="used" style:width={`${share(full)}%`} title="Full credit"></i>
-    {#if half>0.01}<i class="half" style:width={`${share(half)}%`} title="Half credit while accelerating to the skill speed"></i>{/if}
-    {#if blocked>0.01}<i class="blocked" style:width={`${share(blocked)}%`} title="Blocked"></i>{/if}
-    {#if wasted>0.01}<i class="wasted" style:width={`${share(wasted)}%`} title="Wasted: below normal speed, including the climb back"></i>{/if}
+    <i class="used" style:width={`${share(full)}%`} title={`${full.toFixed(2)} s ${effect.kind==='acceleration'?'benefiting from extra acceleration':'at the boosted speed'}.`}></i>
+    {#if half>0.01}<i class="half" style:width={`${share(half)}%`} title={`${half.toFixed(2)} s accelerating toward the boosted speed.`}></i>{/if}
+    {#if blocked>0.01}<i class="blocked" style:width={`${share(blocked)}%`} title={`${blocked.toFixed(2)} s blocked by another runner.`}></i>{/if}
+    {#if wasted>0.01}<i class="wasted" style:width={`${share(wasted)}%`} title={`${wasted.toFixed(2)} s without a movement benefit.`}></i>{/if}
   </div>{/if}
   <div class="times">
     {#if scored&&effect.usefulDuration!==null}<span>{full.toFixed(2)} s full</span>
       {#if half>.0001}<span>{half.toFixed(2)} s half</span>{/if}
       {#if wasted>.0001}<span>{wasted.toFixed(2)} s wasted</span>{/if}
     {:else if effect.usefulDuration!==null}<span>{effect.usefulDuration.toFixed(2)} s useful</span>{/if}
-    {#if effect.kind==='acceleration'&&effect.cappedDuration!==null}<span title="Extra acceleration was not needed at the speed cap.">{effect.cappedDuration.toFixed(2)} s at cap</span>{/if}
+    {#if effect.kind==='acceleration'&&effect.cappedDuration!==null}<span title="Time at the speed cap.">{effect.cappedDuration.toFixed(2)} s at cap</span>{/if}
     {#if effect.blockedDuration!==null&&effect.blockedDuration>.0001}<span>{effect.blockedDuration.toFixed(2)} s blocked</span>{/if}
     {#if effect.afterFinishDuration>.0001}<span>{effect.afterFinishDuration.toFixed(2)} s after finish</span>{/if}
-    {#if unknown!==null&&unknown>.0001}<span class="unknown-time" title="This portion cannot yet be assessed.">{unknown.toFixed(2)} s unknown</span>{/if}
+    {#if unknown!==null&&unknown>.0001}<span class="unknown-time" title="Unassessed duration.">{unknown.toFixed(2)} s unknown</span>{/if}
   </div>
 </div>
 <style>

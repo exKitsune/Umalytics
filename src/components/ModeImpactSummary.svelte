@@ -15,6 +15,6 @@
   ]:[]) as ImpactBit[];
 </script>
 {#if bits.length}
-  <ImpactLine {bits} modeled title="Difference versus the same race with this mode removed. Acceleration and traffic stay in both paths."/>
-{:else if value?.source==='simulation'}<small title={value.detail}>Gain unavailable</small>
+  <ImpactLine {bits} modeled title="Status effect"/>
+{:else if value?.source==='simulation'}<small title="Movement benefit unavailable.">Gain unavailable</small>
 {/if}

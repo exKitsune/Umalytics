@@ -1,5 +1,5 @@
 <script lang="ts">
-  import {statusHelp,statusFormula,statusColor,uphillHelp,downhillHelp,debuffHelp,modelHelp} from '../data/analysis-copy';
+  import {statusDescription,statusColor,uphillHelp,downhillHelp} from '../data/analysis-copy';
   import type { Race } from '../data/types';
   import type { RaceAnalysis } from '../data/analytics';
   import { preparedFor } from '../analysis/prepared';
@@ -39,7 +39,6 @@
     const sum=(key:'modeledDistanceDelta'|'modeledTimeDelta'|'modeledHpDelta')=>observed.every(h=>h[key]!==null)?observed.reduce((n,h)=>n+h[key]!,0):null;
     return {...total,modeledDistanceDelta:total.modeledDistanceDelta??sum('modeledDistanceDelta'),modeledTimeDelta:total.modeledTimeDelta??sum('modeledTimeDelta'),modeledHpDelta:total.modeledHpDelta??sum('modeledHpDelta')};
   }
-  const cornerHelp='Extra corner distance versus lane 0. Time uses recorded speed, not a predicted finish-time change.';
   function blockHole(motion:RunnerMotion|undefined){
     const loss=motion?.trafficLoss;
     return loss?.distanceLoss&&loss.timeLoss?{distance:loss.distanceLoss,time:loss.timeLoss,partial:(loss.coverage??0)<.999}:null;
@@ -67,18 +66,18 @@
   }
   const signed=(n:number,d=1)=>`${n>0?'+':n<0?'−':''}${Math.abs(n).toFixed(d)}`;
   function signedSpeed(values:number[]){if(!values.length)return null;const min=Math.min(...values),max=Math.max(...values),fmt=(n:number)=>`${n>0?'+':n<0?'−':''}${Math.abs(n).toFixed(2)}`;return Math.abs(max-min)<.005?`${fmt(min)} m/s`:`${fmt(min)}–${fmt(max)} m/s`;}
-  function speedBit(id:string,kind:string){const values=(intervals[id]??[]).flatMap(s=>s.kind===kind&&s.model?.speedDelta!=null?[s.model.speedDelta]:[]);const text=signedSpeed(values);if(!text)return null;const formula=statusFormula(kind);return {text,title:formula?`${formula} → ${text}`:text};}
+  function speedBit(id:string,kind:string){const values=(intervals[id]??[]).flatMap(s=>s.kind===kind&&s.model?.speedDelta!=null?[s.model.speedDelta]:[]);const text=signedSpeed(values);if(!text)return null;return {text};}
   function duration(id:string,kind:string){
     const source=kind==='near-slowdown'&&prepared?.runners[id]?substantialNearIntervals(intervals[id]??[],prepared.runners[id].inferredMotion.samples):(intervals[id]??[]);
     const rows=source.filter(s=>s.kind===kind);
     const known=rows.filter(r=>r.end!==null);
     return {text:known.length?`${known.reduce((n,r)=>n+r.end!-r.start,0).toFixed(1)}s`:'—',
       modeled:rows.some(r=>r.evidence==='estimated'),
-      title:analysis.source==='simulation'?`${statusHelp(kind)} Duration from actual simulator state ticks.`:rows.length?statusHelp(kind):modelBlock(id)??'No active interval found.'};
+      title:rows.length?statusDescription(kind):modelBlock(id)??'No active interval.'};
   }
   function statusFact(id:string,kind:string,tag?:string){
     const d=duration(id,kind),gain=speedBit(id,kind);
-    return {tag,duration:d.text,speed:gain?.text??null,empty:d.text==='—',modeled:d.modeled,title:gain?`${d.title} ${gain.title}`:d.title};
+    return {tag,duration:d.text,speed:gain?.text??null,empty:d.text==='—',modeled:d.modeled,title:d.title};
   }
   const signTone=(n:number):NonNullable<ImpactBit['tone']>=>n>0?'gain':n<0?'loss':'';
   function extraBits(value:{modeledExtraDistance:number|null;modeledExtraTime:number|null;modeledExtraHp:number|null}|undefined){
@@ -123,10 +122,10 @@
     const stats=analysis.runners[id]?.statBreakdown.stats;
     if(!stats)return null;
     const courseKnown=race.courseId!=null&&reference?.courses[race.courseId]?.distance===race.distance;
-    if(!courseKnown)return 'Course distance is not identified, so pace and downhill targets are withheld.';
+    if(!courseKnown)return 'Course distance unavailable.';
     for(const key of ['power','guts','wisdom'] as const){
       if(stats[key].final!==null)continue;
-      return stats[key].detail.match(/Final [^.]+\./)?.[0]??`${key} is unresolved, so pace and downhill targets are withheld.`;
+      return `${key} unavailable.`;
     }
     return null;
   }
@@ -163,17 +162,17 @@
   }
 </script>
 {#snippet statusCell(row:{tag?:string;duration:string;speed:string|null;empty:boolean;modeled:boolean;title:string}, value:{modeledExtraDistance:number|null;modeledExtraTime:number|null;modeledExtraHp:number|null}|undefined)}
-  <div class="fact" class:empty={row.empty} title={row.title}>{#if row.tag}<span class="tag">{row.tag}</span>{/if}<strong class:modeled={row.modeled} title={`Active duration. ${row.title}`}>{row.duration}</strong>{#if row.speed}<span class="aside" title={`Target-speed modifier while active; not necessarily achieved velocity. ${row.title}`}>{row.speed}</span>{/if}</div>
-  <ImpactLine bits={extraBits(value)} modeled title={modelHelp}/>
+  <div class="fact" class:empty={row.empty}>{#if row.tag}<span class="tag">{row.tag}</span>{/if}<strong class:modeled={row.modeled} title={`${row.duration} active. ${row.title}`}>{row.duration}</strong>{#if row.speed}<span class="aside" title={`${row.speed} target-speed modifier.`}>{row.speed}</span>{/if}</div>
+  <ImpactLine bits={extraBits(value)} modeled title="Status effect"/>
 {/snippet}
 {#snippet modeCell(row:{tag?:string;duration:string;speed:string|null;empty:boolean;modeled:boolean;title:string}, id:string, kind:string)}
-  <div class="fact" class:empty={row.empty} title={row.title} style={row.empty?undefined:`--status:${statusColor(kind)}`}>{#if row.tag}<span class="tag status-tag">{row.tag}</span>{/if}<strong class="status-value" class:modeled={row.modeled} title={`Active duration. ${row.title}`}>{row.duration}</strong>{#if row.speed}<span class="aside" title={`Target-speed modifier while active; not necessarily achieved velocity. ${row.title}`}>{row.speed}</span>{/if}</div>
+  <div class="fact" class:empty={row.empty} style={row.empty?undefined:`--status:${statusColor(kind)}`}>{#if row.tag}<span class="tag status-tag">{row.tag}</span>{/if}<strong class="status-value" class:modeled={row.modeled} title={`${row.duration} active. ${row.title}`}>{row.duration}</strong>{#if row.speed}<span class="aside" title={`${row.speed} target-speed modifier.`}>{row.speed}</span>{/if}</div>
   {#if !row.empty}{#if !modes[id]}<span class="note">Calculating gains…</span>{:else if mode(id,kind)}<ModeImpactSummary value={mode(id,kind)}/>{:else}<span class="note">Gain unavailable</span>{/if}{/if}
 {/snippet}
 <section class="panel field-stats" class:compact>
   <div class="panel-heading"><strong>Race results</strong><span class="muted">{analysis.source==='simulation'?'Select a runner':'Select a runner · dotted values use models'}</span></div>
   <div class="field-scroll" use:pinFinish><table use:hoverCol data-col="">
-    <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Conserve / Release','Rushed','Debuffs received','Blocked / Near'] as heading}<th title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Recorded gate delay versus the 0–100 ms draw.':undefined}>{heading}</th>{/each}</tr></thead>
+    <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Conserve / Release','Rushed','Debuffs received','Blocked / Near'] as heading}<th title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Time before leaving the gate.':undefined}>{heading}</th>{/each}</tr></thead>
     <tbody>{#each sorted as r}
       {@const s=analysis.runners[r.id]?.summary}
       {@const duel=statusFact(r.id,'dueling')}
@@ -195,20 +194,20 @@
       <tr class:row-selected={selected===r.id} onclick={()=>onSelect(r.id)}>
         <td class="finish"><span class="finish-mark"><span class="finish-place">{r.finishOrder??'—'}</span>{#if r.finishOrder===1||r.finishOrder===2||r.finishOrder===3}<PodiumTrophy place={r.finishOrder} size={15}/>{/if}</span></td>
         <td><button class="result-runner" onclick={()=>onSelect(r.id)}><UmaPortrait runner={r} size={38}/><span><strong><span class="result-gate" title="Starting gate">{r.gate??r.index+1}</span>{runnerName(reference,r)}</strong><small class="result-badges"><StrategyBadge runner={{...r,strategyCode:style}}/>{#if r.mood!=null}<GameIcon name={`mood-${r.mood}`} label={`${mood(r.mood)} mood`} size={19}/>{/if}</small></span></button></td>
-        <td><div class="fact"><strong title="Unrounded finish time, displayed to the nearest millisecond.">{f(s?.rawTime,3)}</strong><span class="unit">s</span></div><span class="note" title="Distance behind the winner at the instant the winner finishes.">{s?.finishGapDistance==null?'':`${s.finishGapDistance>=0?'+':''}${f(s.finishGapDistance)} m`}</span></td>
-        <td>{#if s?.startDelay==null}—{:else}{@const quality=startQuality(s.startDelay)}<div class="fact" title="Recorded gate delay versus the 0–100 ms draw."><strong>{f(s.startDelay*1000,1)}</strong><span class="unit">/ 100 ms</span></div>{#if quality}<span title="Great: under 20 ms; good: 20–40 ms; poor: over 40–80 ms; late: over 80 ms. These labels describe the observed delay." class={`verdict start-${quality.tone}`}>{quality.label}</span>{/if}{/if}</td>
+        <td><div class="fact"><strong title="Race completion time.">{f(s?.rawTime,3)}</strong><span class="unit">s</span></div><span class="note" title="Distance behind the winner at the instant the winner finishes.">{s?.finishGapDistance==null?'':`${s.finishGapDistance>=0?'+':''}${f(s.finishGapDistance)} m`}</span></td>
+        <td>{#if s?.startDelay==null}—{:else}{@const quality=startQuality(s.startDelay)}<div class="fact" title="Time before leaving the gate."><strong>{f(s.startDelay*1000,1)}</strong><span class="unit">/ 100 ms</span></div>{#if quality}<span title="Start quality based on gate delay." class={`verdict start-${quality.tone}`}>{quality.label}</span>{/if}{/if}</td>
         <td><SpurtSpeed value={prepared?.runners[r.id]?.spurt} startDistance={s?.spurtDistance} name={runnerName(reference,r)} reserveStages={resultSlots.spurtStages}/></td>
-        <td class="hp-cell" class:empty-hp={s?.hpFinish!=null&&s.hpFinish<=0}>{#if hp}<div class="hp-main"><div class="hp-final"><strong title="HP remaining at the finish.">{hp.finish}</strong><span class="hp-max" title="HP at the start of the race.">/ {hp.start}</span>{#if hp.percent}<small title="Finish HP divided by starting HP.">{hp.percent}%</small>{/if}</div><div class="hp-flow"><span title="Total sampled decreases in HP during the race. Includes normal drain and damage; simultaneous recovery can hide some drain.">{hp.spent}</span><span class="hp-gain" title="Total sampled increases in HP. Simultaneous drain can reduce the visible gain.">{hp.gained}</span><span class="hp-loss" title="Calculated HP lost to incoming debuffs plus extra rushed drain. This is part of HP spent, not an additional amount to add.">{hp.stolen}</span></div><div class="hp-legend"><span>spent</span><span>gained</span><span>stolen</span></div></div>{/if}{#if empty}<div class="hp-empty"><small title="When HP first reaches zero; ranges reflect the gap between replay samples.">{empty.when}</small>{#if empty.metres}<small class:modeled={empty.modeled} title="Distance lost after HP runs out, keeping traffic and skill timings the same. Earlier spurt delay is excluded.">{empty.metres}</small><small class:modeled={empty.modeled} title="Equivalent travel time lost after HP runs out. Earlier spurt delay is excluded.">{empty.time}{#if empty.partial} · partial{/if}</small>{:else}<small>{empty.fallback}</small>{/if}</div>{/if}</td>
+        <td class="hp-cell" class:empty-hp={s?.hpFinish!=null&&s.hpFinish<=0}>{#if hp}<div class="hp-main"><div class="hp-final"><strong title="HP remaining at the finish.">{hp.finish}</strong><span class="hp-max" title="HP at the start of the race.">/ {hp.start}</span>{#if hp.percent}<small title="Starting HP remaining at the finish.">{hp.percent}%</small>{/if}</div><div class="hp-flow"><span title="HP consumed during the race.">{hp.spent}</span><span class="hp-gain" title="HP recovered during the race.">{hp.gained}</span><span class="hp-loss" title="HP lost to debuffs and extra rushed drain.">{hp.stolen}</span></div><div class="hp-legend"><span>spent</span><span>gained</span><span>stolen</span></div></div>{/if}{#if empty}<div class="hp-empty"><small title="Time when HP runs out.">{empty.when}</small>{#if empty.metres}<small class:modeled={empty.modeled} title="Distance lost after HP runs out.">{empty.metres}</small><small class:modeled={empty.modeled} title="Travel-time loss after HP runs out.">{empty.time}{#if empty.partial} · partial{/if}</small>{:else}<small>{empty.fallback}</small>{/if}</div>{/if}</td>
         <td>{@render statusCell(duel, impact(r.id,'dueling'))}</td>
         <td><HillStats kind="uphill" hills={analysis.runners[r.id]?.hillImpacts??[]} total={uphill} name={runnerName(reference,r)}/></td>
         <td><HillStats kind="downhill" hills={analysis.runners[r.id]?.hillImpacts??[]} total={downhill} mode={mode(r.id,'downhill-mode')} name={runnerName(reference,r)}/></td>
-        <td>{#if corners?.assessedExtraDistance!=null}<div class="fact"><strong class="modeled" title="Extra path distance around corners versus lane 0. Includes lateral position and corner geometry; not all of it is avoidable.">+{f(corners.extraDistance??corners.assessedExtraDistance,2)}</strong><span class="unit">m</span></div>{@const cornerBits=[corners.assessedEquivalentTime!=null?`${f(corners.equivalentTime??corners.assessedEquivalentTime,3)} s`:'',corners.extraDistance===null?'path partial':'',corners.equivalentTime===null?'time partial':''].filter(Boolean)}{#if cornerBits.length}<span class="note modeled" title="Equivalent travel time for the extra corner distance, using the runner’s speed. This is not a predicted finish-time improvement.">{cornerBits.join(' · ')}</span>{/if}{:else}<span title="Course path or lane data unavailable.">—</span>{/if}</td>
+        <td>{#if corners?.assessedExtraDistance!=null}<div class="fact"><strong class="modeled" title="Extra distance around corners.">+{f(corners.extraDistance??corners.assessedExtraDistance,2)}</strong><span class="unit">m</span></div>{@const cornerBits=[corners.assessedEquivalentTime!=null?`${f(corners.equivalentTime??corners.assessedEquivalentTime,3)} s`:'',corners.extraDistance===null?'path partial':'',corners.equivalentTime===null?'time partial':''].filter(Boolean)}{#if cornerBits.length}<span class="note modeled" title="Travel time spent on the extra corner distance.">{cornerBits.join(' · ')}</span>{/if}{:else}<span title="Course path or lane data unavailable.">—</span>{/if}</td>
         <td>{#if front}{@render modeCell(su, r.id, 'speed-up')}{:else}{@render modeCell(pu, r.id, 'pace-up')}{/if}</td>
         <td>{#if front}{@render modeCell(ot, r.id, 'overtake')}{:else}{@render modeCell(pd, r.id, 'pace-down')}{/if}</td>
         <td>{@render statusCell(ss, impact(r.id,'spot-struggle'))}</td><td><PowerStats value={prepared?.runners[r.id]?.power} intervals={intervals[r.id]??[]}/></td>
-        <td><div class="fact" class:empty={!s?.rushedDuration}><strong title="Total time rushed, including time without a speed bonus. Rushing increases HP drain.">{f(s?.rushedDuration)}</strong><span class="unit">s</span></div><ImpactLine bits={rushedBits(r.id)} modeled title={modelHelp}/></td>
-        <td>{#if debuffs?.intervals}<div class="fact"><strong class="modeled" title="HP loss attributed to confirmed incoming debuffs, calculated from their applied effects. Does not include rushing.">{debuffs.modeledHpDelta==null?'—':f(debuffs.modeledHpDelta,0)}</strong><span class="unit">HP</span></div><ImpactLine bits={[...(debuffs.modeledDistanceDelta==null?[]:[{text:`${signed(debuffs.modeledDistanceDelta,1)} m`,tone:signTone(debuffs.modeledDistanceDelta)}]),...(debuffs.modeledTimeDelta==null?[]:[{text:`${Math.abs(debuffs.modeledTimeDelta).toFixed(3)} s`,tone:signTone(-debuffs.modeledTimeDelta)}])]} modeled title={debuffHelp}/>{:else}—{/if}</td>
-        <td><div class="fact" title="Time with a recorded blocker. Speed loss is measured separately."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss' as const},{text:`${range(hole.time,3)} s`,tone:'loss' as const},...(hole.partial?[{text:'partial',tone:'' as const}]:[])]} modeled title="Distance lost around traffic, including recovery. Pace modes, skills and slopes are kept the same."/>{:else if prepared?.runners[r.id]?.blocking}{@const clamps=prepared.runners[r.id].blocking!}<span class="note" title="Maximum actual speed reductions at separate self-speed and final-speed clamp stages. Not a counterfactual distance or finish-time loss.">Clamps {clamps.maximumSelfClamp.toFixed(2)} / {clamps.maximumFinalClamp.toFixed(2)} m/s</span>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
+        <td><div class="fact" class:empty={!s?.rushedDuration}><strong title="Time spent rushed.">{f(s?.rushedDuration)}</strong><span class="unit">s</span></div><ImpactLine bits={rushedBits(r.id)} modeled title="Status effect"/></td>
+        <td>{#if debuffs?.intervals}<div class="fact"><strong class="modeled" title="HP lost to incoming debuffs.">{debuffs.modeledHpDelta==null?'—':f(debuffs.modeledHpDelta,0)}</strong><span class="unit">HP</span></div><ImpactLine bits={[...(debuffs.modeledDistanceDelta==null?[]:[{text:`${signed(debuffs.modeledDistanceDelta,1)} m`,tone:signTone(debuffs.modeledDistanceDelta)}]),...(debuffs.modeledTimeDelta==null?[]:[{text:`${Math.abs(debuffs.modeledTimeDelta).toFixed(3)} s`,tone:signTone(-debuffs.modeledTimeDelta)}])]} modeled title="Incoming debuffs"/>{:else}—{/if}</td>
+        <td><div class="fact" title="Time blocked by another runner."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss' as const},{text:`${range(hole.time,3)} s`,tone:'loss' as const},...(hole.partial?[{text:'partial',tone:'' as const}]:[])]} modeled title="Traffic"/>{:else if prepared?.runners[r.id]?.blocking}{@const clamps=prepared.runners[r.id].blocking!}<span class="note" title="Peak speed cut before / after current-speed effects.">Clamps {clamps.maximumSelfClamp.toFixed(2)} / {clamps.maximumFinalClamp.toFixed(2)} m/s</span>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
       </tr>
     {/each}</tbody>
   </table></div>

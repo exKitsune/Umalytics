@@ -2,8 +2,10 @@ import type { StatusInterval, TrafficTick } from '../data/analytics';
 import { motionIndex as m } from './trace';
 
 export const TRAFFIC_CLEAR_GAP = .25;
-export const trafficLegend = 'Bright yellow: nearby, 0 m/s cut. Amber: 0.5 m/s. Red: 1 m/s or more. Each point uses the larger of the two blocking cuts, never their sum. Faded sections are brief clear gaps.';
-const active=(tick:TrafficTick)=>tick.near||tick.blocked;
+export const TRAFFIC_MIN_SLOWDOWN = .15;
+export const trafficLegend = 'Traffic appears at a speed cut of at least 0.15 m/s. White → yellow → amber → red shows increasing slowdown, reaching red at 1 m/s. Transparent gaps are below the threshold. The scale uses the larger of the two blocking cuts, not their sum; it is not the difference between target and current speed.';
+export const trafficSlowdown=(tick:TrafficTick|null)=>Math.max(tick?.selfLoss??0,tick?.finalLoss??0);
+const active=(tick:TrafficTick)=>(tick.near||tick.blocked)&&trafficSlowdown(tick)>=TRAFFIC_MIN_SLOWDOWN;
 
 /** Group display labels, never infer a blocked/near state across a clear gap. */
 export function trafficIntervals(rows:readonly number[][],finish:number):StatusInterval[]{
@@ -47,21 +49,28 @@ export function trafficActive(interval:StatusInterval,time:number):boolean {
   const tick=trafficAt(interval,time);return !!tick&&active(tick);
 }
 export function trafficColor(tick:TrafficTick|null):string {
-  const severity=Math.min(1,Math.max(tick?.selfLoss??0,tick?.finalLoss??0));
-  const from=severity<.5?[255,243,79]:[255,176,46],to=severity<.5?[255,176,46]:[240,68,68];
-  const blend=severity<.5?severity*2:(severity-.5)*2;
+  const severity=Math.min(1,Math.max(TRAFFIC_MIN_SLOWDOWN,trafficSlowdown(tick)));
+  const anchors=[[.15,[255,255,255]],[.35,[255,236,74]],[.65,[255,168,37]],[1,[240,68,68]]] as const;
+  const upper=anchors.findIndex(([value])=>value>=severity),[low,from]=anchors[Math.max(0,upper-1)],[high,to]=anchors[upper];
+  const blend=high===low?0:(severity-low)/(high-low);
   return '#'+from.map((value,index)=>Math.round(value+(to[index]-value)*blend).toString(16).padStart(2,'0')).join('');
 }
-/** Sharp tick boundaries preserve clear gaps; colors change with actual loss. */
+/** Interpolate sample centres instead of duplicating hard-edged tick stops.
+ * Only the paint is blended; activity and measured cuts remain discrete. */
 export function trafficGradient(interval:StatusInterval,project:(time:number)=>number|null){
   const stops:{x:number;color:string;opacity:number}[]=[];
-  for(const tick of interval.traffic??[]){
-    const start=project(tick.start),end=project(tick.end);
-    if(start===null||end===null)continue;
-    const color=trafficColor(tick),opacity=active(tick)?1:.08,previous=stops.at(-1);
-    // Constant spans need two stops, not thousands of identical SVG nodes.
-    if(previous&&previous.x===start&&previous.color===color&&previous.opacity===opacity)previous.x=end;
-    else stops.push({x:start,color,opacity},{x:end,color,opacity});
+  const ticks=interval.traffic??[];
+  const add=(time:number,color:string,opacity:number)=>{
+    const x=project(time);if(x===null)return;
+    const previous=stops.at(-1),before=stops.at(-2);
+    if(previous&&previous.x===x){stops[stops.length-1]={x,color,opacity};return;}
+    if(previous&&before&&previous.color===color&&before.color===color&&previous.opacity===opacity&&before.opacity===opacity)previous.x=x;
+    else stops.push({x,color,opacity});
+  };
+  if(ticks.length)add(ticks[0].start,trafficColor(ticks[0]),0);
+  for(const tick of ticks){
+    add((tick.start+tick.end)/2,trafficColor(tick),active(tick)?1:0);
   }
+  if(ticks.length)add(ticks.at(-1)!.end,trafficColor(ticks.at(-1)!),0);
   return stops;
 }
