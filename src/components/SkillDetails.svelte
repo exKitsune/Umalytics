@@ -65,7 +65,7 @@
                 <ConditionRules expression={branch.condition} {reference} showCode={showConditionCode} fieldSize={race.runners.length} predicates={evaluated?.predicates??[]} {onSeek}/>
                 {#if evaluated?.firstOpportunity!=null&&!evaluated.staticOnly}<button class="seek-condition" onclick={()=>onSeek(evaluated.firstOpportunity!)}>▶ {evaluated.firstOpportunity.toFixed(2)} s</button>{/if}
               {/if}
-              {#if !activation&&!usedBranches.size&&summary?.state==='unknown'}<p class="muted">{analysis.source==='simulation'?'This branch was not fully evaluated. See the simulation checks above.':summary.randomTrigger?'The random trigger is not in the replay.':summary.missingInputs.length?'Some required race details are missing.':'The replay cannot confirm every check.'}</p>{/if}
+              {#if !activation&&!usedBranches.size&&summary?.state==='unknown'}<p class="muted">{analysis.source==='simulation'?'This branch was not fully evaluated. See the activation checks above.':summary.randomTrigger?'The random trigger is not in the replay.':summary.missingInputs.length?'Some required race details are missing.':'The replay cannot confirm every check.'}</p>{/if}
             </details>
           {/if}
         </section>

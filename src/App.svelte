@@ -58,6 +58,11 @@
   let dragDepth = 0;
   const DOWNLOAD_URL = 'https://github.com/exKitsune/Umalytics/releases/latest';
   let selected = '';
+  let runnerSelectionTouched=false;
+  function selectRunner(id:string){selected=id;runnerSelectionTouched=true;}
+  function selectDefaultRunner(value:Race){
+    if(!runnerSelectionTouched||!value.runners.some(r=>r.id===selected))selected=(value.runners.find(r=>r.finishOrder===1)??value.runners[0])?.id??'';
+  }
   let time = 0;
   let playing = false;
   let playbackSpeed = 1;
@@ -95,9 +100,9 @@
     recorded:id=>{if(activeId===id){analysis=null;historical=null;race=recordedRace;}},
     historical:(value,id)=>{if(activeId===id)historical=value;},
     reference:value=>reference=value,
-    parsed:(value,id)=>{if(activeId!==id)return;race=value;recordedRace=value;if(!selected)selected=value.runners[0]?.id??'';},
+    parsed:(value,id)=>{if(activeId!==id)return;race=value;recordedRace=value;selectDefaultRunner(value);},
     base:(value,result,id)=>{if(activeId!==id)return;race=value;analysis=result;},
-    ready:(value,id)=>{if(activeId!==id)return;race=value.race;analysis=value.analysis;if(!selected)selected=race.runners[0]?.id??'';},
+    ready:(value,id)=>{if(activeId!==id)return;race=value.race;analysis=value.analysis;selectDefaultRunner(race);},
     state:value=>analysisState=value,cache:value=>cacheStatus=value,error:value=>error=value,
   });
   $: analysisClient.setLibrary(library,{});
@@ -151,7 +156,7 @@
     } catch(e){error=String(e);}
   }
   async function selectEntry(entry:LibraryEntry) {
-    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';time=0;playing=false;skillDetail=null;
+    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
     try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
   }
   async function saveTags(){
@@ -287,27 +292,27 @@
     </div>
   </aside>
   <main>
-    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>Race analysis</strong></div><div class="toolbar"><button onclick={()=>faqOpen=true}>FAQ</button><span class="connection"><i class="status-dot" class:live={gameConnected} class:ready={collecting&&!gameConnected}></i>{collectorLabel}</span><button class="icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} title="Toggle theme" onclick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'☀':'☾'}</button></div></header>
+    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>Race analysis</strong>{#if analysisGate?.mode==='verified_simulation'}<small class="analysis-source" title={analysisNotice(analysisGate)}>Simulation matched</small>{/if}</div><div class="toolbar"><button onclick={()=>faqOpen=true}>FAQ</button><span class="connection"><i class="status-dot" class:live={gameConnected} class:ready={collecting&&!gameConnected}></i>{collectorLabel}</span><button class="icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} title="Toggle theme" onclick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'☀':'☾'}</button></div></header>
     {#if migrationError}<div class="notice" role="status">{migrationError}</div>{/if}
     {#if error||message}<div class="notice" class:error={!!error} role="status"><span>{error||message}</span><button aria-label="Dismiss message" onclick={()=>{message='';error=''}}>×</button></div>{/if}
     {#if race && analysisRace}
       <div class="workspace">
-        <div class="notice" role="status" data-analysis-mode={analysisGate?.mode??'recorded_only'}>{analysisNotice(analysisGate)}</div>
+        {#if analysisGate?.mode!=='verified_simulation'}<div class="notice" role="status" data-analysis-mode={analysisGate?.mode??'recorded_only'}>{analysisNotice(analysisGate)}</div>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
-        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/>{#if analysisRace.racedAt || analysisRace.savedReplay}<p class="race-run">{analysisRace.racedAt ? date(analysisRace.racedAt) : ''}{#if analysisRace.savedReplay}{analysisRace.racedAt ? ' · Saved Replay' : 'Saved Replay'}{/if}</p>{/if}</div><RaceTeams race={analysisRace} {reference} {selected} onSelect={id=>selected=id}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>
-        <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={id=>selected=id}/>
+        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/>{#if analysisRace.racedAt || analysisRace.savedReplay}<p class="race-run">{analysisRace.racedAt ? date(analysisRace.racedAt) : ''}{#if analysisRace.savedReplay}{analysisRace.racedAt ? ' · Saved Replay' : 'Saved Replay'}{/if}</p>{/if}</div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>
+        <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={selectRunner}/>
         <div class="primary-replay">
-          <CurveReplay race={analysisRace} {course} {reference} {selected} {time} {analysis} {fontScale} onSelect={id=>selected=id} onSeek={seek}>
-            <div slot="minimap" aria-label="Course minimap"><RaceTrack race={analysisRace} {samples} {course} {reference} {selected} compact onSelect={id=>selected=id}/></div>
+          <CurveReplay race={analysisRace} {course} {reference} {selected} {time} {analysis} {fontScale} onSelect={selectRunner} onSeek={seek}>
+            <div slot="minimap" aria-label="Course minimap"><RaceTrack race={analysisRace} {samples} {course} {reference} {selected} compact onSelect={selectRunner}/></div>
             <div class="transport main-transport"><button class="play-button" aria-label={playing?'Pause replay':'Play replay'} onclick={togglePlay}>{playing?'Ⅱ':'▶'}</button><button class="icon-button" aria-label="Restart replay" onclick={()=>{time=0;playing=false}}>↺</button><span class="time">{time.toFixed(1)}<small> / {race.duration.toFixed(1)}s</small></span><input aria-label="Replay time" type="range" min="0" max={race.duration} step=".05" bind:value={time}/><select aria-label="Playback speed" bind:value={playbackSpeed}><option value={.25}>¼×</option><option value={.5}>½×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></div>
           </CurveReplay>
         </div>
           {#if selectedReady}<DeferredPanel identity={activeId} label="Telemetry"><Telemetry race={analysisRace} {course} {reference} {analysis} {selected} {time} sample={selectedSample} gap={selectedGap} onSeek={seek}/></DeferredPanel>
-          <DeferredPanel identity={activeId} label="Runner skills"><SkillMatrix race={analysisRace} {reference} {analysis} {selected} onSeek={seek} onSkill={(id,runnerId)=>{selected=runnerId;playing=false;skillDetail=id}}/></DeferredPanel>{:else}<AnalysisSkeleton part="details" message={analysisState.message}/>{/if}
+          <DeferredPanel identity={activeId} label="Runner skills"><SkillMatrix race={analysisRace} {reference} {analysis} {selected} onSeek={seek} onSkill={(id,runnerId)=>{selectRunner(runnerId);playing=false;skillDetail=id}}/></DeferredPanel>{:else}<AnalysisSkeleton part="details" message={analysisState.message}/>{/if}
           <details class="panel race-data-notes"><summary>Race data notes · {race.frames.length} frames · {race.events.length} events</summary>{#each race.warnings as warning}<p>{warning}</p>{/each}<p>{analysisRace.courseIdentity?.source==='manual'?'Course selected manually.':analysisRace.courseIdentity?.source==='skill-conditions'?'Course inferred from recorded skill activations.':`Course source: ${analysisRace.courseIdentity?.source??(race.courseId?'recorded':'unknown')}.`}</p>{#if inferredCourse}<p>{inferredCourse.courseId?'Skill evidence identifies one compatible course.':inferredCourse.trackId?'Skill evidence identifies the venue. The surface is still unassigned.':'Course candidates from recorded skill evidence.'}</p>{#each inferredCourse.evidence as evidence}<p>{evidence}</p>{/each}{#if inferredCourse.candidateCourseIds.length}<p>Compatible candidates:</p><ul>{#each inferredCourse.candidateCourseIds as id}<li>{reference?.courses[id]?.name??`Course ${id}`}</li>{/each}</ul>{/if}{/if}</details>
         </div>
         {#if runner&&selectedReady}<div class="analysis-side"><RunnerPanel {runner} race={analysisRace} {course} {reference} {analysis} {time} sample={selectedSample} gap={selectedGap} onSkill={id=>{playing=false;skillDetail=id}} onSeek={seek} onDownload={()=>void downloadUmaJson()}/></div>{:else}<div class="analysis-side"><AnalysisSkeleton part="runner" message="Preparing runner…"/></div>{/if}
-        </div>{:else}<RecordedReplay race={analysisRace} {reference} {time} {selected} {historical} onSeek={seek} onSelect={id=>selected=id} onExport={exportRace}>
+        </div>{:else}<RecordedReplay race={analysisRace} {reference} {time} {selected} {historical} onSeek={seek} onSelect={selectRunner} onExport={exportRace}>
           <div class="transport main-transport"><button class="play-button" aria-label={playing?'Pause replay':'Play replay'} onclick={togglePlay}>{playing?'Ⅱ':'▶'}</button><button aria-label="Restart replay" onclick={()=>{time=0;playing=false}}>↺</button><span class="time">{time.toFixed(1)} / {race.duration.toFixed(1)}s</span><input aria-label="Replay time" type="range" min="0" max={race.duration} step=".05" bind:value={time}/><select aria-label="Playback speed" bind:value={playbackSpeed}><option value={.5}>½×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></div>
         </RecordedReplay>{/if}
         {#if analysisGate}<details class="panel"><summary>Analysis version and comparison details</summary><button onclick={exportAnalysis}>Export analysis and provenance</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:400px;overflow:auto">{JSON.stringify(analysisGate,null,2)}</pre></details>{/if}
@@ -401,3 +406,7 @@
 
 {#if faqOpen}<AnalysisFaq onClose={()=>faqOpen=false}/>{/if}
 {#if skillDetail!==null&&analysisRace&&analysis}<SkillDetails onFaq={()=>{skillDetail=null;faqOpen=true}} skillId={skillDetail} {reference} race={analysisRace} {analysis} {runner} onClose={()=>skillDetail=null} onSeek={seek}/>{/if}
+
+<style>
+  .analysis-source{font-size:var(--font-10);color:var(--muted);font-weight:400;margin-left:16px;white-space:nowrap}
+</style>

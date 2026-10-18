@@ -103,3 +103,113 @@ The desktop build packages the worker, pinned data, Python service and shared
 frontend into the Tauri application. Their hashes are recorded in the installed
 bundle manifest. Instrumentation inputs are stored without Git newline conversion
 so Windows checkout cannot change patch application or their hashes.
+
+## Effectiveness calculator plan
+
+This is a proposed implementation, not functionality shipped with the UI cleanup.
+Use two measurements rather than treating a percentage as a finish-time prediction:
+
+| Measurement | Meaning | Execution |
+|---|---|---|
+| Effectiveness | How much of the activated effect was usable in this race | Engine-side probes against the matched run's actual tick state |
+| Race impact | How the runner and field finish differently without those effects | A separate full-field counterfactual execution |
+
+### 1. Define the measurements before optimizing
+
+Preserve the existing target-speed 0/half/full scoring convention, with its
+numerator and duration denominator explicit. Replace reconstructed targets,
+acceleration and blockers with engine values and engine-owned calculations.
+Report fully used, accelerating, capped/blocked and unused time as the breakdown.
+Do not assume that a blocker flag wastes every effect: the actual clamp order
+determines whether target-speed, acceleration and direct-speed effects survive.
+Acceleration and direct speed need their own measurable use ratios. Recovery
+shows actual HP restored versus offered HP, including overflow; useful recovery
+is a separate question answered by the race-impact calculation. Mixed skills
+retain their component results instead of averaging incompatible units. A failed
+wit check means no activation and zero realized effect; activation utilization
+itself is not applicable. Missed activation remains visible separately.
+
+For each tick with active supported effects, evaluate the relevant physics
+functions on scratch state with and without one effect. Hold the baseline
+pre-tick field context fixed, consume no new randomness, and never mutate the
+live execution. This measures immediate use under the actual circumstances;
+summing these probes does not establish a causal finish-time gain. Implement
+the probes beside the Rust calculation sites, not as another TypeScript physics
+engine. Unsupported effect components remain unavailable.
+
+### 2. Establish a correct counterfactual reference implementation
+
+Start with complete reruns from initialization. Keep the race setup, opponents,
+owned skills and initial RNG state fixed; suppress the selected skill's applied
+effects while preserving its checks, draws, activations and cooldown bookkeeping.
+Apply suppression consistently to self effects, queued external effects,
+initial passives and later activations. This answers the value of its effects
+within this build. Removing the skill from the loadout is a different experiment,
+because ownership can change other conditions and initialization; expose that
+only as a separate build-comparison feature.
+
+Run the entire field so lane choices, blocking, opponents, recovery/spurt changes
+and carryover can evolve. Define time saved as counterfactual raw finish time
+minus baseline raw finish time. Allow negative values. Also report place change,
+finish gap and team impact for debuffs. Define distance gain at a common time
+and document the finish clamp; do not integrate incomparable trajectories or
+label equivalent travel time as an actual finish-time change. Counterfactuals
+are expected to differ from the recording and never replace the authorized
+baseline replay.
+
+The current engine uses a shared sequential random stream. Equal seeds or a
+cloned RNG state do not guarantee equal later decisions after paths diverge.
+The first implementation should preserve native RNG behavior and identify
+the result as a conditional alternative execution. If users need expected build
+value, compare paired runs over a predetermined seed set and report uncertainty;
+never quietly substitute a single changed stream for an isolated effect claim.
+Event-aligned common random numbers are a possible later experimental mode,
+requiring stable event identities and explicit rules for new/missing events.
+They change the coupling between runs and must not alter the matched baseline.
+Synchronization and variance reduction require validation, rather than assuming
+that sharing a seed is sufficient ([L'Ecuyer, WSC 2015](https://informs-sim.org/wsc15papers/003.pdf)).
+
+### 3. Optimize the measured bottlenecks
+
+1. Aggregate effectiveness during the existing matched run and return small
+   component summaries. Reuse one baseline for all comparisons.
+2. Reuse a warm, app-owned Rust worker and parsed immutable course/skill data;
+   the upstream JSON-lines loop already supports multiple requests, whereas
+   our current bridge starts a process per execution. Batch the selected
+   runner's comparisons and omit replay frames/full decision traces from
+   counterfactual summaries. Retain bounded diagnostics for validation.
+3. Prioritize the selected runner, compute expensive impacts on demand, deduplicate
+   identical requests, and use a small CPU/memory-bounded pool. Cancel or detach
+   obsolete requests when the selected race changes; keep capture responsive.
+   Skip proven no-op effect-suppression scenarios, but do not apply that shortcut
+   to loadout-removal experiments.
+4. Only after full-rerun correctness and profiling, add checkpoints before the
+   first affected phase. Passive effects require initialization checkpoints.
+   Capture the entire field, all RNGs, timers, queues, ranks and control state;
+   rebind callbacks and shared ownership safely. `RaceField`/`RaceSolver` are not
+   simple isolated clones. Bound checkpoint memory and fall back to full reruns.
+5. Cache summaries by capture/setup digest, exact executable/data/instrumentation
+   identities, intervention, metric version and RNG policy. Display cached
+   results only after a fresh baseline authorization; revoke them on the same
+   changes that revoke the baseline. Persistent caches cannot authenticate
+   hidden baseline decisions.
+
+Individual removal deltas are marginal effects and must not be added together.
+Calculate a combined all-selected-skills intervention for the total. If an
+additive per-skill allocation is later needed, offer a bounded sampled Shapley
+allocation as an estimate, with shared coalition caches and an uncertainty/
+runtime budget; do not attempt every subset by default.
+
+### 4. Acceptance gates and rollout
+
+First ship component effectiveness; next add on-demand full-field impact; then
+optimize with warm workers, batching and measured checkpoint benefits. Require
+no-op interventions and disabled probes to reproduce the baseline exactly.
+Compare optimized runs with the full-rerun reference, including passive skills,
+recovery/spurt changes, blocked direct-speed effects, overlapping activations,
+debuff immunity, failed wit, post-finish duration and RNG divergence. Test that
+runner order, concurrent requests and cancellation cannot change results or
+attach one race's results to another. Benchmark median/p95 latency, peak memory,
+output size and CPU use on representative fields before choosing default batch
+sizes or promising a response time. Keep the existing cards and graphs; show
+Effectiveness and Time saved there, with methods in expandable details.

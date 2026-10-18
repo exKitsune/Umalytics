@@ -113,7 +113,7 @@
     for(const interval of all){const prior=merged.at(-1);if(prior&&prior.end!==null&&interval.end!==null&&interval.start<=prior.end){prior.end=Math.max(prior.end,interval.end);if(interval.evidence==='estimated')prior.evidence='estimated';}else merged.push({...interval});}
     return merged;
   }
-  function provenance(i:StatusInterval){if(i.evidence==='simulated')return `${statusLabel(i.kind)} · ${i.start.toFixed(3)}–${i.end?.toFixed(3)??'?'} s · simulator state`;const multiplier=(i.kind==='rushed'||i.kind==='rushed-boost')?(i.model?.speedMultiplier??1.04):null;const delta=i.model?.speedDelta;const bonus=multiplier!=null?` · ×${multiplier.toFixed(2)}`:delta!=null?` · ${delta>=0?'+':''}${delta.toFixed(2)} m/s`:'';return `${statusLabel(i.kind)} · ${i.start.toFixed(2)}–${i.end?.toFixed(2)??'?'} s${bonus}`;}
+  function provenance(i:StatusInterval){if(i.evidence==='simulated')return `${statusLabel(i.kind)} · ${i.start.toFixed(3)}–${i.end?.toFixed(3)??'?'} s`;const multiplier=(i.kind==='rushed'||i.kind==='rushed-boost')?(i.model?.speedMultiplier??1.04):null;const delta=i.model?.speedDelta;const bonus=multiplier!=null?` · ×${multiplier.toFixed(2)}`:delta!=null?` · ${delta>=0?'+':''}${delta.toFixed(2)} m/s`:'';return `${statusLabel(i.kind)} · ${i.start.toFixed(2)}–${i.end?.toFixed(2)??'?'} s${bonus}`;}
   function ordinal(rank:number){const teen=rank%100;const suffix=teen>=11&&teen<=13?'th':({1:'st',2:'nd',3:'rd'} as Record<number,string>)[rank%10]??'th';return `${rank}${suffix}`;}
   function span(interval:StatusInterval,project:(t:number)=>number|null){const a=project(interval.start),b=project(interval.end??interval.observedUntil??interval.start);if(a===null)return null;const start=Math.max(left,Math.min(right,a)),end=b===null?start:Math.max(left,Math.min(right,b));return {x:Math.max(left,Math.min(right-3,a)),width:Math.max(3,end-start),start,end};}
   function effectSummary(id:number){const text=effectsText(reference,id);return text.length>46?`${text.slice(0,43)}…`:text;}
@@ -222,7 +222,7 @@
       {/if}
     </svg>
   </div>
-  <details class="status-legend"><summary>Status legend</summary><ul>{#each statusLegend as item}<li><span class="legend-swatch" style:background={item.kind==='uphill'?'#69b779':color(item.short)}></span><strong>{item.short}</strong><span>{item.name}</span><span class="legend-detail">{#if item.formula&&analysis.source!=='simulation'}<code>{item.formula}</code>{/if}<small>{analysis.source==='simulation'?'State from matched simulator ticks.':item.source}</small></span></li>{/each}</ul></details>
+  <details class="status-legend"><summary>Status legend</summary><ul>{#each statusLegend as item}<li><span class="legend-swatch" style:background={item.kind==='uphill'?'#69b779':color(item.short)}></span><strong>{item.short}</strong><span>{item.name}</span><span class="legend-detail">{#if item.formula&&analysis.source!=='simulation'}<code>{item.formula}</code>{/if}{#if analysis.source!=='simulation'}<small>{item.source}</small>{/if}</span></li>{/each}</ul></details>
 </section>
 <style>
   .telemetry-svg [tabindex]:focus{outline:none}

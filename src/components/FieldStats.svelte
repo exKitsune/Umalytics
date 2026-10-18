@@ -170,7 +170,7 @@
   {#if !row.empty}{#if !modes[id]}<span class="note">Calculating gains…</span>{:else if mode(id,kind)}<ModeImpactSummary value={mode(id,kind)}/>{:else}<span class="note">Gain unavailable</span>{/if}{/if}
 {/snippet}
 <section class="panel field-stats" class:compact>
-  <div class="panel-heading"><strong>Race results</strong><span class="muted">{analysis.source==='simulation'?'Simulator results · select a runner':'Select a runner · dotted values use models'}</span></div>
+  <div class="panel-heading"><strong>Race results</strong><span class="muted">{analysis.source==='simulation'?'Select a runner':'Select a runner · dotted values use models'}</span></div>
   <div class="field-scroll" use:pinFinish><table use:hoverCol data-col="">
     <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Rushed','Debuffs received','Blocked / Near'] as heading}<th title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Recorded gate delay versus the 0–100 ms draw.':undefined}>{heading}</th>{/each}</tr></thead>
     <tbody>{#each sorted as r}

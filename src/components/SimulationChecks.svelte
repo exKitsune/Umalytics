@@ -18,9 +18,9 @@
   }
 </script>
 <details class="simulation-checks">
-  <summary>Simulation checks <small>{checks.length} entries</small></summary>
+  <summary>Activation checks <small>{checks.length} entries</small></summary>
   <label><input type="checkbox" bind:checked={predicates}/> Include individual predicates and effects</label>
-  <div class="checks-scroll"><table aria-label="Simulation skill checks"><thead><tr><th>Time</th><th>Check</th><th>Result</th></tr></thead><tbody>
+  <div class="checks-scroll"><table aria-label="Skill activation checks"><thead><tr><th>Time</th><th>Check</th><th>Result</th></tr></thead><tbody>
     {#each rows as check}<tr><td><button onclick={()=>onSeek(check.time)}>{check.time.toFixed(3)}{#if check.count>1}–{check.lastTime.toFixed(3)}{/if} s</button></td><td>{label(check)}<small>Variant {check.detail+1}{check.count>1?` · ${check.count} checks`:''}</small></td><td>{result(check)}</td></tr>{/each}
   </tbody></table></div>
   <p>Repeated identical checks are grouped by consecutive ticks. Unevaluated predicates are not assumed to pass.</p>

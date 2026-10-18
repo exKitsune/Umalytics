@@ -17,7 +17,7 @@
 </script>
 {#if breakdown}
   <section class="stat-breakdown" aria-label="Race stat breakdown">
-    <div class="breakdown-heading"><strong>Race stats</strong><small title={breakdown.detail}>{breakdown.evidence==='simulated'?'Simulator':'Model'}</small></div>
+    <div class="breakdown-heading"><strong>Race stats</strong>{#if breakdown.evidence!=='simulated'}<small title={breakdown.detail}>Model</small>{/if}</div>
     {#each Object.entries(names) as [key,name]}{@const stat=breakdown.stats[key as StatKey]}
       <div class="stat-breakdown-row" title={stat.detail}>
         <div class="stat-heading"><GameIcon name={`stat-${key}`} size={16}/><strong>{name}</strong><span>{f(stat.raw)} <small>→</small> {f(stat.final)}</span></div>
@@ -31,7 +31,7 @@
         {#if key==='wisdom'&&witMean!==null&&witMax!==null&&baseSpeed!==null}<div class="wit-speed" title={`Expected target-speed adjustment before the selected final spurt. Each of the 24 sections draws between ${speed(witMax-baseSpeed*.0065)} and ${speed(witMax)}. Actual rolls are not recorded.`}><span>Avg. section speed</span><strong>{speed(witMean)}</strong></div>{/if}
       </div>
     {/each}
-    <div class="hp-breakdown"><strong>Starting HP <span>{f(breakdown.startingHp.observed)}</span></strong><p>{breakdown.evidence==='simulated'?'Initial HP from the matched simulation.':'Distance plus 0.8 × stamina × style.'}</p>{#if distance!==null&&stamina!==null&&styleRate!==null}<p class="formula">{f(distance)} + 0.8 × {f(stamina)} × {styleRate.toFixed(3)} = {f(breakdown.startingHp.modeled)}</p>{:else if breakdown.startingHp.modeled!==null}<p class="formula">Model {f(breakdown.startingHp.modeled)}</p>{/if}</div>
+    <div class="hp-breakdown"><strong>Starting HP <span>{f(breakdown.startingHp.observed)}</span></strong>{#if breakdown.evidence!=='simulated'}<p>Distance plus 0.8 × stamina × style.</p>{#if distance!==null&&stamina!==null&&styleRate!==null}<p class="formula">{f(distance)} + 0.8 × {f(stamina)} × {styleRate.toFixed(3)} = {f(breakdown.startingHp.modeled)}</p>{:else if breakdown.startingHp.modeled!==null}<p class="formula">Model {f(breakdown.startingHp.modeled)}</p>{/if}{/if}</div>
   </section>
 {/if}
 <style>
