@@ -16,7 +16,7 @@ races = extract_races(payload, args.endpoint)
 memory = []
 remember_room_bindings(memory, collect_room_bindings(payload))
 times = []
-remember_race_times(times, collect_race_times(payload))
+remember_race_times(times, collect_race_times(payload, args.endpoint))
 replay = saved_replay_route(args.endpoint)
 stamp_race_clocks(races, None, replay)
 apply_race_times(races, times)

@@ -298,7 +298,7 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
             forwarded = [str(child_output), '', 'two words', 'quote"inside', 'C:\\ends with slash\\',
                          '\\"', '日本語', '%command%', '$literal`value', '--check']
             before = dict(os.environ)
-            launch = subprocess.run([*executable_command, '--port', '14317', '--launch-game', '--', str(probe), *forwarded],
+            launch = subprocess.run([*executable_command, '--port', '14317', '--data-dir', str(data), '--launch-game', '--', str(probe), *forwarded],
                                     timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
             assert launch.returncode == 37
             child_record = json.loads(child_output.read_text(encoding='utf-8'))

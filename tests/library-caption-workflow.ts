@@ -58,10 +58,10 @@ try {
   captionNow+=59999;await hydrate(entries,reference);assert.equal(reads,40);assert.equal(captions.size,40);
   captionNow+=1;
   await hydrate(entries,reference);assert.equal(reads,45);assert.equal(captions.size,45);
-  assert.ok([...captions.values()].every(c=>c.courseId===10506&&c.courseIdentity.source==='skill-conditions'&&courseCaption(c,reference)==='Nakayama · 2500 m'));
+  assert.ok([...captions.values()].every(c=>c.courseId===null&&c.courseInference===null&&courseCaption(c,reference)==='2500 m · Course unknown'));
   assert.ok([...captions.values()].every(c=>!('frames' in c)&&!('events' in c)&&!('runners' in c)));
   await hydrate(entries,reference);assert.equal(reads,45);
-  const cached=hydrate.cached(entries[0],reference);assert.equal(cached.courseId,10506);assert.equal(cached.courseIdentity?.source,'skill-conditions');
+  const cached=hydrate.cached(entries[0],reference);assert.equal(cached.courseId,null);assert.equal(cached.courseIdentity?.source,'unknown');
   hydrate.dispose();await hydrate(entries,reference);assert.equal(reads,45);
   let release!:()=>void,arrived!:()=>void,callbacks=0,lateReads=0;
   const gate=new Promise<void>(done=>release=done),ready=new Promise<void>(done=>arrived=done);
@@ -69,7 +69,7 @@ try {
   const pending=late([entries[0]],reference);await ready;late.dispose();release();await pending;await late(entries,reference);assert.equal(callbacks,0);assert.equal(lateReads,1);
   } finally {Date.now=actualNow;}
   assert.equal(await readFile(join(data,'races/history-0.json'),'utf8'),body);
-  console.log(JSON.stringify({syntheticHistoryRows:45,budgetResume:'passed',compactInferredCaptions:'passed',recordedInstanceSource:'passed',updatedInstanceMapping:'passed',manualSource:'preserved',captionCache:'passed',pendingDisposal:'passed',sourceCapture:'unchanged',certificateChanges:false}));
+  console.log(JSON.stringify({syntheticHistoryRows:45,budgetResume:'passed',recordedCaptionsNoInference:'passed',recordedInstanceSource:'passed',updatedInstanceMapping:'passed',manualSource:'preserved',captionCache:'passed',pendingDisposal:'passed',sourceCapture:'unchanged',certificateChanges:false}));
 } catch(error){primaryError=error;throw error;} finally {
   try {
     if(health&&await samePath(health.dataDirectory,data))await fetch(base+'/api/app/exit',{method:'POST',headers:{'Content-Type':'application/json',Origin:base,'X-UmaTrace-CSRF':health.csrfToken},body:'{}'});

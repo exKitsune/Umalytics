@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "name": "Umalytics GlobalSim integration kit",
+  "date": "2026-10-18",
+  "updatedAtUtc": "2026-10-18T00:09:47.525981+00:00",
+  "revision": "original-race-version-gating",
+  "engineCommit": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+  "appInspectedCommit": "67443a667998c48cd20685b34bfefc356bd1064f",
+  "originalReferenceDataBaselineCommit": "7ebf0f82723b11a49e1676753960b90de7ef9095",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 23273,
+      "sha256": "03eee660f004fb38062d70c7dce70dacad0bdfa18b5a0f771965f05550200f5a"
+    },
+    {
+      "path": "CODEX-INTEGRATION-PROMPT.md",
+      "bytes": 18951,
+      "sha256": "9b7c2b87011260ffd6c49f933739a2478ed85b5a6951ef07e7ffa7f396898f84"
+    },
+    {
+      "path": "INTEGRATION-ARCHITECTURE.md",
+      "bytes": 42578,
+      "sha256": "e73729d5a72a1414954ac977bfa60278e6ad9308091e4633c0a7534f7ee547f9"
+    },
+    {
+      "path": "COURSE-CAPTURE-UPDATE.md",
+      "bytes": 25224,
+      "sha256": "7736c22e6fa0d41adcd0f3255e332970137bf8fb6bf4e39a70edaa590ee3c68e"
+    },
+    {
+      "path": "context.schema.json",
+      "bytes": 4461,
+      "sha256": "5ef3d89763c8799c7f7637e63ec63f635a13b22e960d328e0867368ad9f3c703"
+    },
+    {
+      "path": "verify_capture.py",
+      "bytes": 3991,
+      "sha256": "47d8dec9c82b3b2e89e0f03e869a2286c56ddb9445a7463e5d96aa00236e3808"
+    },
+    {
+      "path": "run_fixture_regressions.py",
+      "bytes": 4951,
+      "sha256": "3e9467393a7429264487ae4f20aae2295a18bba4ffd96d085335ee9ee35af8d4"
+    },
+    {
+      "path": "desktop/globalsim_bridge/__init__.py",
+      "bytes": 1251,
+      "sha256": "681e576e64bd54ec9cfdefd422978ecde591b889a22ecf18da8628789f0ce533"
+    },
+    {
+      "path": "desktop/globalsim_bridge/adapter.py",
+      "bytes": 33355,
+      "sha256": "a1217364a30216005dbed0ff529929d81eaab6e5de26752739c667833de05510"
+    },
+    {
+      "path": "desktop/globalsim_bridge/comparator.py",
+      "bytes": 21652,
+      "sha256": "ffcdc7e9984b0aa8363cc5854c52b3d7daf0cc4845d21da2c0283265b30430c0"
+    },
+    {
+      "path": "desktop/globalsim_bridge/runtime.py",
+      "bytes": 24209,
+      "sha256": "476291a7b77ee3657b2566b17fc421122c2d759bd0c17d0ca7531725cbd5e7e9"
+    },
+    {
+      "path": "tests/test_adapter.py",
+      "bytes": 31211,
+      "sha256": "19ddd316ae2bbd07fd76ea9f8d332c2d9ab0ba49b442e072d7b28fb2cb64b921"
+    },
+    {
+      "path": "tests/test_runtime.py",
+      "bytes": 10568,
+      "sha256": "29d97640b7811e7256db6d68a86272b5a8a616f113a9f19f71befb0cf911ce1b"
+    },
+    {
+      "path": "tests/test_course_capture.py",
+      "bytes": 38515,
+      "sha256": "bf9838c1d74a18eafd8749d15b6a83ea09ecad7ef16243966403dde29e7878f2"
+    },
+    {
+      "path": "simulator-worker/Cargo.toml",
+      "bytes": 447,
+      "sha256": "42246db7a77895f62c278165e3d9df2a34bbe62bd9b0c15fbb3e3fdeaa0a29f0"
+    },
+    {
+      "path": "simulator-worker/Cargo.lock",
+      "bytes": 406,
+      "sha256": "4ae10205ce92f0bb8cedbd3410fa1c240a1de8c3170c11d413ab49e2682e4d84"
+    },
+    {
+      "path": "simulator-worker/src/main.rs",
+      "bytes": 311,
+      "sha256": "200dde5ef000a9682ffc9bd9d5b2996dc75e859b7b64c1b83f55c1cebf6ed875"
+    },
+    {
+      "path": "src/simulation/contracts.ts",
+      "bytes": 17229,
+      "sha256": "df60bbf6d25f3e4152ad10481c8089232858a51f162df7fb401f36ec1b4d5b35"
+    },
+    {
+      "path": "evidence/GlobalSim-validation-report.json",
+      "bytes": 741520,
+      "sha256": "976ee8dcb2b26b2df72a9e5935d7ca00747cf494d6b0877ee319fb9cd7d03861"
+    },
+    {
+      "path": "evidence/bridge-regression-results.json",
+      "bytes": 235049,
+      "sha256": "c2214ac68a0de01ad0f5ac48bf7b7e5c99c3c289fee533eea26f8ff8dd36df63"
+    },
+    {
+      "path": "evidence/fixture-manifest.json",
+      "bytes": 2448,
+      "sha256": "ccb9290a8329fb28bad61b36cfe7b5d9f9a0f70d4dfd8864781abbba6b4fc87f"
+    },
+    {
+      "path": "evidence/kit-validation.json",
+      "bytes": 16508,
+      "sha256": "0a5af1be0e252b7f1ef4eb1a101cf27f28bad880904b4af76e606c2efcd10e04"
+    },
+    {
+      "path": "evidence/course-capture-validation.json",
+      "bytes": 18790,
+      "sha256": "6248e26ad0274222cf34ab72f94b45959b0eb63d799dcb497fe79fae3a256566"
+    },
+    {
+      "path": "VERSION-COMPATIBILITY.md",
+      "bytes": 15558,
+      "sha256": "0d7a2da12063bfc627bd9111ca7e3da75704b8690daf531c0eb93d2323aaca33"
+    },
+    {
+      "path": "engine-registry.template.json",
+      "bytes": 142,
+      "sha256": "226cb264389ee1c022255bc485974c5a2b0f1d93d86b9fa620d702aee4041074"
+    },
+    {
+      "path": "desktop/globalsim_bridge/versioning.py",
+      "bytes": 29735,
+      "sha256": "6794ccdcc8b73347eb1d388365f82ecd1eb674e28275b82cdc978fec4590fcee"
+    },
+    {
+      "path": "desktop/globalsim_bridge/analysis_gate.py",
+      "bytes": 22790,
+      "sha256": "864224dfb5945537b7b9c99beb56a426cb61691b3d7e9ca0c4365e192a7d65ed"
+    },
+    {
+      "path": "tests/test_versioning.py",
+      "bytes": 28608,
+      "sha256": "267f6355411e71c3d07902e35bc67a019aef0101d84ee7f4bd89407eabec1568"
+    },
+    {
+      "path": "tests/test_analysis_gate.py",
+      "bytes": 16488,
+      "sha256": "6102629f3e8103e6b49a62e5c3aa0a33d403c72246638bd91c92cdfff3794bb6"
+    },
+    {
+      "path": "tests/test_contracts.mjs",
+      "bytes": 10464,
+      "sha256": "8d939d099dce7771a532c76c485787aa2a53b6c8794020a801dd037206101a9c"
+    },
+    {
+      "path": "tests/export_contract_fixtures.py",
+      "bytes": 1806,
+      "sha256": "caa208bec166b5440485347e7c09cda701e45101b082393bc1f66db86b12a5fd"
+    },
+    {
+      "path": "evidence/version-compatibility-validation.json",
+      "bytes": 26693,
+      "sha256": "66d905cde684c2da4717fc2a271bc1b18a5786e699fd1565ee453789dbbce0ea"
+    },
+    {
+      "path": "evidence/version-contract-validation.json",
+      "bytes": 2802,
+      "sha256": "7cc52282f38cae70d9bde15e87fefbfbf55c0223faa8e7cec0d98fa327f7aa6f"
+    }
+  ],
+  "manifestSelfHashExcluded": true,
+  "originalCapturesIncluded": false,
+  "upstreamSourceOrDataIncluded": false,
+  "compiledBinaryIncluded": false
+}

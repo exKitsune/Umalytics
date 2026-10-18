@@ -99,7 +99,9 @@ export interface Race {
   /** Practice and room matches share the practice analysis category. */
   raceMode?: 'practice' | 'room';
   raceDesignation?: 'practice-live' | 'practice-saved' | 'room-live' | 'room-saved';
-  capture?: { endpointGroup: RaceCategory; categorySource: 'endpoint' | 'content' | 'unknown' };
+  capture?: { endpointGroup?: RaceCategory; categorySource?: 'endpoint' | 'content' | 'unknown'; courseSource?: 'room-response' };
+  /** Original values and provenance; display racedAt is never eligibility evidence. */
+  originalRace?: Record<string, unknown>;
   courseIdentity?: { source: 'recorded' | 'race-instance' | 'filename-race-instance' | 'manual' | 'skill-conditions' | 'unknown'; raceInstanceId?: number };
   distanceEvidence?: 'recorded' | 'course-reference' | 'finish-derived';
   /** Simulation random seed, never an account/session identifier. */
@@ -111,6 +113,9 @@ export interface Race {
 /** Live RaceInfo fields observed on the same race response. Auth/session envelopes are omitted. */
 export interface RaceRaw {
   simDataBase64: string;
+  raceDistance?: number;
+  raceCourseAliases?: Record<string, unknown>;
+  raceDistanceAliases?: Record<string, unknown>;
   raceHorse?: unknown[];
   raceCourseSet?: unknown;
   trainedCharaArray?: unknown[];

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "updatedAtUtc": "2026-10-18T00:06:03.196Z",
+  "command": "node tests/test_contracts.mjs --fixtures ../globalsim-runtime-check/version-contract-fixtures.json --output evidence/version-contract-validation.json",
+  "fixtureGeneration": "separate-export_contract_fixtures.py-command",
+  "actualArguments": [
+    "--fixtures",
+    "../globalsim-runtime-check/version-contract-fixtures.json",
+    "--output",
+    "evidence/version-contract-validation.json"
+  ],
+  "node": "v24.19.0",
+  "pythonExecutable": "python3",
+  "source": "src/simulation/contracts.ts",
+  "syntaxCheckPassed": true,
+  "typescriptCompilerRun": false,
+  "applicationBuildRun": false,
+  "actualPythonGatewayResponses": true,
+  "simulatorExecuted": false,
+  "inferenceExecuted": false,
+  "fixtureScope": "Synthetic dates/engine identities and stubbed simulation; no actual release/version support claimed.",
+  "testsRun": 16,
+  "passed": 16,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "actual-gateway-verified-capabilities-match-current-selection",
+      "status": "passed"
+    },
+    {
+      "name": "bare-diagnostic-verified-report-cannot-authorize-product-values",
+      "status": "passed"
+    },
+    {
+      "name": "old-unknown-future-unsupported-remain-recorded-only",
+      "status": "passed"
+    },
+    {
+      "name": "each-fresh-selection-identity-rejects-stale-cached-report",
+      "status": "passed"
+    },
+    {
+      "name": "internally-mixed-compatibility-hashes-are-rejected",
+      "status": "passed"
+    },
+    {
+      "name": "recorded-only-compatibility-cannot-retain-analysis-permission",
+      "status": "passed"
+    },
+    {
+      "name": "recorded-only-product-mode-cannot-show-cached-model",
+      "status": "passed"
+    },
+    {
+      "name": "missing-compared-capability-prevents-any-simulated-capability",
+      "status": "passed"
+    },
+    {
+      "name": "comparison-failure-or-diagnostic-mismatch-cannot-show-model",
+      "status": "passed"
+    },
+    {
+      "name": "registered-simulator-identity-and-provisional-status-are-enforced",
+      "status": "passed"
+    },
+    {
+      "name": "compatible-inference-is-an-unexecuted-plan-only",
+      "status": "passed"
+    },
+    {
+      "name": "explicit-future-inference-plan-retains-persistent-warning",
+      "status": "passed"
+    },
+    {
+      "name": "stripped-or-suppressed-future-warning-rejects-plan-display",
+      "status": "passed"
+    },
+    {
+      "name": "stale-inference-context-or-engine-identity-rejects-plan",
+      "status": "passed"
+    },
+    {
+      "name": "new-compatible-simulator-remains-usable-alongside-provisional-inference-option",
+      "status": "passed"
+    },
+    {
+      "name": "stock-worker-never-claims-hidden-state-capability",
+      "status": "passed"
+    }
+  ],
+  "success": true
+}

@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 from storage import atomic_json, default_data_directory, prepare_storage, cleanup_legacy_notices
+from simulation_service import SimulationService, StaleAnalysis, QueueFull
 
 PORT = 4317
 PROXY_PORT = 4327
@@ -210,6 +211,7 @@ class Service:
         self.runtime_build_sha256 = hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest() if getattr(sys, 'frozen', False) else None
         manifest = self.assets.get('/data/update-manifest.json')
         self.bundled_data_sha256 = hashlib.sha256(manifest[0]).hexdigest() if manifest else None
+        self.simulation = SimulationService(self, RESOURCE_ROOT)
 
     def game_active(self):
         proxy = self.proxy_status()
@@ -374,7 +376,7 @@ class Service:
                    'runners', 'frames', 'events', 'warnings', 'category', 'capturedAt', 'racedAt', 'racedAtSource', 'savedReplay', 'raceMode', 'raceDesignation', 'courseIdentity', 'distanceEvidence',
                    'grade', 'conditionEvidence', 'capture', 'randomSeed', 'simDataBase64', 'raceHorse', 'raceCourseSet',
                    'weather', 'groundCondition', 'season', 'raceType', 'raceGrade', 'startTimeType', 'raceInstanceId',
-                   'horseACT_version', 'trainedCharaArray'}
+                   'horseACT_version', 'trainedCharaArray', 'raceDistance', 'raceCourseAliases', 'raceDistanceAliases', 'originalRace'}
         if set(race) - allowed:
             raise ValueError('Unsupported portable race fields.')
         # Bound nested content before JSON serialization or recursive consumers.
@@ -712,6 +714,12 @@ class Service:
                         continue
                     race_raw = raw if len(entries) == 1 else json.dumps(entry, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
                     item = dict(common, id=path.stem if path.stem.startswith('local-') and len(entries) == 1 else f'{path.stem}~{index}', sha256=hashlib.sha256(race_raw).hexdigest())
+                    original = entry.get('originalRace', entry.get('original_race'))
+                    if isinstance(original, dict):
+                        # Catalog identity only; full provenance remains on the
+                        # selected document. Never infer eligibility from labels.
+                        item['originalRaceEvidenceSha256'] = hashlib.sha256(json.dumps(original,
+                            sort_keys=True, separators=(',', ':'), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
                     if isinstance(entry.get('synthetic'), bool):
                         item['synthetic'] = entry['synthetic']
                     if isinstance(entry.get('title'), str):
@@ -744,7 +752,7 @@ class Service:
                 else:
                     item = dict(common, id=path.stem, sha256=hashlib.sha256(raw).hexdigest(), data=data)
                     if metadata:
-                        for key in ('title', 'category', 'courseId', 'distance', 'conditions', 'raceInstanceId', 'courseIdentity'):
+                        for key in ('title', 'category', 'courseId', 'distance', 'conditions', 'raceInstanceId', 'courseIdentity', 'originalRaceEvidenceSha256'):
                             if key in metadata[0]:
                                 item[key] = metadata[0][key]
                     results.append(item)
@@ -788,6 +796,7 @@ class Service:
         return {'ok': True}
 
     def shutdown(self):
+        self.simulation.close()
         self.updater.close()
         self.closed.set()
         if self.server:
@@ -852,6 +861,15 @@ def make_handler(service):
                     self.send(200, service.public_settings())
                 elif path == '/api/preferences':
                     self.send(200, service.settings['preferences'])
+                elif path == '/api/simulation/status':
+                    self.send(200, service.simulation.status())
+                elif path.startswith('/api/simulation/artifacts/'):
+                    raw, kind = service.simulation.artifact(path.rsplit('/', 1)[-1])
+                    self.send(200, raw=raw, content_type=kind)
+                elif path.startswith('/api/simulation/races/'):
+                    query = parse_qs(url.query)
+                    self.send(200, service.simulation.get(unquote(path[len('/api/simulation/races/'):]),
+                        query.get('jobId', [''])[0], query.get('include', [''])[0] == 'payloads'))
                 elif path == '/api/analysis-cache' or path.startswith('/api/analysis-cache/'):
                     from analysis_cache import AnalysisCache
                     with service.lock:
@@ -884,6 +902,8 @@ def make_handler(service):
                     self.send(200, raw=raw, content_type=kind)
                 else:
                     self.send(404, {'error': 'Not found.'})
+            except StaleAnalysis as error:
+                self.send(409, {'error': str(error)})
             except (ValueError, TypeError):
                 self.send(400, {'error': 'Invalid request.'})
             except Exception:
@@ -921,6 +941,13 @@ def make_handler(service):
                     with service.lock:
                         result = service.import_race(body)
                     self.send(200, result)
+                elif self.path.startswith('/api/simulation/races/'):
+                    suffix = self.path[len('/api/simulation/races/'):]
+                    if suffix.endswith('/inference'):
+                        self.send(200, service.simulation.authorize(unquote(suffix[:-len('/inference')]), body))
+                    else:
+                        job = service.simulation.submit(unquote(suffix), body)
+                        self.send(200 if job['phase'] == 'complete' else 202, job)
                 elif self.path == '/api/preferences':
                     with service.lock:
                         result = service.update_preferences(body)
@@ -957,6 +984,10 @@ def make_handler(service):
                     service.shutdown()
                 else:
                     self.send(404, {'error': 'Not found.'})
+            except QueueFull as error:
+                self.send(429, {'error': str(error)})
+            except StaleAnalysis as error:
+                self.send(409, {'error': str(error)})
             except (ValueError, TypeError, RecursionError) as error:
                 self.send(400, {'error': str(error)})
             except Exception:
@@ -1007,14 +1038,33 @@ def capture_ready(status):
     return isinstance(proxy, dict) and proxy.get('running') and proxy.get('state') == 'running'
 
 
+def validate_launcher_service(status, data_dir):
+    runtime = Path(str(status.get('runtimeExecutable') or ''))
+    if getattr(sys, 'frozen', False):
+        # The native host has already selected its embedded service. Accept only
+        # that exact frozen executable/build and installation, never a neighbor.
+        expected = Path(sys.executable).resolve()
+        if (runtime.resolve() != expected
+                or Path(str(status.get('dataDirectory') or '')).resolve() != Path(data_dir).resolve()
+                or status.get('runtimeBuildSha256') != hashlib.sha256(expected.read_bytes()).hexdigest()):
+            raise ValueError('Another Umalytics runtime is holding the capture port. Exit it from the tray, then launch again.')
+    elif runtime.name.lower() not in ('python.exe', 'pythonw.exe'):
+        raise ValueError('The installed app is holding the capture port. Exit Umalytics from the tray, then launch the game again.')
+
+
 def launch_game(arguments, port=PORT, data_dir=None):
     arguments = game_arguments(arguments)
     if not arguments or not Path(arguments[0]).is_file():
         raise ValueError('The game executable must follow --launch-game --.')
+    data_dir = Path(data_dir or default_data_directory()).resolve()
     status = health(port)
     if not capture_ready(status):
         flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0) | NO_WINDOW
-        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--data-dir', str(data_dir or default_data_directory())],
+        command = [sys.executable]
+        if not getattr(sys, 'frozen', False):
+            command.append(str(Path(__file__).resolve()))
+        command += ['--serve', '--port', str(port), '--data-dir', str(data_dir)]
+        subprocess.Popen(command,
             cwd=str(Path(__file__).resolve().parents[1]), creationflags=flags,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
         for _ in range(40):
@@ -1024,9 +1074,7 @@ def launch_game(arguments, port=PORT, data_dir=None):
             time.sleep(0.25)
         else:
             raise ValueError('Capture did not start. Exit the installed app from the tray and try this launch again.')
-    runtime = Path(str(status.get('runtimeExecutable') or ''))
-    if runtime.name.lower() not in ('python.exe', 'pythonw.exe'):
-        raise ValueError('The installed app is holding the capture port. Exit Umalytics from the tray, then launch the game again.')
+    validate_launcher_service(status, data_dir)
     env = {k: v for k, v in os.environ.items() if k.lower() not in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'sslkeylogfile')}
     proxy_port = status['proxy'].get('port', PROXY_PORT)
     for name in ('http_proxy', 'https_proxy', 'all_proxy'):
@@ -1045,8 +1093,9 @@ def launch_game(arguments, port=PORT, data_dir=None):
     except Exception as error:
         raise ValueError('Capture rejected this launcher. Exit Umalytics from the tray and launch again.') from error
     try:
-        # The game is a windowed program. Hiding it leaves this launcher looking stuck.
-        game = subprocess.Popen(arguments, cwd=str(Path(arguments[0]).resolve().parent), env=env)
+        # Suppress a console for console-subsystem launch helpers. Windows
+        # ignores CREATE_NO_WINDOW for GUI programs, so the game stays visible.
+        game = subprocess.Popen(arguments, cwd=str(Path(arguments[0]).resolve().parent), env=env, creationflags=NO_WINDOW)
         return game.wait()
     finally:
         try:
@@ -1071,8 +1120,16 @@ def main():
     parser.add_argument('--data-dir', type=Path, default=default_data_directory())
     parser.add_argument('--desktop-exe', type=Path)
     parser.add_argument('--launch-game', action='store_true')
+    parser.add_argument('--diagnose-capture', type=Path, help='Offline diagnostic only; does not authorize app analysis.')
+    parser.add_argument('--diagnose-output', type=Path)
+    parser.add_argument('--diagnose-engine')
     parser.add_argument('game', nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.diagnose_capture:
+        if not args.diagnose_output:
+            parser.error('--diagnose-output is required for an offline diagnostic.')
+        from simulation_diagnostic import diagnose_installed_capture
+        return diagnose_installed_capture(RESOURCE_ROOT, args.diagnose_capture, args.diagnose_output, args.diagnose_engine)
     if args.collector:
         collector(args.data_dir, args.stage, args.proxy_port, args.status_port)
         return 0

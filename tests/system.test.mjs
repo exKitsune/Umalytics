@@ -52,11 +52,11 @@ test('speed changes retain overlapping causes and the timing of traffic evidence
   const report=JSON.parse(result.stdout.trim());
   for(const field of ['wholeReplay','overlappingCauses','timedEvidence','skillAndHp','noInventedTraffic'])assert.equal(report[field],'passed');
 });
-test('background replay analysis restores from compressed cache without recalculation',async t=>{
+test('versioned replay analysis authorizes worker and cache against current service policy',async t=>{
   const folder=await workspace(t),imported=join(folder,'imported');await convert(fixture,imported);
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/analysis-cache-workflow.ts'),imported],{cwd:root,windowsHide:true,timeout:60000});
   const report=JSON.parse(result.stdout.trim());
-  for(const field of ['calculationEquality','diskRestore','noRecalculation','promotion','preemption','invalidation','filters'])assert.equal(report[field],'passed');
+  for(const field of ['calculationEquality','diskRestore','noRecalculation','unknownNoWorkersOrCache','stalePolicy','artifactMismatch','futureWarnings','selectedSingleton','filters'])assert.equal(report[field],'passed');
   t.diagnostic(`Worker calculation ${report.coldMs} ms; fresh-worker restore ${report.restoreMs} ms; ${report.compressedBytes} compressed bytes.`);
 });
 test('Global skill refresh and regional fallback survive replay analysis and export',async t=>{
@@ -607,7 +607,7 @@ test('running desktop history identifies compact captions, refreshes preserved I
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/library-caption-workflow.ts'),folder],{cwd:root,windowsHide:true,timeout:30000});
   const report=JSON.parse(result.stdout.trim());
   assert.equal(report.syntheticHistoryRows,45);assert.equal(report.budgetResume,'passed');
-  assert.equal(report.compactInferredCaptions,'passed');assert.equal(report.recordedInstanceSource,'passed');
+  assert.equal(report.recordedCaptionsNoInference,'passed');assert.equal(report.recordedInstanceSource,'passed');
   assert.equal(report.captionCache,'passed');assert.equal(report.pendingDisposal,'passed');
   assert.equal(report.sourceCapture,'unchanged');assert.equal(report.certificateChanges,false);
 });

@@ -323,7 +323,7 @@ class RaceObserver:
             races = extract_races(payload, endpoint=endpoint, captured_at=captured_at)
             bindings = collect_room_bindings(payload)
             remember_room_bindings(self.room_bindings, bindings)
-            remember_race_times(self.race_times, collect_race_times(payload))
+            remember_race_times(self.race_times, collect_race_times(payload, endpoint))
             replay = saved_replay_route(route)
             stamp_race_clocks(races, None, replay)
             apply_race_times(races, self.race_times)

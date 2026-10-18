@@ -2,7 +2,7 @@
 import { decode } from '@msgpack/msgpack';
 import { base64Bytes, MAX_FILE_BYTES, MAX_FRAMES, MAX_RUNNERS, MAX_SAMPLES, parseScenario } from './binary';
 import { courseDistance, finishDistance, instanceCourse, instanceConditions } from './course-detection';
-import { extractSanitizedRaw } from './raw-export';
+import { extractSanitizedRaw, copyOriginalRace } from './raw-export';
 import { attachTeamStatTotals } from './race-teams';
 import { runnerBySlot, type Frame, type Race, type RaceCategory, type RaceEvent, type Runner, type RunnerAptitudes, type RunnerSample, type RunnerSkill, type RunnerStats } from './types';
 
@@ -81,7 +81,7 @@ function raceDesignation(mode: unknown, saved: boolean, explicit: unknown): Race
   return undefined;
 }
 
-function captureFields(obj: RecordValue): Pick<Race, 'category' | 'capturedAt' | 'racedAt' | 'racedAtSource' | 'savedReplay' | 'raceMode' | 'raceDesignation' | 'capture'> {
+function captureFields(obj: RecordValue): Pick<Race, 'category' | 'capturedAt' | 'racedAt' | 'racedAtSource' | 'savedReplay' | 'raceMode' | 'raceDesignation' | 'capture' | 'originalRace'> {
   const provenance = record(obj.capture ?? record(obj.metadata).umaTrace);
   const endpointGroup = category(provenance.endpointGroup);
   const categorySource = provenance.categorySource;
@@ -99,7 +99,10 @@ function captureFields(obj: RecordValue): Pick<Race, 'category' | 'capturedAt' |
     ...(savedReplay || designation ? { savedReplay } : {}),
     ...(raceMode === 'practice' || raceMode === 'room' ? { raceMode } : {}),
     ...(designation ? { raceDesignation: designation } : {}),
-    ...(endpointGroup && (categorySource === 'endpoint' || categorySource === 'content' || categorySource === 'unknown') ? { capture: { endpointGroup, categorySource } } : {}),
+    originalRace: copyOriginalRace(obj.originalRace ?? obj.original_race),
+    capture: { ...(endpointGroup ? {endpointGroup} : {}),
+      ...(categorySource === 'endpoint' || categorySource === 'content' || categorySource === 'unknown' ? {categorySource} : {}),
+      ...(provenance.courseSource === 'room-response' ? {courseSource: 'room-response' as const} : {}) },
   };
 }
 
@@ -355,6 +358,7 @@ function parseNormalized(obj: RecordValue, index: number): Race {
   const grade = recordedGrade ?? context?.grade ?? null, timeOfDay = recordedTime ?? context?.time ?? null, conditionEvidence = record(obj.conditionEvidence);
   const identitySource = explicitCourseId===null&&normalizedCourseId!==null?'race-instance':identity.source;
   const raw = typeof obj.simDataBase64 === 'string' ? extractSanitizedRaw(obj, obj.simDataBase64, {
+    normalized: true,
     horseact: Array.isArray(obj.raceHorse), horses: array(obj.raceHorse), course: obj.raceCourseSet,
     category: category(obj.category),
   }) : undefined;

@@ -1,137 +1,85 @@
-/** Whole replay -> worker -> compressed disk file -> fresh worker -> UI caches. */
+/** Actual versioned artifact -> real HTTP reauthorization -> prepared cache. */
 import assert from 'node:assert/strict';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, readdir, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
 import { Worker } from 'node:worker_threads';
-import { assembleReferenceData } from '../src/data/reference';
-import { readGeometry } from '../src/data/geometry';
-import { analyzeRace, rememberAnalysis } from '../src/data/analytics';
+import { createInterface } from 'node:readline';
+import { createHash } from 'node:crypto';
 import { parseRaceJson } from '../src/data/import';
-import { motionFor } from '../src/data/motion-analysis';
-import { modeImpactsFor } from '../src/data/status-mode-impact';
-import { skillTotals } from '../src/data/skill-totals';
-import { metricsForSkill } from '../src/data/skill-metrics';
-import { motionSkillImpact } from '../src/data/motion-skill-impact';
-import { attachPrepared, type PreparedRace } from '../src/analysis/prepared';
-import { decompressAnalysis } from '../src/analysis/codec';
-import { resolveAnalysisRace } from '../src/analysis/prepare';
-import { normalizeTags, withinDateRange } from '../src/library-filters';
 import { AnalysisClient } from '../src/analysis/client';
-import {explainSpeedChanges} from '../src/data/speed-changes';
-import { AnalysisStore, defaultCachePolicy, type CacheEntry, type CacheStatus } from '../src/analysis/store';
-import type { LibraryEntry } from '../src/library';
-const folder=process.argv[2],root=join(import.meta.dirname,'..');
-const json=async(path:string)=>JSON.parse(await readFile(path,'utf8'));
-const input=await json(join(folder,(await readdir(folder)).find(n=>n.endsWith('.json'))!));
-const reference=assembleReferenceData(await json(join(root,'public/data/metadata.json')),await json(join(root,'public/data/courses.json')),await json(join(root,'public/data/reference-source.json')),await json(join(root,'public/data/simulator-skill-ids.json')),readGeometry(await json(join(root,'public/data/course-geometry.json'))));
-const race=resolveAnalysisRace(parseRaceJson(input)[0],reference),direct=analyzeRace(race,reference);
-async function job(payload:object,background=false){
-  const worker=new Worker(new URL('./analysis-worker-host.mjs',import.meta.url));let parsed=0,base=0,progress=0,ticks=0;
-  const timer=setInterval(()=>ticks++,5),start=performance.now();
-  try{return await new Promise<{value:PreparedRace;packed?:Uint8Array;parsed:number;base:number;progress:number;ms:number;ticks:number}>((resolve,reject)=>{
-    const timeout=setTimeout(()=>reject(new Error('Analysis worker timed out')),45000);
-    worker.on('error',reject);worker.on('message',message=>{
-      if(message.type==='parsed')parsed++;
-      if(message.type==='base')base++;
-      if(message.type==='progress')progress++;
-      if(message.type==='error'||message.type==='corrupt'){clearTimeout(timeout);reject(new Error(JSON.stringify(message)));}
-      if(message.type==='complete'){clearTimeout(timeout);resolve({...message,parsed,base,progress,ms:performance.now()-start,ticks});}
-    });
-    if(!('cached' in payload))worker.postMessage({type:'reference',reference});worker.postMessage({type:'priority',foreground:!background,paused:background});
-    worker.postMessage({type:'run',foreground:!background,...payload});
-    if(background)setTimeout(()=>worker.postMessage({type:'priority',foreground:true,paused:false}),100);
-  });}finally{clearInterval(timer);await worker.terminate();}
-}
-const built=await job({data:input},true);
-assert.equal(built.parsed,1);assert.equal(built.base,1);assert.equal(built.progress,race.runners.length);assert.ok(built.ticks>5,'The main thread remains responsive while the worker runs.');
-assert.deepEqual(built.value.analysis,direct,'Yielding must not change analysis.');
-for(const runner of race.runners){const output=built.value.runners[runner.id];
-  assert.deepEqual(output.motion,motionFor(race,reference,direct,runner.id));
-  assert.deepEqual(output.inferredMotion,motionFor(race,reference,direct,runner.id,undefined,undefined,true));
-  assert.deepEqual(output.modes,modeImpactsFor(race,reference,direct,runner.id));
-  assert.deepEqual(output.totals,skillTotals(race,reference,direct,runner.id));
-  assert.deepEqual(output.speedChanges,explainSpeedChanges(race,reference,direct,runner,output.inferredMotion));
-}
-const path=join(folder,'analysis.gz');await writeFile(path,built.packed!);
-const restored=await job({cached:new Uint8Array(await readFile(path))});
-assert.equal(restored.parsed+restored.base+restored.progress,0,'A cache hit must not recalculate the race.');
-// JSON serialization preserves all display values; absent optional fields are
-// equivalent to undefined. Non-finite numbers must never silently become zero.
-function comparable(value:any):any {
-  if(Array.isArray(value))return value.map(item=>item===undefined?null:comparable(item));
-  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([,item])=>item!==undefined).map(([key,item])=>[key,comparable(item)]));
-  return value;
-}
-assert.deepEqual(comparable(restored.value),comparable(built.value));
-const saved=restored.value;attachPrepared(saved);rememberAnalysis(saved.race,reference,saved.analysis);
-assert.equal(analyzeRace(saved.race,reference),saved.analysis);
-for(const runner of saved.race.runners){const output=saved.runners[runner.id];
-  assert.equal(motionFor(saved.race,reference,saved.analysis,runner.id),output.motion);
-  assert.equal(skillTotals(saved.race,reference,saved.analysis,runner.id),output.totals);
-  assert.equal(modeImpactsFor(saved.race,reference,saved.analysis,runner.id),output.modes);
-  for(const row of saved.analysis.runners[runner.id].skillRows){
-    assert.equal(metricsForSkill(saved.race,reference,saved.analysis,runner.id,row.skillId),output.metrics[row.skillId]);
-    assert.equal(motionSkillImpact(saved.race,reference,saved.analysis,runner.id,row.skillId),output.impacts[row.skillId]);
-  }
-}
-await assert.rejects(decompressAnalysis(new Uint8Array([1,2,3])));
-assert.deepEqual(normalizeTags('Finals, finals, Wet,  Wet  '),['Finals','Wet']);
-assert.equal(withinDateRange('2026-10-14T12:00:00Z','2026-10-14','2026-10-14'),true);
-assert.equal(withinDateRange('2026-10-13T12:00:00Z','2026-10-14',''),false);
-// Drive the application scheduler with the real worker. Only browser storage
-// is replaced by temporary disk files; desktop retention has its own HTTP test.
-class DiskStore {
-  value:CacheStatus={policy:defaultCachePolicy(),entries:[],bytes:0};
-  async status(){return structuredClone(this.value);}
-  async get(key:string){try{return new Uint8Array(await readFile(join(folder,key+'.gz')));}catch{return null;}}
-  async change(body:Record<string,unknown>){
-    if(body.action==='revision')this.value.entries=this.value.entries.filter(e=>e.revision===body.revision);
-    if(body.action==='purge')this.value.entries=[];
-    if(body.action==='remove')this.value.entries=this.value.entries.filter(e=>e.key!==body.key);
-    if(body.action==='policy')this.value.policy=body.policy as CacheStatus['policy'];
-    this.value.bytes=this.value.entries.reduce((sum,e)=>sum+e.bytes,0);return this.status();
-  }
-  async put(entry:Omit<CacheEntry,'bytes'>,payload:Uint8Array){await writeFile(join(folder,entry.key+'.gz'),payload);this.value.entries=this.value.entries.filter(e=>e.raceId!==entry.raceId);this.value.entries.push({...entry,bytes:payload.length});return this.change({});}
-}
-const workers:BrowserWorker[]=[];
-class BrowserWorker {
-  raw=new Worker(new URL('./analysis-worker-host.mjs',import.meta.url));
-  onmessage:((event:{data:any})=>void)|null=null;onerror:(()=>void)|null=null;
-  messages:any[]=[];sent:any[]=[];terminated=false;
-  constructor(){workers.push(this);this.raw.on('message',data=>{this.messages.push(data);this.onmessage?.({data});});this.raw.on('error',()=>this.onerror?.());}
-  postMessage(value:unknown){this.sent.push(value);this.raw.postMessage(value);}
-  terminate(){this.terminated=true;void this.raw.terminate();}
-}
-Object.assign(globalThis,{Worker:BrowserWorker,__ANALYSIS_REVISION__:'functional-workflow'});
-const store=new DiskStore(),errors:string[]=[],ready:string[]=[];
-const makeClient=()=>new AnalysisClient(store as unknown as AnalysisStore,{parsed:()=>{},base:()=>{},ready:(_value,id)=>ready.push(id),state:()=>{},cache:()=>{},error:e=>errors.push(e)});
-const entry=(id:string,date:string):LibraryEntry=>({id,receivedAt:date,title:id,race:parseRaceJson(input)[0]});
-const newest=entry('newest','2026-10-16T12:00:00Z'),older=entry('older','2026-10-15T12:00:00Z'),selected=entry('selected','2026-10-14T12:00:00Z');
-const until=async(check:()=>boolean)=>{const deadline=Date.now()+30000;while(!check()){assert.deepEqual(errors,[]);if(Date.now()>deadline)throw new Error('Client workflow timed out');await new Promise(r=>setTimeout(r,10));}};
-const client=makeClient();let memoryMs=0,clientRestoreMs=0;
+import { AnalysisStore } from '../src/analysis/store';
+import { analysisNotice, FUTURE_WARNING } from '../src/simulation/presentation';
+import { normalizeTags, withinDateRange } from '../src/library-filters';
+
+const folder=resolve(process.argv[2]),root=resolve(import.meta.dirname,'..');
+const input=JSON.parse(await readFile(join(folder,(await readdir(folder)).find(n=>n.endsWith('.json'))!),'utf8'));
+const installed=JSON.parse(await readFile(join(root,'simulation/installed-bundles.json'),'utf8'));
+const bundle=installed.bundles.filter((b:any)=>b.kind==='inference').at(-1);
+assert.ok(bundle,'Build the actual inference artifact before this workflow.');
+await mkdir(join(folder,'simulation'),{recursive:true});
+await mkdir(join(folder,'storage/races'),{recursive:true});
+for(const field of ['artifact','data']){const destination=join(folder,bundle[field]);await mkdir(resolve(destination,'..'),{recursive:true});await copyFile(join(root,bundle[field]),destination);}
+await writeFile(join(folder,'simulation/installed-bundles.json'),JSON.stringify({schemaVersion:1,bundles:[bundle]}));
+const facts=(at:string)=>({schemaVersion:1,facts:Object.fromEntries(Object.entries({region:'synthetic-global',mode:'practice',occurredAt:at}).map(([field,value])=>[field,{value,source:'independently-confirmed-original-race',reference:'SYNTHETIC TEST ONLY',...(field==='occurredAt'?{precisionMicros:1000000}:{})}]))});
+const race={...input,originalRace:facts('2001-06-01T00:00:00Z')};
+const registry:any={schemaVersion:1,registryId:'synthetic-test-only',eras:['old','current','future'].map((eraId,i)=>({eraId,sequence:i,region:'synthetic-global',modes:['practice'],reference:'SYNTHETIC ONLY',window:{from:`${2000+i}-01-01T00:00:00Z`,until:`${2001+i}-01-01T00:00:00Z`}})),engines:[{engineId:bundle.engine_id,kind:'inference',version:bundle.version,profile:bundle.profile,region:'synthetic-global',modes:['practice'],eraIds:['current'],identity:{artifactSha256:bundle.artifact_sha256,dataSha256:bundle.data_sha256},reference:'SYNTHETIC COVERAGE; real local worker'}],futureInferencePolicies:[]};
+const saveRegistry=()=>writeFile(join(folder,'simulation/engine-registry.json'),JSON.stringify(registry));await saveRegistry();
+await writeFile(join(folder,'storage/races/selected.json'),JSON.stringify([{},race]));
+await writeFile(join(folder,'storage/races/unknown.json'),JSON.stringify(input));
+const child=spawn('python',[join(root,'tests/versioned-service-fixture.py'),folder],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe']});
+let errors='';child.stderr.on('data',data=>errors+=data);
+const connection:any=await new Promise((done,reject)=>{const lines=createInterface({input:child.stdout});lines.once('line',line=>{lines.close();done(JSON.parse(line));});child.once('exit',()=>reject(new Error(errors)));});
+const request=async(path:string,body?:any)=>{const response=await fetch(connection.url+path,{headers:{'Content-Type':'application/json',Origin:connection.url,'X-UmaTrace-CSRF':connection.csrf},...(body?{method:'POST',body:JSON.stringify(body)}:{})});const value=await response.json();assert.ok(response.ok,JSON.stringify(value));return value;};
+const originalFetch=globalThis.fetch;
+const begin=async(id:string)=>{const stored=await request('/api/races/'+id);let job=await request('/api/simulation/races/'+id,{expectedEntrySha256:stored.sha256});while(job.phase!=='complete'){await new Promise(r=>setTimeout(r,10));job=await request(`/api/simulation/races/${id}?jobId=${job.jobId}`);}return {job,stored};};
+const run=async(job:any,cached?:Uint8Array)=>{
+  const auth=await request(`/api/simulation/races/${job.raceId}/inference`,{jobId:job.jobId});
+  const worker=new Worker(new URL('./version-worker-host.mjs',import.meta.url),{execArgv:[],workerData:{url:connection.url,artifact:join(folder,bundle.artifact)}});
+  const start=performance.now();
+  try{return await new Promise<any>((done,reject)=>{const timer=setTimeout(()=>reject(new Error('Worker timeout')),45000);worker.once('error',reject);worker.on('message',message=>{clearTimeout(timer);if(message.type==='error')reject(new Error(message.error));else done({...message,ms:performance.now()-start,auth});});worker.postMessage({type:'run',raceId:job.raceId,jobId:job.jobId,entrySha256:job.entrySha256,cacheKey:auth.cacheKey,token:connection.csrf,cached});});}finally{await worker.terminate();}
+};
 try{
-  await client.configure(reference);client.setLibrary([older,newest],{});
-  await until(()=>workers.length===1&&workers[0].messages.some(m=>m.type==='parsed'));
-  await client.open(newest);await until(()=>store.value.entries.some(e=>e.raceId===newest.id));
-  assert.equal(workers.length,1,'Selecting the warming race promotes the existing worker.');
-  assert.ok(ready.includes(newest.id),'The newest race warms first.');
-  await client.policy({...defaultCachePolicy(),background:false});
-  const memoryStart=performance.now();await client.open(newest);memoryMs=performance.now()-memoryStart;assert.equal(workers.length,1,'Memory restore does not start a worker.');
-  await client.open(older);await until(()=>workers.length===2);
-  const before=ready.length;await client.open(selected);await until(()=>store.value.entries.some(e=>e.raceId===selected.id));
-  assert.ok(workers[1].terminated,'Foreground selection stops the previous job.');
-  assert.ok(ready.slice(before).every(id=>id===selected.id),'Old workers cannot overwrite the selected race.');
-}finally{client.dispose();}
-const reopened=makeClient();
-try{
-  await reopened.configure(reference);const count=workers.length;
-  const restoreStart=performance.now();await reopened.open(selected);await until(()=>workers[count]?.messages.some(m=>m.type==='complete'));clientRestoreMs=performance.now()-restoreStart;
-  assert.ok(!workers[count].sent.some(m=>m.type==='reference'),'A cache hit restores without cloning reference data.');
-  const restoreRequest=workers[count].sent.find(m=>m.type==='run');assert.ok(restoreRequest.cached&&!('data' in restoreRequest),'A cache hit sends only packed analysis, not the raw replay.');
-  assert.ok(!workers[count].messages.some(m=>['parsed','base','progress'].includes(m.type)),'A fresh client restores saved calculations.');
-  const changed=structuredClone(reference);changed.courses[Object.keys(changed.courses)[0]].name+=' revision';
-  await reopened.configure(changed);assert.equal(store.value.entries.length,0,'Reference updates invalidate saved analysis.');
-  await reopened.purge();assert.equal(store.value.policy.background,false,'Clearing cache does not immediately refill it.');
-}finally{reopened.dispose();for(const worker of workers)await worker.raw.terminate();}
-assert.deepEqual(errors,[]);
-console.log(JSON.stringify({calculationEquality:'passed',diskRestore:'passed',noRecalculation:'passed',promotion:'passed',preemption:'passed',invalidation:'passed',filters:'passed',coldMs:Math.round(built.ms),restoreMs:Math.round(restored.ms),memoryMs:Math.round(memoryMs),clientRestoreMs:Math.round(clientRestoreMs),compressedBytes:built.packed!.length}));
+  console.error('Selecting synthetic current race');
+  const {job}=await begin('selected~1');assert.equal(job.report.mode,'inference_plan');
+  assert.equal(job.report.observed,undefined,'Polling omits replay arrays.');
+  console.error('Running current worker');
+  const built=await run(job);console.error('Current worker complete');assert.equal(built.type,'complete');assert.ok(built.value.authorization);
+  const packed=join(folder,'analysis.gz');await writeFile(packed,built.packed);
+  console.error('Restoring current cache');
+  const restored=await run(job,new Uint8Array(await readFile(packed)));
+  assert.equal(JSON.stringify(restored.value),JSON.stringify(built.value),'Actual versioned worker restores identical serializable prepared results.');
+  const legacy=structuredClone(built.value);delete legacy.authorization;
+  const {compressAnalysis}=await import('../src/analysis/codec');
+  assert.equal((await run(job,await compressAnalysis(legacy))).type,'corrupt','Legacy complete cache is quarantined.');
+  // Unknown races must neither instantiate a worker nor read a model cache,
+  // including configure/library/warm/open paths.
+  console.error('Checking unknown client');
+  const unknown=(await begin('unknown')).job;assert.equal(unknown.report.mode,'recorded_only');
+  let cacheReads=0,workerStarts=0,parsed=0;
+  Object.assign(globalThis,{Worker:class{constructor(){workerStarts++;throw new Error('Forbidden worker');}}});
+  globalThis.fetch=((url:any,options:any)=>originalFetch(new URL(url,connection.url),{...options,headers:{...options?.headers,Origin:connection.url}})) as typeof fetch;
+  const client=new AnalysisClient({get:async()=>{cacheReads++;throw new Error('Forbidden cache');}} as unknown as AnalysisStore,{parsed:()=>parsed++,base:()=>assert.fail('Forbidden analysis'),ready:()=>assert.fail('Forbidden cache'),state:()=>{},cache:()=>{},error:e=>assert.fail(e),token:()=>connection.csrf});
+  await client.configure(built.reference);client.setLibrary([{id:'unknown',title:'Unknown',receivedAt:'2000-01-01',remoteId:'unknown'}],{});
+  await client.open({id:'unknown',title:'Unknown',receivedAt:'2000-01-01',remoteId:'unknown'});client.dispose();
+  assert.equal(parsed,1);assert.equal(cacheReads+workerStarts,0);
+  globalThis.fetch=originalFetch;
+  // Provisional policy and warnings survive real worker cache/reload/export.
+  race.originalRace=facts('2002-06-01T00:00:00Z');await writeFile(join(folder,'storage/races/future.json'),JSON.stringify(race));
+  assert.equal((await begin('future')).job.report.mode,'recorded_only');
+  registry.futureInferencePolicies=[{policyId:'synthetic-future',region:'synthetic-global',modes:['practice'],inferenceEngineId:bundle.engine_id,afterEraId:'current',eraIds:['future'],notice:'SYNTHETIC provisional policy',reference:'SYNTHETIC ONLY'}];await saveRegistry();
+  const future=(await begin('future')).job;assert.equal(analysisNotice(future.report),FUTURE_WARNING);
+  console.error('Running provisional worker');
+  const provisional=await run(future);const again=await run(future,provisional.packed);
+  assert.ok(again.value.authorization.plan.notices.some((n:any)=>n.code==='PROVISIONAL_FUTURE_INFERENCE'&&n.persistent));
+  assert.match(JSON.stringify(again.value),/PROVISIONAL_FUTURE_INFERENCE/);
+  registry.futureInferencePolicies=[];await saveRegistry();
+  const stale=await fetch(`${connection.url}/api/simulation/races/future/inference`,{method:'POST',headers:{'Content-Type':'application/json',Origin:connection.url,'X-UmaTrace-CSRF':connection.csrf},body:JSON.stringify({jobId:future.jobId})});assert.equal(stale.status,409);
+  // Changes to bytes invalidate an otherwise current inference plan.
+  const current=(await begin('selected~1')).job;
+  await writeFile(join(folder,bundle.artifact),'changed artifact');
+  const changed=await fetch(`${connection.url}/api/simulation/races/selected~1/inference`,{method:'POST',headers:{'Content-Type':'application/json',Origin:connection.url,'X-UmaTrace-CSRF':connection.csrf},body:JSON.stringify({jobId:current.jobId})});assert.equal(changed.status,409);
+  const hostile=await fetch(connection.url+'/api/simulation/races/selected~1',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://unrelated.example'},body:'{}'});assert.equal(hostile.status,403);
+  assert.deepEqual(normalizeTags('Finals, finals, Wet'),['Finals','Wet']);assert.ok(withinDateRange('2026-10-14T12:00:00Z','2026-10-14','2026-10-14'));
+  console.log(JSON.stringify({calculationEquality:'passed',diskRestore:'passed',noRecalculation:'passed',unknownNoWorkersOrCache:'passed',stalePolicy:'passed',artifactMismatch:'passed',futureWarnings:'passed',selectedSingleton:'passed',filters:'passed',coldMs:Math.round(built.ms),restoreMs:Math.round(restored.ms),compressedBytes:built.packed.length}));
+}finally{globalThis.fetch=originalFetch;child.kill();await new Promise(done=>child.once('exit',done));}

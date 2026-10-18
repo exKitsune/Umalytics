@@ -9,9 +9,8 @@ export interface LibraryCaption {
 }
 /** Keep provenance and finite caption metadata; never retain runners or telemetry. */
 export function libraryCaption(race:Race,reference:ReferenceData):LibraryCaption {
-  const resolved=resolveCourseIdentity(race,reference),inference=inferCourse(resolved,reference);
-  return {courseId:resolved.courseId??inference?.courseId??null,distance:resolved.distance,conditions:resolved.conditions,
+  const resolved=resolveCourseIdentity(race,reference);
+  return {courseId:resolved.courseId,distance:resolved.distance,conditions:resolved.conditions,
     raceInstanceId:resolved.courseIdentity?.raceInstanceId,
-    courseIdentity:inference?.courseId?{...resolved.courseIdentity,source:'skill-conditions'}:resolved.courseIdentity,
-    courseInference:inference};
+    courseIdentity:resolved.courseIdentity, courseInference:null};
 }

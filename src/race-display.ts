@@ -4,13 +4,12 @@ import { instanceCourse, resolveCourseIdentity } from './data/course-detection';
 import { inferCourse, type CourseInference } from './data/course-inference';
 export interface RaceCaption { courseId?:number|null; distance?:number|null; conditions?:Race['conditions']; raceInstanceId?:number; courseIdentity?:Race['courseIdentity']; courseInference?:CourseInference|null }
 export function captionInference(race:RaceCaption|undefined,reference:ReferenceData|null) {
-  if(race?.courseInference)return race.courseInference;
-  // A bounded background history scan can supply only compact inference evidence.
-  if(!race||!('events' in race)||!('frames' in race)||!('runners' in race)||!Array.isArray(race.events)||!Array.isArray(race.frames)||!Array.isArray(race.runners))return null;
-  return inferCourse(resolveCourseIdentity(race as Race,reference),reference);
+  // Library/display paths have no mechanics authorization. A cached skill
+  // inference is not provenance for an original course.
+  return null as CourseInference|null;
 }
 export function courseCaption(race:RaceCaption|undefined,reference:ReferenceData|null,override?:number):string {
-  const id=override??race?.courseId??instanceCourse(race?.raceInstanceId??race?.courseIdentity?.raceInstanceId??null,reference)??race?.courseInference?.courseId;
+  const id=override??(race?.courseIdentity?.source==='skill-conditions'?null:race?.courseId)??instanceCourse(race?.raceInstanceId??race?.courseIdentity?.raceInstanceId??null,reference);
   const course=id==null?null:reference?.courses[id];
   if(course)return `${course.trackName} · ${course.distance} m`;
   const inference=captionInference(race,reference);

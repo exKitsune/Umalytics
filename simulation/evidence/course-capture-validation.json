@@ -1,0 +1,493 @@
+{
+  "schemaVersion": 1,
+  "scope": "synthetic room-course mapping and initial-input readiness",
+  "expectedAppCommit": "67443a667998c48cd20685b34bfefc356bd1064f",
+  "expectedEngineCommit": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+  "sourceHashes": {
+    "scripts/proxy/race_extract.py": "6d2124c6a3dd5fe1d5bdd3a7dcb62d1bfbc8058154ef10ff650a46b7fd66cafc",
+    "src/data/import.ts": "8f8e9fcc1783695a519210a174e4388f8dea1de27be7735127de9cfe011a2921",
+    "src/data/raw-export.ts": "5c2f7901a2397eb2b82a26187852619287d155cfd773f5d618265a68c70eb284",
+    "src/data/share.ts": "dfb15deec2b8f64858aaaefbc592291bf89c3cf6f31c8aade9923dd28951dd5c",
+    "tests/room-course-workflow.py": "c1264846b56f1362ff588d0056bf98b5101913f61782cc531da90d9c9013d186"
+  },
+  "adapterVersion": "umalytics-globalsim-initial-v2",
+  "adapterSha256": "a1217364a30216005dbed0ff529929d81eaab6e5de26752739c667833de05510",
+  "testSourceSha256": "bf9838c1d74a18eafd8749d15b6a83ea09ecad7ef16243966403dde29e7878f2",
+  "simulationExecuted": false,
+  "observedOutcomesUsedAsInputs": false,
+  "completeImporterEntryPointExecuted": false,
+  "executedAppModules": [
+    "scripts/proxy/race_extract.py",
+    "tests/room-course-workflow.py",
+    "src/data/raw-export.ts",
+    "src/data/share.ts"
+  ],
+  "importerCoverage": "import.ts was read to reproduce its raw-export options; parseRaceJson, parseExport, and parseNormalized entry points were not executed.",
+  "testsRun": 17,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "allTestsPassed": true,
+  "checks": [
+    {
+      "name": "conflicting-identifiers-and-conditions",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "passed",
+      "cases": [
+        {
+          "case": "different-seed-same-room",
+          "status": "needs_input",
+          "missingInputs": [
+            "courseId",
+            "grade",
+            "time"
+          ]
+        },
+        {
+          "case": "different-room-same-seed",
+          "status": "needs_input",
+          "missingInputs": [
+            "courseId",
+            "grade",
+            "time"
+          ]
+        },
+        {
+          "case": "different-weather",
+          "status": "needs_input",
+          "missingInputs": [
+            "courseId",
+            "grade",
+            "time"
+          ]
+        },
+        {
+          "case": "ambiguous-instance-same-seed",
+          "status": "needs_input",
+          "missingInputs": [
+            "courseId",
+            "grade",
+            "time"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "course-only-residual-context",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "passed",
+      "cases": [
+        {
+          "rawCourseForm": "object",
+          "withoutContext": "needs_input",
+          "missingInputs": [
+            "grade",
+            "time"
+          ],
+          "withIndependentContext": "ready",
+          "portableInputHashEqual": true
+        },
+        {
+          "rawCourseForm": "scalar",
+          "withoutContext": "needs_input",
+          "missingInputs": [
+            "grade",
+            "time"
+          ],
+          "withIndependentContext": "ready",
+          "portableInputHashEqual": true
+        }
+      ]
+    },
+    {
+      "name": "captured-course-versus-instance-master-conflict",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "passed",
+      "initialInputStatus": "invalid",
+      "errors": [
+        "Conflicting independently sourced courseId"
+      ]
+    },
+    {
+      "name": "current-course-only-conflict-memory",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "expected-limitation-confirmed",
+      "conflictingCourseIds": [
+        10805,
+        10801
+      ],
+      "retainedCourseIds": [
+        10801
+      ],
+      "ambiguityPreserved": false,
+      "neededAppChanges": [
+        "Keep conflicting course-only candidates until the join can explicitly withhold ambiguity."
+      ]
+    },
+    {
+      "name": "current-source-room-join-limits",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "expected-limitation-confirmed",
+      "earlierProcessedCaptureRetroactivelyEnriched": false,
+      "directCourseIdOnlyRoomSetupCollected": false,
+      "explanation": "The matching definition must arrive before extraction is finalized and carry an instance or course-set field."
+    },
+    {
+      "name": "current-normalized-distance-feedback",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "expected-limitation-confirmed",
+      "sourceExporterCopiedNormalizedDistanceIntoRawCourseSet": true,
+      "adapterDisqualifiedExplicitFinishDerivedDistance": true,
+      "inputHashEqual": true,
+      "initialInputStatus": "ready",
+      "neededAppChanges": [
+        "Preserve an explicit raw raceDistance separately from normalized distance.",
+        "Do not copy normalized/finish-derived distance into raw course context."
+      ]
+    },
+    {
+      "name": "current-source-portable-gaps",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "expected-limitation-confirmed",
+      "flatRawCourseIdLost": true,
+      "normalizedCourseIdUsedAsFallback": false,
+      "portableInitialInputStatus": "needs_input",
+      "missingInputs": [
+        "courseId"
+      ],
+      "roomJoinProvenanceMarkerLost": true,
+      "neededAppChanges": [
+        "Preserve explicit raw course ID in the portable raw projection.",
+        "Preserve room-response course provenance through portable export."
+      ]
+    },
+    {
+      "name": "portable-normalized-ui-isolation",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "passed",
+      "inputHashEqual": true,
+      "initialInputStatus": "ready"
+    },
+    {
+      "name": "recorded-distance-consistency-and-non-inference",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "passed",
+      "conflictingDistanceStatus": "invalid",
+      "distanceOnlyStatus": "needs_input"
+    },
+    {
+      "name": "shared-room-id-join",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "passed",
+      "initialInputStatus": "ready",
+      "joinIdentifierRetained": false
+    },
+    {
+      "name": "seed-join-exact-instance-portable-roundtrip",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "status": "passed",
+      "instanceId": 800018,
+      "courseId": 10805,
+      "distance": 1600,
+      "grade": "g1",
+      "time": "midday",
+      "inputHashEqual": true,
+      "inputCanonicalSha256": "fed0c82de5b3f7eeb43b8ffb244503300847612a36d91a61ae3bc4a7296e02f5",
+      "rawContextProvenance": {
+        "raceInstanceId": [
+          {
+            "value": 800018,
+            "source": {
+              "field": "capture.race_instance_id",
+              "contextSource": "room-response",
+              "joinEvidence": "collector-marker-only"
+            }
+          }
+        ],
+        "grade": [
+          {
+            "value": 100,
+            "source": "app.metadata.raceInstanceConditions[800018].grade"
+          },
+          {
+            "value": 100,
+            "source": "app.course-identities.raceInstanceConditions[800018].grade"
+          }
+        ],
+        "courseId": [
+          {
+            "value": 10805,
+            "source": "app.metadata.raceInstances[800018]"
+          },
+          {
+            "value": 10805,
+            "source": "app.course-identities.raceInstances[800018]"
+          }
+        ],
+        "time": [
+          {
+            "value": 2,
+            "source": "app.metadata.raceInstanceConditions[800018].time"
+          },
+          {
+            "value": 2,
+            "source": "app.course-identities.raceInstanceConditions[800018].time"
+          }
+        ]
+      },
+      "rawUninterpretedStartTimeType": 1,
+      "portableInitialInputStatus": "ready"
+    },
+    {
+      "name": "upstream-room-course-workflow",
+      "fixtureKind": "synthetic-mapping-regression",
+      "simulationExecuted": false,
+      "observedOutcomesUsedAsInputs": false,
+      "checks": {
+        "roomCourseAttached": "passed",
+        "ambiguousSeedWithheld": "passed",
+        "roomIdNotPersisted": "passed",
+        "weatherMismatchWithheld": "passed",
+        "apiTraceRedacted": "passed"
+      },
+      "status": "passed"
+    }
+  ],
+  "limitations": [
+    "Synthetic matching metadata proves software behavior, not the true course of an existing room capture.",
+    "No engine was executed for this update and no newly captured race was supplied or verified.",
+    "A complete input still requires supported runner data, skills, rules, course geometry, and a compatible game version.",
+    "Room definitions must arrive in the same capture session before replay extraction; in-memory history is bounded to 64 bindings.",
+    "Positive integer seed/room joins can withhold unmatched or conflicting inputs; they do not authenticate upstream data.",
+    "Current portable export loses the room-response provenance marker and direct raw course aliases; normalized UI fields are never a substitute.",
+    "Course-only room candidates sharing a seed replace earlier candidates in current capture memory, so every ambiguity is not retained.",
+    "The current normalized importer can copy derived distance into raw course-set data; the adapter ignores it when explicitly marked finish-derived.",
+    "Raw RoomMatch start_time_type remains uninterpreted; exact instance master or independently confirmed time is required."
+  ],
+  "originalCaptureInputAudit": {
+    "kind": "original-capture-initial-input-audit-only",
+    "simulationExecuted": false,
+    "priorReportSha256": "c2214ac68a0de01ad0f5ac48bf7b7e5c99c3c289fee533eea26f8ff8dd36df63",
+    "priorObservedComparisonStatusesAreHistorical": true,
+    "expectedFixtureCount": 7,
+    "allExpectedFixturesPresent": true,
+    "manifestValid": true,
+    "preparedInputHashesUnchanged": true,
+    "originalFilesUnchanged": true,
+    "preparationStatusesConsistent": true,
+    "completenessConsistent": true,
+    "allChecksPassed": true,
+    "errors": [],
+    "cases": [
+      {
+        "capture": "observed-20261017T053712-2551cd36.json",
+        "captureFileSha256": "aaa9da58ab5ca9e230ca09f3166e0fdad93bfa60b8cba67100fb1c0c4fc881af",
+        "filePresent": true,
+        "fileUnchangedDuringAudit": true,
+        "matchesPriorCaptureFileSha256": true,
+        "expectedInitialInputStatus": "ready",
+        "initialInputStatus": "ready",
+        "missingInputs": [],
+        "errors": [],
+        "inputCanonicalSha256": "a5f4629fe7a60ee993d2fdcda5e4ce05cd8dce8f1dd1d8a78421e2a94066d79e",
+        "previousInputCanonicalSha256": "a5f4629fe7a60ee993d2fdcda5e4ce05cd8dce8f1dd1d8a78421e2a94066d79e",
+        "inputHashUnchanged": true,
+        "statusConsistent": true,
+        "missingInputsConsistent": true,
+        "completenessConsistent": true,
+        "allChecksPassed": true,
+        "recordedSeed": 58658853,
+        "strictInitialInputComplete": true,
+        "priorObservedComparisonStatus": "verified",
+        "simulationExecuted": false,
+        "observedOutcomesUsedAsInputs": false,
+        "courseId": 10801,
+        "raceInstanceId": 610155
+      },
+      {
+        "capture": "observed-20261017T053712-626f5ca8.json",
+        "captureFileSha256": "c5c52cfb7ea933c6adb0c4fe51d7e59da60a50b9e6efc348aab408732ab55d81",
+        "filePresent": true,
+        "fileUnchangedDuringAudit": true,
+        "matchesPriorCaptureFileSha256": true,
+        "expectedInitialInputStatus": "ready",
+        "initialInputStatus": "ready",
+        "missingInputs": [],
+        "errors": [],
+        "inputCanonicalSha256": "e64ad4d9a56d1284443494e2e8286e05f869ec433cb0e5ae316c05df55cf0acf",
+        "previousInputCanonicalSha256": "e64ad4d9a56d1284443494e2e8286e05f869ec433cb0e5ae316c05df55cf0acf",
+        "inputHashUnchanged": true,
+        "statusConsistent": true,
+        "missingInputsConsistent": true,
+        "completenessConsistent": true,
+        "allChecksPassed": true,
+        "recordedSeed": 653455742,
+        "strictInitialInputComplete": true,
+        "priorObservedComparisonStatus": "verified",
+        "simulationExecuted": false,
+        "observedOutcomesUsedAsInputs": false,
+        "courseId": 10105,
+        "raceInstanceId": 610014
+      },
+      {
+        "capture": "observed-20261017T053712-74c4abb6.json",
+        "captureFileSha256": "1098d0bda22858a61cca33d90e40e7fb5543678af1d9a44e9f99d079890166d9",
+        "filePresent": true,
+        "fileUnchangedDuringAudit": true,
+        "matchesPriorCaptureFileSha256": true,
+        "expectedInitialInputStatus": "ready",
+        "initialInputStatus": "ready",
+        "missingInputs": [],
+        "errors": [],
+        "inputCanonicalSha256": "f8f887acd6dc2beeb8e54bb139705dcdc888dfddb628f85f08453b577ad32daa",
+        "previousInputCanonicalSha256": "f8f887acd6dc2beeb8e54bb139705dcdc888dfddb628f85f08453b577ad32daa",
+        "inputHashUnchanged": true,
+        "statusConsistent": true,
+        "missingInputsConsistent": true,
+        "completenessConsistent": true,
+        "allChecksPassed": true,
+        "recordedSeed": 625803751,
+        "strictInitialInputComplete": true,
+        "priorObservedComparisonStatus": "verified",
+        "simulationExecuted": false,
+        "observedOutcomesUsedAsInputs": false,
+        "courseId": 11503,
+        "raceInstanceId": 610251
+      },
+      {
+        "capture": "observed-20261017T053712-adcc5b70.json",
+        "captureFileSha256": "f38fe3b69310992885ec4530dceeca5f0d57a08596b0dfad70fe686b3b5196e3",
+        "filePresent": true,
+        "fileUnchangedDuringAudit": true,
+        "matchesPriorCaptureFileSha256": true,
+        "expectedInitialInputStatus": "ready",
+        "initialInputStatus": "ready",
+        "missingInputs": [],
+        "errors": [],
+        "inputCanonicalSha256": "9c52f78c625d18507a3ec68f3c5f5f4c0895d7243cfc3717a71c55ee7331457b",
+        "previousInputCanonicalSha256": "9c52f78c625d18507a3ec68f3c5f5f4c0895d7243cfc3717a71c55ee7331457b",
+        "inputHashUnchanged": true,
+        "statusConsistent": true,
+        "missingInputsConsistent": true,
+        "completenessConsistent": true,
+        "allChecksPassed": true,
+        "recordedSeed": 1707707717,
+        "strictInitialInputComplete": true,
+        "priorObservedComparisonStatus": "verified",
+        "simulationExecuted": false,
+        "observedOutcomesUsedAsInputs": false,
+        "courseId": 10504,
+        "raceInstanceId": 610092
+      },
+      {
+        "capture": "observed-20261017T053712-d16e7b46.json",
+        "captureFileSha256": "7e3235746ea48ec7280b170ca97fbf3df99fabe072ab7b4bc77fe1257efd6dbd",
+        "filePresent": true,
+        "fileUnchangedDuringAudit": true,
+        "matchesPriorCaptureFileSha256": true,
+        "expectedInitialInputStatus": "ready",
+        "initialInputStatus": "ready",
+        "missingInputs": [],
+        "errors": [],
+        "inputCanonicalSha256": "7785eecf09b5e4ecb8523b06512408873cf665942820c06bf8e7e1e0cb93c012",
+        "previousInputCanonicalSha256": "7785eecf09b5e4ecb8523b06512408873cf665942820c06bf8e7e1e0cb93c012",
+        "inputHashUnchanged": true,
+        "statusConsistent": true,
+        "missingInputsConsistent": true,
+        "completenessConsistent": true,
+        "allChecksPassed": true,
+        "recordedSeed": 2089490284,
+        "strictInitialInputComplete": true,
+        "priorObservedComparisonStatus": "verified",
+        "simulationExecuted": false,
+        "observedOutcomesUsedAsInputs": false,
+        "courseId": 10904,
+        "raceInstanceId": 610200
+      },
+      {
+        "capture": "observed-20261017T054248-c3a24961.json",
+        "captureFileSha256": "cc47da6c066f20b9f93abae6cdf12dcb4b32b920a1b3b2dbf4f2b7b71c171de9",
+        "filePresent": true,
+        "fileUnchangedDuringAudit": true,
+        "matchesPriorCaptureFileSha256": true,
+        "expectedInitialInputStatus": "ready",
+        "initialInputStatus": "ready",
+        "missingInputs": [],
+        "errors": [],
+        "inputCanonicalSha256": "54bd439935afbec2681e812050868a219479e8cbfedd96692b61b84be30ddc26",
+        "previousInputCanonicalSha256": "54bd439935afbec2681e812050868a219479e8cbfedd96692b61b84be30ddc26",
+        "inputHashUnchanged": true,
+        "statusConsistent": true,
+        "missingInputsConsistent": true,
+        "completenessConsistent": true,
+        "allChecksPassed": true,
+        "recordedSeed": 242707280,
+        "strictInitialInputComplete": true,
+        "priorObservedComparisonStatus": "mismatch",
+        "simulationExecuted": false,
+        "observedOutcomesUsedAsInputs": false,
+        "courseId": 10805,
+        "raceInstanceId": 800018
+      },
+      {
+        "capture": "observed-20261017T074547-74d99c26.json",
+        "captureFileSha256": "fe6387247a84e5cae6d5483b35791406ca0f6042943b29dde6da7a2607dbe8c5",
+        "filePresent": true,
+        "fileUnchangedDuringAudit": true,
+        "matchesPriorCaptureFileSha256": true,
+        "expectedInitialInputStatus": "needs_input",
+        "initialInputStatus": "needs_input",
+        "missingInputs": [
+          "courseId",
+          "grade",
+          "time"
+        ],
+        "errors": [
+          "Independently confirmed race context is incomplete"
+        ],
+        "inputCanonicalSha256": null,
+        "previousInputCanonicalSha256": null,
+        "inputHashUnchanged": true,
+        "statusConsistent": true,
+        "missingInputsConsistent": true,
+        "completenessConsistent": true,
+        "allChecksPassed": true,
+        "recordedSeed": 1780329953,
+        "strictInitialInputComplete": false,
+        "priorObservedComparisonStatus": "needs_input",
+        "simulationExecuted": false,
+        "observedOutcomesUsedAsInputs": false,
+        "courseId": null,
+        "raceInstanceId": null
+      }
+    ],
+    "statuses": {
+      "ready": 6,
+      "needs_input": 1
+    },
+    "readyInputHashCount": 6
+  },
+  "overallSuccess": true
+}

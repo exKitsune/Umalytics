@@ -1,0 +1,640 @@
+{
+  "schemaVersion": 1,
+  "updatedAtUtc": "2026-10-18T00:08:31.822471+00:00",
+  "kind": "version-compatibility-handoff-validation",
+  "appSourceInspectedCommit": "67443a667998c48cd20685b34bfefc356bd1064f",
+  "globalSimCommit": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+  "userReportedLocalRaceTimeLogging": true,
+  "newLoggerSourceVisibleInPublishedCheckout": false,
+  "originalRaceTimeAliasInvented": false,
+  "productionRegistry": {
+    "file": "engine-registry.template.json",
+    "eraCount": 0,
+    "engineCount": 0,
+    "futureInferencePolicyCount": 0,
+    "actualGameReleaseCutoversAsserted": false
+  },
+  "python": {
+    "schemaVersion": 1,
+    "updatedAtUtc": "2026-10-18T00:06:02.480121+00:00",
+    "command": "python3 -B -m unittest discover -s tests -v",
+    "actualInvocation": "unittest.defaultTestLoader.discover('tests') with TextTestRunner and JSON result recorder",
+    "environment": {
+      "python": "3.12.14",
+      "platform": "Linux"
+    },
+    "testsRun": 100,
+    "passed": 100,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "skippedScope": "One external-checkout class; no counted pure test skipped. Prior dedicated course CLI separately executed all 12 external source checks.",
+    "passedBySuite": {
+      "test_adapter": 31,
+      "test_analysis_gate": 12,
+      "test_course_capture": 5,
+      "test_runtime": 13,
+      "test_versioning": 39
+    },
+    "tests": [
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_captured_course_id_aliases_and_conflicts_are_validated",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_captured_distance_checks_exact_course_without_changing_request",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_conflicting_capture_master_or_external_facts_are_rejected",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_conflicting_or_unavailable_course_references_prevent_execution",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_context_rejects_unknown_fields_missing_or_untrusted_provenance",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_course_distance_aliases_values_and_cross_field_conflicts",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_dirt_grade_dependent_skill_requires_supported_context_mapping",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_distance_alone_never_resolves_an_unknown_course",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_explicit_instance_can_join_exact_master_context",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_future_portable_room_provenance_and_raw_distance_contract",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_initial_missing_fields_never_use_observation_defaults",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_invalid_gate_inventory_and_numeric_values_are_rejected",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_joined_scalar_course_set_is_exact_context_but_does_not_imply_grade_time",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_missing_context_stays_missing_despite_results_or_raw_start_type",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_observations_histories_and_wrapper_results_cannot_change_spec",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_portable_distance_is_ignored_until_a_separate_raw_field_survives",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_portable_never_falls_back_to_normalized_runners_or_wrapper_stats",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_portable_uses_original_inner_graph_and_raw_conditions_only",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_preparation_and_returned_values_do_not_mutate_capture_or_references",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_preserved_portable_course_is_usable_with_independent_conditions",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_preserves_rng_relevant_initial_inputs_and_gate_identity",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_room_enrichment_marker_retains_declared_provenance_without_changing_spec",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_room_instance_without_master_conditions_does_not_guess_grade_or_time",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_room_provenance_alone_never_supplies_missing_course_or_conditions",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_source_metadata_conflicts_and_ambiguous_formats_are_rejected",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_unrecognized_room_provenance_is_not_reclassified_as_recorded",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.AdapterBoundaryTests.test_unsupported_career_items_team_bonuses_and_missing_skill_fail_closed",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.ReferenceLoadingTests.test_changed_app_projection_gets_new_identity_without_requiring_app_head",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.ReferenceLoadingTests.test_changed_engine_data_and_geometry_fail_pin_checks",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.ReferenceLoadingTests.test_loads_without_git_or_app_head_and_hashes_portable_identity",
+        "status": "passed"
+      },
+      {
+        "test": "test_adapter.ReferenceLoadingTests.test_missing_reference_raises_io_error_and_ambiguous_json_is_rejected",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_absent_evidence_is_unknown_without_invented_original_race_fields",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_cached_provisional_plan_loses_authorization_if_notice_or_selection_changes",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_compatible_verified_simulator_is_scoped_and_cache_still_gated",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_diagnostic_verified_without_full_identity_and_capabilities_cannot_authorize_simulation",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_future_inference_is_explicit_warned_and_requires_actual_identity",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_malformed_unicode_replay_stays_structured_and_touches_no_runtime",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_mismatched_registered_bundle_or_data_stops_before_runtime_cache",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_mixed_exact_simulator_and_provisional_inference_prefers_simulator",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_observed_singleton_wrappers_keep_outer_hash_and_reject_ambiguous_entries",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_old_race_can_only_choose_an_explicit_historical_inference_bundle",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_old_unknown_future_and_unconfigured_gate_touch_no_model_resources",
+        "status": "passed"
+      },
+      {
+        "test": "test_analysis_gate.AnalysisGateTests.test_simulator_mismatch_or_failure_uses_only_registered_inference",
+        "status": "passed"
+      },
+      {
+        "test": "setUpClass (test_course_capture.CourseCaptureTests)",
+        "status": "skipped",
+        "reason": "Explicit app and GlobalSim checkouts are required; use this test file's CLI"
+      },
+      {
+        "test": "test_course_capture.OriginalAuditGateTests.test_changed_input_status_or_completeness_fails",
+        "status": "passed"
+      },
+      {
+        "test": "test_course_capture.OriginalAuditGateTests.test_changed_original_fails_even_if_stable_during_read_and_spec_unchanged",
+        "status": "passed"
+      },
+      {
+        "test": "test_course_capture.OriginalAuditGateTests.test_matching_originals_pass_and_incomplete_input_retains_seed",
+        "status": "passed"
+      },
+      {
+        "test": "test_course_capture.OriginalAuditGateTests.test_missing_or_duplicated_prior_fixture_rows_and_missing_files_fail",
+        "status": "passed"
+      },
+      {
+        "test": "test_course_capture.OriginalAuditGateTests.test_overall_cli_gate_cannot_ignore_failed_or_incomplete_optional_audit",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_binary_pin_is_enforced_and_attestation_is_explicit",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_cached_modeled_output_is_compared_again",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_corrupt_compressed_replay_is_structured_failure",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_default_legacy_profile_is_rejected_before_worker",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_engine_and_data_changes_invalidate_cache",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_malformed_typed_output_is_structured_failure",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_matching_recorded_fields_keep_modeled_distinct",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_missing_capabilities_cannot_receive_verified",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_missing_context_does_not_start_worker",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.RuntimeGateTests.test_unknown_layout_is_not_verified",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.WorkerBoundaryTests.test_bounded_stdout_and_stderr",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.WorkerBoundaryTests.test_nonzero_worker_exit",
+        "status": "passed"
+      },
+      {
+        "test": "test_runtime.WorkerBoundaryTests.test_timeout_without_reading_input",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_capture_registry_evidence_policy_and_selection_identities_are_cache_bound",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_compatible_future_inference_version_takes_priority_over_provisional_policy",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_compatible_simulation_remains_eligible_alongside_provisional_inference",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_disagreeing_original_build_and_master_are_conflicting",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_empty_production_template_claims_no_real_era",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_engine_pins_and_scope_cannot_be_omitted_or_silently_extended",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_era_windows_overlapping_or_reversed_chronology_invalidate_registry",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_evidence_must_bind_the_exact_capture",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_exact_only_earlier_rules_cannot_occur_after_a_later_registered_window",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_exact_only_later_rules_cannot_occur_before_an_earlier_registered_window",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_exact_original_rules_can_select_without_a_timestamp",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_exact_rule_and_occurrence_disagreement_is_a_conflict",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_exact_tuple_requires_complete_evidence_or_independent_covered_time",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_explicit_future_policy_only_authorizes_provisional_inference_with_persistent_notice",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_future_policy_can_target_exact_later_rules_without_a_timestamp",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_future_policy_cannot_authorize_older_eras_or_simulators",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_future_policy_does_not_cross_region_mode_or_unknown_original_rules",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_future_race_without_explicit_policy_keeps_both_engines_unavailable",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_future_time_policy_is_bounded_and_does_not_extend_simulation",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_inference_frontier_is_scoped_to_the_original_mode",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_known_old_race_without_historical_engines_has_no_inference_fallback",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_missing_or_invalid_registry_returns_a_safe_explicit_decision",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_missing_scope_and_other_region_mode_never_use_current_engine",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_naive_ambiguous_or_invalid_occurrence_time_is_rejected",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_newer_inference_registration_retires_a_stale_future_policy_for_a_historical_gap",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_occurrence_time_can_be_original_even_when_captured_much_later",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_original_occurrence_selects_two_separate_immutable_versions",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_overlapping_exact_selectors_and_duplicate_engine_versions_are_rejected",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_overlapping_future_policies_are_rejected",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_registered_historical_versions_are_selected_instead_of_current_ones",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_rules_identifiers_cannot_be_ordered_lexicographically_as_build_versions",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_same_build_with_different_master_needs_disambiguating_original_evidence",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_selection_is_pure_and_returned_structures_do_not_mutate_inputs",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_simulation_and_inference_coverage_are_independent",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_stale_future_time_window_cannot_authorize_a_gap_before_later_inference_coverage",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_unknown_occurrence_and_rules_are_not_labeled_old",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_unmapped_original_rules_are_not_silently_ignored_despite_a_covered_date",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_untrusted_time_or_current_client_provenance_is_not_original_evidence",
+        "status": "passed"
+      },
+      {
+        "test": "test_versioning.CompatibilitySelectionTests.test_window_boundaries_are_half_open_and_offsets_are_respected",
+        "status": "passed"
+      }
+    ],
+    "elapsedSeconds": 0.313,
+    "success": true,
+    "scope": "Python units and synthetic version/gateway behavior; no actual GlobalSim/inference or application execution."
+  },
+  "newPythonTestCounts": {
+    "selector": 39,
+    "productionGate": 12,
+    "total": 51
+  },
+  "retainedPythonTestCounts": {
+    "adapter": 31,
+    "runtime": 13,
+    "fixtureAuditGate": 5,
+    "total": 49
+  },
+  "frontend": {
+    "schemaVersion": 1,
+    "updatedAtUtc": "2026-10-18T00:06:03.196Z",
+    "command": "node tests/test_contracts.mjs --fixtures ../globalsim-runtime-check/version-contract-fixtures.json --output evidence/version-contract-validation.json",
+    "fixtureGeneration": "separate-export_contract_fixtures.py-command",
+    "actualArguments": [
+      "--fixtures",
+      "../globalsim-runtime-check/version-contract-fixtures.json",
+      "--output",
+      "evidence/version-contract-validation.json"
+    ],
+    "node": "v24.19.0",
+    "pythonExecutable": "python3",
+    "source": "src/simulation/contracts.ts",
+    "syntaxCheckPassed": true,
+    "typescriptCompilerRun": false,
+    "applicationBuildRun": false,
+    "actualPythonGatewayResponses": true,
+    "simulatorExecuted": false,
+    "inferenceExecuted": false,
+    "fixtureScope": "Synthetic dates/engine identities and stubbed simulation; no actual release/version support claimed.",
+    "testsRun": 16,
+    "passed": 16,
+    "failed": 0,
+    "checks": [
+      {
+        "name": "actual-gateway-verified-capabilities-match-current-selection",
+        "status": "passed"
+      },
+      {
+        "name": "bare-diagnostic-verified-report-cannot-authorize-product-values",
+        "status": "passed"
+      },
+      {
+        "name": "old-unknown-future-unsupported-remain-recorded-only",
+        "status": "passed"
+      },
+      {
+        "name": "each-fresh-selection-identity-rejects-stale-cached-report",
+        "status": "passed"
+      },
+      {
+        "name": "internally-mixed-compatibility-hashes-are-rejected",
+        "status": "passed"
+      },
+      {
+        "name": "recorded-only-compatibility-cannot-retain-analysis-permission",
+        "status": "passed"
+      },
+      {
+        "name": "recorded-only-product-mode-cannot-show-cached-model",
+        "status": "passed"
+      },
+      {
+        "name": "missing-compared-capability-prevents-any-simulated-capability",
+        "status": "passed"
+      },
+      {
+        "name": "comparison-failure-or-diagnostic-mismatch-cannot-show-model",
+        "status": "passed"
+      },
+      {
+        "name": "registered-simulator-identity-and-provisional-status-are-enforced",
+        "status": "passed"
+      },
+      {
+        "name": "compatible-inference-is-an-unexecuted-plan-only",
+        "status": "passed"
+      },
+      {
+        "name": "explicit-future-inference-plan-retains-persistent-warning",
+        "status": "passed"
+      },
+      {
+        "name": "stripped-or-suppressed-future-warning-rejects-plan-display",
+        "status": "passed"
+      },
+      {
+        "name": "stale-inference-context-or-engine-identity-rejects-plan",
+        "status": "passed"
+      },
+      {
+        "name": "new-compatible-simulator-remains-usable-alongside-provisional-inference-option",
+        "status": "passed"
+      },
+      {
+        "name": "stock-worker-never-claims-hidden-state-capability",
+        "status": "passed"
+      }
+    ],
+    "success": true
+  },
+  "combinedCurrentChecksPassed": 116,
+  "codeSha256": {
+    "desktop/globalsim_bridge/versioning.py": "6794ccdcc8b73347eb1d388365f82ecd1eb674e28275b82cdc978fec4590fcee",
+    "desktop/globalsim_bridge/analysis_gate.py": "864224dfb5945537b7b9c99beb56a426cb61691b3d7e9ca0c4365e192a7d65ed",
+    "desktop/globalsim_bridge/__init__.py": "681e576e64bd54ec9cfdefd422978ecde591b889a22ecf18da8628789f0ce533",
+    "src/simulation/contracts.ts": "df60bbf6d25f3e4152ad10481c8089232858a51f162df7fb401f36ec1b4d5b35",
+    "tests/test_versioning.py": "267f6355411e71c3d07902e35bc67a019aef0101d84ee7f4bd89407eabec1568",
+    "tests/test_analysis_gate.py": "6102629f3e8103e6b49a62e5c3aa0a33d403c72246638bd91c92cdfff3794bb6",
+    "tests/test_contracts.mjs": "8d939d099dce7771a532c76c485787aa2a53b6c8794020a801dd037206101a9c",
+    "tests/export_contract_fixtures.py": "caa208bec166b5440485347e7c09cda701e45101b082393bc1f66db86b12a5fd",
+    "engine-registry.template.json": "226cb264389ee1c022255bc485974c5a2b0f1d93d86b9fa620d702aee4041074"
+  },
+  "originalCaptures": [
+    {
+      "capture": "observed-20261017T053712-2551cd36.json",
+      "sha256": "aaa9da58ab5ca9e230ca09f3166e0fdad93bfa60b8cba67100fb1c0c4fc881af",
+      "originalFileHashUnchanged": true,
+      "historicalDiagnosticStatus": "verified",
+      "productEligibilityReclassifiedFromFilename": false,
+      "engineExecutedForVersionUpdate": false
+    },
+    {
+      "capture": "observed-20261017T053712-626f5ca8.json",
+      "sha256": "c5c52cfb7ea933c6adb0c4fe51d7e59da60a50b9e6efc348aab408732ab55d81",
+      "originalFileHashUnchanged": true,
+      "historicalDiagnosticStatus": "verified",
+      "productEligibilityReclassifiedFromFilename": false,
+      "engineExecutedForVersionUpdate": false
+    },
+    {
+      "capture": "observed-20261017T053712-74c4abb6.json",
+      "sha256": "1098d0bda22858a61cca33d90e40e7fb5543678af1d9a44e9f99d079890166d9",
+      "originalFileHashUnchanged": true,
+      "historicalDiagnosticStatus": "verified",
+      "productEligibilityReclassifiedFromFilename": false,
+      "engineExecutedForVersionUpdate": false
+    },
+    {
+      "capture": "observed-20261017T053712-adcc5b70.json",
+      "sha256": "f38fe3b69310992885ec4530dceeca5f0d57a08596b0dfad70fe686b3b5196e3",
+      "originalFileHashUnchanged": true,
+      "historicalDiagnosticStatus": "verified",
+      "productEligibilityReclassifiedFromFilename": false,
+      "engineExecutedForVersionUpdate": false
+    },
+    {
+      "capture": "observed-20261017T053712-d16e7b46.json",
+      "sha256": "7e3235746ea48ec7280b170ca97fbf3df99fabe072ab7b4bc77fe1257efd6dbd",
+      "originalFileHashUnchanged": true,
+      "historicalDiagnosticStatus": "verified",
+      "productEligibilityReclassifiedFromFilename": false,
+      "engineExecutedForVersionUpdate": false
+    },
+    {
+      "capture": "observed-20261017T054248-c3a24961.json",
+      "sha256": "cc47da6c066f20b9f93abae6cdf12dcb4b32b920a1b3b2dbf4f2b7b71c171de9",
+      "originalFileHashUnchanged": true,
+      "historicalDiagnosticStatus": "mismatch",
+      "productEligibilityReclassifiedFromFilename": false,
+      "engineExecutedForVersionUpdate": false
+    },
+    {
+      "capture": "observed-20261017T074547-74d99c26.json",
+      "sha256": "fe6387247a84e5cae6d5483b35791406ca0f6042943b29dde6da7a2607dbe8c5",
+      "originalFileHashUnchanged": true,
+      "historicalDiagnosticStatus": "needs_input",
+      "productEligibilityReclassifiedFromFilename": false,
+      "engineExecutedForVersionUpdate": false
+    }
+  ],
+  "priorEngineReportSha256": "c2214ac68a0de01ad0f5ac48bf7b7e5c99c3c289fee533eea26f8ff8dd36df63",
+  "priorEngineReportUnchanged": true,
+  "sourceRepositoriesUnmodified": true,
+  "actualSimulatorExecutions": 0,
+  "actualInferenceExecutions": 0,
+  "newRealCapturesReceived": 0,
+  "newOriginalRaceVersionMappingsEstablished": 0,
+  "validationScope": [
+    "The current run covers 100 Python unit tests and 16 executable frontend guard groups using actual synthetic gateway responses.",
+    "The skipped external-checkout class is outside the counted 100 pure tests. Its 12 source workflow checks were executed in the prior dedicated course-update CLI and were not rerun here.",
+    "New selector/gateway fixtures use synthetic calendars, rule identifiers and pinned stub artifacts. They do not prove real game compatibility eras.",
+    "Frontend source is parsed with Node 24 TypeScript stripping and its guards are executed; no TypeScript compiler or Svelte/application build was run.",
+    "A first combined Node command could not spawn Python in this runtime (EPERM). The successful reproducible two-command fixture export and frontend check used the same real Python gateway and no privilege change.",
+    "Prior actual engine/build evidence is preserved as historical evidence. No actual game simulator or inference implementation ran for this version-policy update.",
+    "The installed app, real timestamp mapper, versioned inference dispatch, observational UI, service routes and Windows packaging are Codex integration tasks."
+  ],
+  "success": true
+}

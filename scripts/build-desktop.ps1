@@ -14,6 +14,18 @@ if ($releasePublicKey -notmatch '^[0-9a-f]{64}$') { throw 'Embedded update publi
 if (-not $SkipFrontend) {
     & npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
+    & node scripts/build-inference.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'Versioned inference bundle build failed.' }
+} else {
+    $bundles = Get-Content -LiteralPath 'simulation/installed-bundles.json' -Raw | ConvertFrom-Json
+    $inference = @($bundles.bundles | Where-Object { $_.kind -eq 'inference' })
+    if ($inference.Count -eq 0) { throw 'Shared frontend is missing its versioned inference bundle.' }
+    foreach ($bundle in $inference) {
+        if ((Get-FileHash -LiteralPath $bundle.artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne $bundle.artifact_sha256 -or
+            (Get-FileHash -LiteralPath $bundle.data -Algorithm SHA256).Hash.ToLowerInvariant() -ne $bundle.data_sha256) {
+            throw 'Shared inference bundle hash mismatch.'
+        }
+    }
 }
 $env:CARGO_HOME = Join-Path $workspace '.cache/cargo'
 $env:CARGO_TARGET_DIR = Join-Path $workspace '.cache/desktop-target'
@@ -25,6 +37,20 @@ $env:Path = (Split-Path $cargo) + ';' + $env:Path
 # the combined offline license bundle inside the service.
 & $cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw 'Locked Rust dependency download failed.' }
+$env:CARGO_NET_GIT_FETCH_WITH_CLI = 'true'
+& $cargo build --release --locked --manifest-path simulation/simulator-worker/Cargo.toml
+if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator worker build failed.' }
+$simSource = Join-Path $workspace '.cache/globalsim-source'
+if (-not (Test-Path -LiteralPath $simSource)) {
+    & git clone --no-checkout https://github.com/daftuyda/GlobalSim.git $simSource
+    if ($LASTEXITCODE -ne 0) { throw 'Simulator resource checkout failed.' }
+}
+# This task-owned cache may have been created by the sandbox build account.
+# Limit the ownership exception to this invocation and this exact checkout.
+& git -c "safe.directory=$($simSource.Replace('\','/'))" -C $simSource checkout --detach efc2decdfeaff227ada0e9847f5deceb42c3b97f
+if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator resources are unavailable.' }
+& $python scripts/package-simulator.py --source $simSource --engine (Join-Path $env:CARGO_TARGET_DIR 'release/umalytics-globalsim-worker.exe')
+if ($LASTEXITCODE -ne 0) { throw 'Simulator bundle verification failed.' }
 & $python desktop/generate_icon.py
 if ($LASTEXITCODE -ne 0) { throw 'Desktop icon generation failed.' }
 & $python desktop/generate_licenses.py

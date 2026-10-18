@@ -32,6 +32,12 @@
   import { normalizeTags, withinDateRange, readRaceTags, type RaceTags } from './library-filters';
   import { courseCaption, conditionsCaption, captionInference } from './race-display';
   import { inferCourse } from './data/course-inference';
+  import { sampleRecordedAt } from './data/observational-sample';
+  import RecordedReplay from './components/RecordedReplay.svelte';
+  import ComparedSimulation from './components/ComparedSimulation.svelte';
+  import { analysisNotice } from './simulation/presentation';
+  import type { AnalysisGateReportSummary } from './simulation/contracts';
+  import type { PreparedRace } from './analysis/prepared';
   import { resolveCourseIdentity } from './data/course-detection';
   let skillDetail:number|null=null;
   const browserSettings=browserPreferences();
@@ -43,6 +49,7 @@
   let reference: ReferenceData|null = null;
   let library: LibraryEntry[] = [];
   let race: Race|null = null;
+  let recordedRace:Race|null=null;
   let activeId = '';
   let pendingRemoval = '';
   let pendingCertRemoval = false;
@@ -76,12 +83,19 @@
   let previousFocus: HTMLElement|null = null;
   let selectionRequest = 0;
   let analysis:RaceAnalysis|null=null;
+  let analysisGate:AnalysisGateReportSummary|null=null;
+  let historical:PreparedRace|null=null;
   let analysisState:AnalysisState={busy:false,background:false,done:0,total:0,message:'Ready'};
   let cacheStatus:CacheStatus={policy:defaultCachePolicy(),entries:[],bytes:0};
   let raceTags:RaceTags=readRaceTags(),tagDraft='',tagFilter='',dateFrom='',dateTo='';
   let referenceReady=false,historyLoading=false,historyLoaded=false,disposed=false;
   const analysisClient=new AnalysisClient(new AnalysisStore(()=>desktopSession,()=>health?.csrfToken),{
-    parsed:(value,id)=>{if(activeId!==id)return;race=value;if(!selected)selected=value.runners[0]?.id??'';},
+    token:()=>health?.csrfToken,
+    gate:(value,id)=>{if(activeId===id)analysisGate=value;},
+    recorded:id=>{if(activeId===id){analysis=null;historical=null;race=recordedRace;}},
+    historical:(value,id)=>{if(activeId===id)historical=value;},
+    reference:value=>reference=value,
+    parsed:(value,id)=>{if(activeId!==id)return;race=value;recordedRace=value;if(!selected)selected=value.runners[0]?.id??'';},
     base:(value,result,id)=>{if(activeId!==id)return;race=value;analysis=result;},
     ready:(value,id)=>{if(activeId!==id)return;race=value.race;analysis=value.analysis;if(!selected)selected=race.runners[0]?.id??'';},
     state:value=>analysisState=value,cache:value=>cacheStatus=value,error:value=>error=value,
@@ -111,17 +125,17 @@
   $: document.documentElement.style.setProperty('--font-scale',String(fontScale/100));
   $: visible = library.filter(entry => (filter==='all'||captureFacet(entry)===filter) && withinDateRange(entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference)} ${conditionsCaption(entry.race??entry)} ${facetInfo(captureFacet(entry)).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term))).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
   $: identityRace = race ? resolveCourseIdentity(race,reference) : null;
-  $: inferredCourse = identityRace ? inferCourse(identityRace,reference) : null;
+  $: inferredCourse = analysis && identityRace ? inferCourse(identityRace,reference) : null;
   $: candidateCourse = getCourse(reference,identityRace?.courseId??inferredCourse?.courseId??null);
   $: course = candidateCourse && race?.distance && candidateCourse.distance!==race.distance ? null : candidateCourse;
   $: analysisRace = race;
-  $: samples = analysisRace ? sampleAt(analysisRace,time,reference) : [];
+  $: samples = analysisRace ? (analysis ? sampleAt(analysisRace,time,reference) : sampleRecordedAt(analysisRace,time)) : [];
   $: ranks = race ? rankSamples(race,samples,time) : new Map<string,number>();
   $: runner = race?.runners.find(r=>r.id===selected) ?? null;
   $: selectedSample = samples.find(s=>s.runnerId===selected);
   $: selectedGap = analysisRace ? runnerGap(analysisRace,samples,selected) : null;
   $: selectedEvents = race?.events.filter(e=>e.runnerId===selected) ?? [];
-  $: uma = runner && analysisRace ? buildUmalatorExport(runner,analysisRace,reference) : null;
+  $: uma = analysis && runner && analysisRace ? buildUmalatorExport(runner,analysisRace,reference) : null;
   const fmt = (n:number|null|undefined, decimals=0) => n==null?'—':n.toFixed(decimals);
   const date = (s:string) => new Date(s).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const tell = (text:string) => {message=text;error='';};
@@ -137,7 +151,7 @@
     } catch(e){error=String(e);}
   }
   async function selectEntry(entry:LibraryEntry) {
-    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;analysis=null;selected='';time=0;playing=false;skillDetail=null;
+    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';time=0;playing=false;skillDetail=null;
     try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
   }
   async function saveTags(){
@@ -166,6 +180,11 @@
     if(!analysisRace)return;
     const filename=jsonDownloadName(courseCaption(analysisRace,reference),(analysisRace.capturedAt??'').replace(/[:.]/g,'-')||'race');
     await saveJsonFile(filename,JSON.stringify(toPortableRace(analysisRace),null,2),'Race JSON');
+  }
+  async function exportAnalysis() {
+    if(!analysisGate)return;
+    await saveJsonFile('versioned-analysis.json',JSON.stringify({schemaVersion:1,source:analysisGate.mode==='inference_plan'?'Inferred':analysisGate.mode==='verified_simulation'?'Simulated':'Recorded diagnostics',
+      notice:analysisNotice(analysisGate),gate:analysisGate,analysis:historical??(analysis?preparedFor(analysis):null)},null,2),'Versioned analysis');
   }
   async function downloadUmaJson() {
     if(!runner||!analysisRace)return;
@@ -265,6 +284,9 @@
     {#if error||message}<div class="notice" class:error={!!error} role="status"><span>{error||message}</span><button aria-label="Dismiss message" onclick={()=>{message='';error=''}}>×</button></div>{/if}
     {#if race && analysisRace}
       <div class="workspace">
+        <div class="notice" role="status" data-analysis-mode={analysisGate?.mode??'recorded_only'}>{analysisNotice(analysisGate)}</div>
+        {#if analysisGate?.mode==='verified_simulation'}{#key analysisGate.binding?.authorizationSha256}<ComparedSimulation report={analysisGate} load={()=>analysisClient.simulatedDetails()}/>{/key}{/if}
+        {#if analysisGate}<details class="panel"><summary>Analysis version and comparison details</summary><button onclick={exportAnalysis}>Export analysis and provenance</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:400px;overflow:auto">{JSON.stringify(analysisGate,null,2)}</pre></details>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
         <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/>{#if analysisRace.racedAt || analysisRace.savedReplay}<p class="race-run">{analysisRace.racedAt ? date(analysisRace.racedAt) : ''}{#if analysisRace.savedReplay}{analysisRace.racedAt ? ' · Saved Replay' : 'Saved Replay'}{/if}</p>{/if}</div><RaceTeams race={analysisRace} {reference} {selected} onSelect={id=>selected=id}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>
         <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={id=>selected=id}/>
@@ -279,9 +301,11 @@
           <details class="panel race-data-notes"><summary>Race data notes · {race.frames.length} frames · {race.events.length} events</summary>{#each race.warnings as warning}<p>{warning}</p>{/each}<p>{analysisRace.courseIdentity?.source==='manual'?'Course selected manually.':analysisRace.courseIdentity?.source==='skill-conditions'?'Course inferred from recorded skill activations.':`Course source: ${analysisRace.courseIdentity?.source??(race.courseId?'recorded':'unknown')}.`}</p>{#if inferredCourse}<p>{inferredCourse.courseId?'Skill evidence identifies one compatible course.':inferredCourse.trackId?'Skill evidence identifies the venue. The surface is still unassigned.':'Course candidates from recorded skill evidence.'}</p>{#each inferredCourse.evidence as evidence}<p>{evidence}</p>{/each}{#if inferredCourse.candidateCourseIds.length}<p>Compatible candidates:</p><ul>{#each inferredCourse.candidateCourseIds as id}<li>{reference?.courses[id]?.name??`Course ${id}`}</li>{/each}</ul>{/if}{/if}</details>
         </div>
         {#if runner&&selectedReady}<div class="analysis-side"><RunnerPanel {runner} race={analysisRace} {course} {reference} {analysis} {time} sample={selectedSample} gap={selectedGap} onSkill={id=>{playing=false;skillDetail=id}} onSeek={seek} onDownload={()=>void downloadUmaJson()}/></div>{:else}<div class="analysis-side"><AnalysisSkeleton part="runner" message="Preparing runner…"/></div>{/if}
-        </div>{:else}<AnalysisSkeleton title={courseCaption(analysisRace,reference)} conditions={race.conditions} runners={race.runners.length}/>{/if}
+        </div>{:else}<RecordedReplay race={analysisRace} {reference} {time} {selected} {historical} onSeek={seek} onSelect={id=>selected=id} onExport={exportRace}>
+          <div class="transport main-transport"><button class="play-button" aria-label={playing?'Pause replay':'Play replay'} onclick={togglePlay}>{playing?'Ⅱ':'▶'}</button><button aria-label="Restart replay" onclick={()=>{time=0;playing=false}}>↺</button><span class="time">{time.toFixed(1)} / {race.duration.toFixed(1)}s</span><input aria-label="Replay time" type="range" min="0" max={race.duration} step=".05" bind:value={time}/><select aria-label="Playback speed" bind:value={playbackSpeed}><option value={.5}>½×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></div>
+        </RecordedReplay>{/if}
       </div>
-    {:else if activeId}<div class="workspace"><AnalysisSkeleton title={courseCaption(library.find(e=>e.id===activeId)??{},reference)} conditions={library.find(e=>e.id===activeId)?.conditions} message="Opening race…"/></div>{:else}<div class="empty-workspace"><span class="empty-symbol">↗</span><div class="eyebrow">RACE ANALYSIS</div><h1>Explore your races.</h1><p>Collect races as you play, or drop a race JSON anywhere in this window.<br/>View stats, skills, and replay data.</p><div class="toolbar"><button class="primary" onclick={()=>input.click()}>Import race JSON</button></div><button class="setup-cta" onclick={requestAutoCollection}>Set up auto collection</button><div class="empty-features"><span>LOCAL COLLECTION</span><span>PORTABLE JSON</span><span>RUNNER COMPARISON</span></div></div>{/if}
+    {:else if activeId}<div class="workspace">{#if analysisState.busy}<AnalysisSkeleton title={courseCaption(library.find(e=>e.id===activeId)??{},reference)} conditions={library.find(e=>e.id===activeId)?.conditions} message="Opening race…"/>{:else}<section class="panel"><h2>Recorded replay unavailable</h2><p>{error||'This file could not be decoded. Select another race or import a supported replay.'}</p></section>{/if}</div>{:else}<div class="empty-workspace"><span class="empty-symbol">↗</span><div class="eyebrow">RACE ANALYSIS</div><h1>Explore your races.</h1><p>Collect races as you play, or drop a race JSON anywhere in this window.<br/>View stats, skills, and replay data.</p><div class="toolbar"><button class="primary" onclick={()=>input.click()}>Import race JSON</button></div><button class="setup-cta" onclick={requestAutoCollection}>Set up auto collection</button><div class="empty-features"><span>LOCAL COLLECTION</span><span>PORTABLE JSON</span><span>RUNNER COMPARISON</span></div></div>{/if}
     <footer><span>Umalytics <span class="muted">/ Steam Global</span></span><span>Race data stays on this computer · <a href="data/NOTICE.txt" target="_blank">Data sources</a></span></footer>
   </main>
 </div>

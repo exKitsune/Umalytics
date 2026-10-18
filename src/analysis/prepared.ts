@@ -19,6 +19,7 @@ export interface PreparedRunner {
   metrics: Record<number, SkillMetric[]>;
 }
 export interface PreparedRace {
+  authorization?: {cacheKey:string;plan:import('../simulation/contracts').InferencePlan};
   race: Race;
   analysis: RaceAnalysis;
   runners: Record<string, PreparedRunner>;

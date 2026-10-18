@@ -1,5 +1,5 @@
 import type { Race } from './types';
-import { portableRawFields } from './raw-export';
+import { portableRawFields, copyOriginalRace } from './raw-export';
 
 /** Construct a race-only document. Never spread API/log objects into an export. */
 export function toShareableRace(race: Race) {
@@ -52,7 +52,8 @@ export function toShareableRace(race: Race) {
     courseIdentity: race.courseIdentity ? { source: race.courseIdentity.source, raceInstanceId: race.courseIdentity.raceInstanceId } : undefined,
     distanceEvidence: race.distanceEvidence,
     grade: race.grade, conditionEvidence: race.conditionEvidence ? { grade: race.conditionEvidence.grade, timeOfDay: race.conditionEvidence.timeOfDay } : undefined,
-    capture: race.capture ? { endpointGroup: race.capture.endpointGroup, categorySource: race.capture.categorySource } : undefined,
+    originalRace: copyOriginalRace(race.originalRace),
+    capture: race.capture ? { endpointGroup: race.capture.endpointGroup, categorySource: race.capture.categorySource, courseSource: race.capture.courseSource } : undefined,
   };
 }
 

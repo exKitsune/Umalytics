@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:inference": "node scripts/build-inference.mjs",
+    "pretest": "node scripts/build-inference.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "svelte-check --config ./svelte.config.js --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview --host 127.0.0.1",
@@ -22,6 +24,7 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@types/node": "^22.0.0",
     "@types/pako": "^2.0.3",
+    "esbuild": "0.28.2",
     "svelte": "^5.57.2",
     "svelte-check": "^4.7.6",
     "tsx": "^4.20.0",

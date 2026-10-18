@@ -40,6 +40,7 @@ jobs:
       - name: Build once for Pages and desktop
         run: |
           npm run build
+          npm run build:inference
           python3 scripts/audit-public-files.py --dist
           cmp public/data/update-manifest.json dist/data/update-manifest.json
       - name: Include only frontend license inputs needed by Windows
@@ -50,6 +51,8 @@ jobs:
           const bundle = '.cache/web-build';
           await mkdir(bundle, { recursive: true });
           await cp('dist', join(bundle, 'dist'), { recursive: true });
+          await cp('simulation/bundles', join(bundle, 'simulation/bundles'), { recursive: true });
+          await cp('simulation/installed-bundles.json', join(bundle, 'simulation/installed-bundles.json'));
           for (const name of ['svelte', 'pako', '@msgpack/msgpack']) {
             const source = join('node_modules', name);
             const target = join(bundle, source);
@@ -104,6 +107,11 @@ jobs:
           python tests/history-retirement-workflow.py
       - name: Run every platform-neutral system workflow once
         run: npm test
+      - name: Validate independent simulator and inference compatibility gates
+        run: |
+          python -m unittest discover -s tests/globalsim -p 'test_*.py'
+          node tests/globalsim/test_contracts.mjs --python python
+          python tests/launcher-identity-workflow.py
       - name: Save npm downloads even after test failure
         if: always() && steps.node-deps.outcome == 'success' && steps.npm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -149,7 +157,7 @@ jobs:
           path: |
             .cache/cargo/registry
             .cache/cargo/git
-          key: Windows-2022-x64-rust1.90.0-sources-v1-${{ hashFiles('src-tauri/Cargo.lock', 'tests/updater-helper/Cargo.lock') }}
+          key: Windows-2022-x64-rust1.90.0-sources-v1-${{ hashFiles('src-tauri/Cargo.lock', 'tests/updater-helper/Cargo.lock', 'simulation/simulator-worker/Cargo.lock') }}
           restore-keys: |
             Windows-2022-x64-rust1.90.0-sources-v1-
       - name: Restore compiled Cargo dependencies
@@ -252,7 +260,8 @@ jobs:
           $python = Join-Path $PWD '.cache/proxy-venv/Scripts/python.exe'
           $specs = @(
             @{ Name = 'packaged'; Arguments = @('desktop/smoke_packaged.py', '.cache/desktop-service/UmaTraceService.exe', '--headless') },
-            @{ Name = 'native'; Arguments = @('desktop/smoke_native.py', '.cache/dist/Umalytics.exe', '--headless') }
+            @{ Name = 'native'; Arguments = @('desktop/smoke_native.py', '.cache/dist/Umalytics.exe', '--headless') },
+            @{ Name = 'engines'; Arguments = @('tests/simulation-packaged-workflow.py', '.cache/desktop-service/UmaTraceService.exe', '--output', '.cache/packaged-engine-validation.json') }
           )
           $tests = foreach ($spec in $specs) {
             $stdout = Join-Path $PWD ".cache/smoke-$($spec.Name).out.log"

@@ -14,7 +14,7 @@ const ENVELOPE = new Set([
 ]);
 const RAW_KEYS = [
   'randomSeed', 'weather', 'groundCondition', 'season', 'raceType', 'raceGrade',
-  'startTimeType', 'raceInstanceId', 'distance', 'laneDistanceMax', 'horseACT_version',
+  'startTimeType', 'raceInstanceId', 'raceDistance', 'raceCourseAliases', 'raceDistanceAliases', 'laneDistanceMax', 'horseACT_version',
 ] as const;
 
 type RecordValue = Record<string, unknown>;
@@ -123,6 +123,7 @@ export function sanitizeRaceRaw(raw: RaceRaw): RaceRaw | undefined {
 }
 
 export function extractSanitizedRaw(source: Record<string, unknown>, scenario: string, options: {
+  normalized?: boolean;
   horseact: boolean;
   horses: unknown[];
   course: unknown;
@@ -140,7 +141,8 @@ export function extractSanitizedRaw(source: Record<string, unknown>, scenario: s
   });
   if (trained.length) wrapped = attachTrained(wrapped, trained);
   const course = record(options.course);
-  const courseId = number(pick(course, 'id', 'Id', 'course_id', 'courseId') ?? (typeof options.course === 'number' ? options.course : null));
+  const courseId = number(pick(course, 'id', 'Id', 'course_id', 'courseId') ?? (typeof options.course === 'number' ? options.course : null)
+    ?? (!options.normalized ? pick(obj, 'race_course_id', 'course_id') : null));
   const draft: RaceRaw = { simDataBase64: scenario };
   if (wrapped.length) draft.raceHorse = wrapped;
   if (Object.keys(course).length) draft.raceCourseSet = course;
@@ -154,14 +156,28 @@ export function extractSanitizedRaw(source: Record<string, unknown>, scenario: s
   copyScalar(draft, obj, 'raceGrade', 'race_grade', 'RaceGrade');
   copyScalar(draft, obj, 'startTimeType', 'start_time_type', 'StartTimeType');
   copyScalar(draft, obj, 'raceInstanceId', 'race_instance_id', 'RaceInstanceId');
-  copyScalar(draft, obj, 'distance', 'race_distance');
+  // A normalized display distance can be finish-derived. Never feed it back
+  // into raw starting conditions, including a nested course object.
+  if (options.normalized) {
+    copyScalar(draft, obj, 'raceDistance');
+    draft.raceCourseAliases = record(obj.raceCourseAliases);
+    draft.raceDistanceAliases = record(obj.raceDistanceAliases);
+  } else {
+    copyScalar(draft, obj, 'raceDistance', 'race_distance', 'distance');
+    draft.raceCourseAliases = Object.fromEntries(['race_course_id', 'course_id'].filter(k => obj[k] !== undefined).map(k => [k, obj[k]]));
+    draft.raceDistanceAliases = Object.fromEntries(['distance', 'race_distance'].filter(k => obj[k] !== undefined).map(k => [k, obj[k]]));
+  }
   copyScalar(draft, obj, 'laneDistanceMax', 'lane_distance_max', 'LaneDistanceMax');
   copyScalar(draft, obj, 'horseACT_version');
   if (!draft.raceType && options.category && categoryRaceType[options.category]) draft.raceType = categoryRaceType[options.category];
-  if (typeof draft.raceCourseSet === 'object' && draft.raceCourseSet && draft.distance != null && number(record(draft.raceCourseSet).distance) === null) {
-    (draft.raceCourseSet as RecordValue).distance = draft.distance;
-  }
   return sanitizeRaceRaw(draft);
+}
+
+/** Bounded provenance copy shared by import and portable/share export. */
+export function copyOriginalRace(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || JSON.stringify(value).length > 32768) return undefined;
+  const result = record(copyValue(value, 0, {count: 0}));
+  return result.schemaVersion === 1 ? result : undefined;
 }
 
 export function portableRawFields(race: Race): RaceRaw | undefined {

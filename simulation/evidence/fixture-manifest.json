@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "engineCommit": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+  "note": "Expected statuses reflect the initial unmodified captures. A mismatch expectation is not a claim of simulation parity. Original captures are supplied separately. Current room remains needs_input until independent context is supplied.",
+  "cases": [
+    {
+      "captureFile": "observed-20261017T053712-2551cd36.json",
+      "captureSha256": "aaa9da58ab5ca9e230ca09f3166e0fdad93bfa60b8cba67100fb1c0c4fc881af",
+      "expectedStatus": "verified",
+      "previousCanonicalInputSha256": "a5f4629fe7a60ee993d2fdcda5e4ce05cd8dce8f1dd1d8a78421e2a94066d79e"
+    },
+    {
+      "captureFile": "observed-20261017T053712-626f5ca8.json",
+      "captureSha256": "c5c52cfb7ea933c6adb0c4fe51d7e59da60a50b9e6efc348aab408732ab55d81",
+      "expectedStatus": "verified",
+      "previousCanonicalInputSha256": "e64ad4d9a56d1284443494e2e8286e05f869ec433cb0e5ae316c05df55cf0acf"
+    },
+    {
+      "captureFile": "observed-20261017T053712-74c4abb6.json",
+      "captureSha256": "1098d0bda22858a61cca33d90e40e7fb5543678af1d9a44e9f99d079890166d9",
+      "expectedStatus": "verified",
+      "previousCanonicalInputSha256": "f8f887acd6dc2beeb8e54bb139705dcdc888dfddb628f85f08453b577ad32daa"
+    },
+    {
+      "captureFile": "observed-20261017T053712-adcc5b70.json",
+      "captureSha256": "f38fe3b69310992885ec4530dceeca5f0d57a08596b0dfad70fe686b3b5196e3",
+      "expectedStatus": "verified",
+      "previousCanonicalInputSha256": "9c52f78c625d18507a3ec68f3c5f5f4c0895d7243cfc3717a71c55ee7331457b"
+    },
+    {
+      "captureFile": "observed-20261017T053712-d16e7b46.json",
+      "captureSha256": "7e3235746ea48ec7280b170ca97fbf3df99fabe072ab7b4bc77fe1257efd6dbd",
+      "expectedStatus": "verified",
+      "previousCanonicalInputSha256": "7785eecf09b5e4ecb8523b06512408873cf665942820c06bf8e7e1e0cb93c012"
+    },
+    {
+      "captureFile": "observed-20261017T054248-c3a24961.json",
+      "captureSha256": "cc47da6c066f20b9f93abae6cdf12dcb4b32b920a1b3b2dbf4f2b7b71c171de9",
+      "expectedStatus": "mismatch",
+      "previousCanonicalInputSha256": "54bd439935afbec2681e812050868a219479e8cbfedd96692b61b84be30ddc26"
+    },
+    {
+      "captureFile": "observed-20261017T074547-74d99c26.json",
+      "captureSha256": "fe6387247a84e5cae6d5483b35791406ca0f6042943b29dde6da7a2607dbe8c5",
+      "expectedStatus": "needs_input",
+      "previousCanonicalInputSha256": null
+    }
+  ]
+}

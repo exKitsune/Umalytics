@@ -42,6 +42,8 @@ src-tauri/gen/schemas/
 bin/
 build/
 desktop/vendor/
+simulation/bundles/
+simulation/installed-bundles.json
 *.exe
 *.dll
 *.pdb

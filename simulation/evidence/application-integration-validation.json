@@ -1,0 +1,363 @@
+{
+  "schemaVersion": 1,
+  "validatedAtUtc": "2026-10-18T01:15:04.708412+00:00",
+  "checkoutHeadPreserved": "3b949edcd54176b26174ba73fb1d302aefbfc09d",
+  "productionRegistry": {
+    "schemaVersion": 1,
+    "registryId": "umalytics-engines-unconfigured-v1",
+    "eras": [],
+    "engines": [],
+    "futureInferencePolicies": []
+  },
+  "installedBundles": [
+    {
+      "kind": "simulation",
+      "engine_id": "globalsim-v74-win-ad239efbbf4f0634",
+      "version": "efc2decd-v74",
+      "profile": "v74",
+      "artifact_sha256": "ad239efbbf4f0634f385bdcea9b5a2c85d5ba25308c42933387cccbd5c0d590a",
+      "data_sha256": "92e00d5d695d02a0c6c6da10ec0df8ffe8df9c61f66d5cb88654ef63cf26b318",
+      "artifact": "simulation/bundles/globalsim-v74-win-ad239efbbf4f0634/worker.exe",
+      "appRoot": "simulation/bundles/globalsim-v74-win-ad239efbbf4f0634/app",
+      "resourceRoot": "simulation/bundles/globalsim-v74-win-ad239efbbf4f0634/engine"
+    },
+    {
+      "kind": "inference",
+      "engine_id": "umalytics-inference-4d8bac21837bdb41-62955a34d3b82cd7",
+      "version": "umalytics-inference-4d8bac21837bdb41-62955a34d3b82cd7",
+      "profile": "umalytics-prepared-v1",
+      "artifact_sha256": "4d8bac21837bdb41405d8512647e8782c14a62c1f4428e6db970bb66e86036ed",
+      "data_sha256": "62955a34d3b82cd7d7935587c791301a8b0e2cb8baf2e56389df19954b8c78ad",
+      "artifact": "simulation/bundles/umalytics-inference-4d8bac21837bdb41-62955a34d3b82cd7/worker.mjs",
+      "data": "simulation/bundles/umalytics-inference-4d8bac21837bdb41-62955a34d3b82cd7/data.json",
+      "uiRevision": "608b9a5ffaef9e0e76e40ac842b3dabd70056914863be7d3bdd2a83087586f30"
+    },
+    {
+      "kind": "simulation",
+      "engine_id": "globalsim-v74-win-cfa215c90a55d9ff",
+      "version": "efc2decd-v74",
+      "profile": "v74",
+      "artifact_sha256": "cfa215c90a55d9ff5b1c85e1005cca7155c8d2f02b1bec724329fd66aaef63c1",
+      "data_sha256": "92e00d5d695d02a0c6c6da10ec0df8ffe8df9c61f66d5cb88654ef63cf26b318",
+      "artifact": "simulation/bundles/globalsim-v74-win-cfa215c90a55d9ff/worker.exe",
+      "appRoot": "simulation/bundles/globalsim-v74-win-cfa215c90a55d9ff/app",
+      "resourceRoot": "simulation/bundles/globalsim-v74-win-cfa215c90a55d9ff/engine"
+    }
+  ],
+  "originalFixtures": [
+    {
+      "capture": "observed-20261017T053712-2551cd36.json",
+      "captureSha256": "aaa9da58ab5ca9e230ca09f3166e0fdad93bfa60b8cba67100fb1c0c4fc881af",
+      "preparedInputSha256": "a5f4629fe7a60ee993d2fdcda5e4ce05cd8dce8f1dd1d8a78421e2a94066d79e",
+      "previousPreparedInputSha256": "a5f4629fe7a60ee993d2fdcda5e4ce05cd8dce8f1dd1d8a78421e2a94066d79e",
+      "status": "verified",
+      "expectationMet": true,
+      "canonicalInputMatchesEarlierVerifier": true,
+      "originalBytesUnchanged": true,
+      "productionMode": "recorded_only",
+      "firstDivergence": null
+    },
+    {
+      "capture": "observed-20261017T053712-626f5ca8.json",
+      "captureSha256": "c5c52cfb7ea933c6adb0c4fe51d7e59da60a50b9e6efc348aab408732ab55d81",
+      "preparedInputSha256": "e64ad4d9a56d1284443494e2e8286e05f869ec433cb0e5ae316c05df55cf0acf",
+      "previousPreparedInputSha256": "e64ad4d9a56d1284443494e2e8286e05f869ec433cb0e5ae316c05df55cf0acf",
+      "status": "verified",
+      "expectationMet": true,
+      "canonicalInputMatchesEarlierVerifier": true,
+      "originalBytesUnchanged": true,
+      "productionMode": "recorded_only",
+      "firstDivergence": null
+    },
+    {
+      "capture": "observed-20261017T053712-74c4abb6.json",
+      "captureSha256": "1098d0bda22858a61cca33d90e40e7fb5543678af1d9a44e9f99d079890166d9",
+      "preparedInputSha256": "f8f887acd6dc2beeb8e54bb139705dcdc888dfddb628f85f08453b577ad32daa",
+      "previousPreparedInputSha256": "f8f887acd6dc2beeb8e54bb139705dcdc888dfddb628f85f08453b577ad32daa",
+      "status": "verified",
+      "expectationMet": true,
+      "canonicalInputMatchesEarlierVerifier": true,
+      "originalBytesUnchanged": true,
+      "productionMode": "recorded_only",
+      "firstDivergence": null
+    },
+    {
+      "capture": "observed-20261017T053712-adcc5b70.json",
+      "captureSha256": "f38fe3b69310992885ec4530dceeca5f0d57a08596b0dfad70fe686b3b5196e3",
+      "preparedInputSha256": "9c52f78c625d18507a3ec68f3c5f5f4c0895d7243cfc3717a71c55ee7331457b",
+      "previousPreparedInputSha256": "9c52f78c625d18507a3ec68f3c5f5f4c0895d7243cfc3717a71c55ee7331457b",
+      "status": "verified",
+      "expectationMet": true,
+      "canonicalInputMatchesEarlierVerifier": true,
+      "originalBytesUnchanged": true,
+      "productionMode": "recorded_only",
+      "firstDivergence": null
+    },
+    {
+      "capture": "observed-20261017T053712-d16e7b46.json",
+      "captureSha256": "7e3235746ea48ec7280b170ca97fbf3df99fabe072ab7b4bc77fe1257efd6dbd",
+      "preparedInputSha256": "7785eecf09b5e4ecb8523b06512408873cf665942820c06bf8e7e1e0cb93c012",
+      "previousPreparedInputSha256": "7785eecf09b5e4ecb8523b06512408873cf665942820c06bf8e7e1e0cb93c012",
+      "status": "verified",
+      "expectationMet": true,
+      "canonicalInputMatchesEarlierVerifier": true,
+      "originalBytesUnchanged": true,
+      "productionMode": "recorded_only",
+      "firstDivergence": null
+    },
+    {
+      "capture": "observed-20261017T054248-c3a24961.json",
+      "captureSha256": "cc47da6c066f20b9f93abae6cdf12dcb4b32b920a1b3b2dbf4f2b7b71c171de9",
+      "preparedInputSha256": "54bd439935afbec2681e812050868a219479e8cbfedd96692b61b84be30ddc26",
+      "previousPreparedInputSha256": "54bd439935afbec2681e812050868a219479e8cbfedd96692b61b84be30ddc26",
+      "status": "mismatch",
+      "expectationMet": true,
+      "canonicalInputMatchesEarlierVerifier": true,
+      "originalBytesUnchanged": true,
+      "productionMode": "recorded_only",
+      "firstDivergence": {
+        "t": 7.459194183349609,
+        "slot": 2,
+        "frameOrder": 3,
+        "field": "pos",
+        "expected": 128.1317138671875,
+        "actual": 128.26124572753906
+      }
+    },
+    {
+      "capture": "observed-20261017T074547-74d99c26.json",
+      "captureSha256": "fe6387247a84e5cae6d5483b35791406ca0f6042943b29dde6da7a2607dbe8c5",
+      "preparedInputSha256": null,
+      "previousPreparedInputSha256": null,
+      "status": "needs_input",
+      "expectationMet": true,
+      "canonicalInputMatchesEarlierVerifier": null,
+      "originalBytesUnchanged": true,
+      "productionMode": "recorded_only",
+      "firstDivergence": null
+    }
+  ],
+  "newCapture": {
+    "file": "observed-20261017T231417-56bf898d.json",
+    "fileSha256": "9dd4721665350c36ec44174c778d8211954bf83b21f25da32ad10a91be44633e",
+    "status": "verified",
+    "inputSha256": "954138ae33c0c75a08537e4785222ab62a4d8574fea801c360b9085fff42959b",
+    "identities": {
+      "engine": {
+        "sha256": "cfa215c90a55d9ff5b1c85e1005cca7155c8d2f02b1bec724329fd66aaef63c1",
+        "expectedSha256": "cfa215c90a55d9ff5b1c85e1005cca7155c8d2f02b1bec724329fd66aaef63c1",
+        "binaryPinVerified": true,
+        "sourceRevision": "expected/not attested",
+        "argumentsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "code": {
+        "runtimeVersion": "bounded-local-runtime-v1",
+        "comparatorVersion": "recorded-observations-v2",
+        "sourceSha256": {
+          "runtime": "dbd23d1568d7bbaaab43ff6e52f6985aa3cda6a9274dfb3f5a66fbef9d14fe82",
+          "adapter": "f9036ce5ed5f6a4a7bf8820af4fd4fee7740a00260178a4ca4a48a3db005900b",
+          "comparator": "ffcdc7e9984b0aa8363cc5854c52b3d7daf0cc4845d21da2c0283265b30430c0"
+        }
+      },
+      "data": {
+        "schemaVersion": 1,
+        "expectedEngineCommit": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+        "profile": "v74",
+        "sourceFiles": {
+          "app/public/data/metadata.json": {
+            "sha256": "86b99c0bea54940df337ccf2e2191c39c0a13a9c41fca0fcf56773700a6d7114",
+            "matchesAuditedBaseline": true,
+            "baselineCommit": "7ebf0f82723b11a49e1676753960b90de7ef9095"
+          },
+          "app/src/data/course-identities.json": {
+            "sha256": "616a3dc953b3cdb98684f8e071b261866c69c6be9ca21b3142b9036806e57879",
+            "matchesAuditedBaseline": true,
+            "baselineCommit": "7ebf0f82723b11a49e1676753960b90de7ef9095"
+          },
+          "app/public/data/courses.json": {
+            "sha256": "4a4174bf07193db72a0345897aa41144e045b314dd1dbbf221081ad792834a20",
+            "matchesAuditedBaseline": true,
+            "baselineCommit": "7ebf0f82723b11a49e1676753960b90de7ef9095"
+          },
+          "engine/data/course_data.json": {
+            "sha256": "6a61cec5958cbc7f47effff59edcdd3f623456353c98d3baa9110e83b9b9cc9b",
+            "pinVerified": true,
+            "url": "https://github.com/daftuyda/GlobalSim/blob/efc2decdfeaff227ada0e9847f5deceb42c3b97f/data/course_data.json"
+          },
+          "engine/data/v70-skill-data.json": {
+            "sha256": "e1a713c38d4cfb1478144b9e641e82e5c996dd777af0b375351fa6bd21bc5a84",
+            "pinVerified": true,
+            "url": "https://github.com/daftuyda/GlobalSim/blob/efc2decdfeaff227ada0e9847f5deceb42c3b97f/data/v70-skill-data.json"
+          },
+          "engine/examples/v74-settings.json": {
+            "sha256": "793d74406f14dcf1f4720bdd4378a1ef52287e39105a76724da037c1398eeecb",
+            "pinVerified": true,
+            "url": "https://github.com/daftuyda/GlobalSim/blob/efc2decdfeaff227ada0e9847f5deceb42c3b97f/examples/v74-settings.json"
+          },
+          "engine/data/global_parameters.json": {
+            "sha256": "4655bd004ad7a9a46104283fd42e9afb1c0e9835ccb1b86be47940c100fe99e1",
+            "pinVerified": true,
+            "url": "https://github.com/daftuyda/GlobalSim/blob/efc2decdfeaff227ada0e9847f5deceb42c3b97f/data/global_parameters.json"
+          },
+          "engine/data/course_geometry": {
+            "sha256": "d7fee9e2f0d1ec9d6e8d667eb8134ade5a767f49e9d7e6e338e38f75ee05bc90",
+            "fileCount": 119,
+            "pinVerified": true,
+            "note": "Runtime must additionally verify the compiled engine's source/binary pin."
+          }
+        },
+        "masterProjectionSource": {
+          "name": "Local Global master SQLite public metadata",
+          "revision": "4ff8f53b4446adc922f74dadd14a238ac6fef430425be40776da8331f5ecae6c",
+          "url": "https://\u0075mamusume.com/",
+          "license": "Game metadata © the UM:PD rights holders",
+          "modified": 1792023281.4939315,
+          "notes": "Independently selected public metadata columns; no user/account data or artwork."
+        },
+        "engineParameterSource": {
+          "extraction": "live RaceManager._paramDefine; metadata-resolved offsets",
+          "module_sha256": "98dd8ed57bc4ce1cd2dd8ce116aad71ffc276d50970ede986b4f8a6b853c3273",
+          "region": "global",
+          "extracted_date": "2026-09-20",
+          "activation_formula": "RaceUtil.CalcActivatePer, RVA 0x3613be0: max(ActivatePerMin, LotActivatePerVal1 - LotActivatePerVal2 / wisdom), percentage units.",
+          "rng": "Live RaceRandom._random field type: System.Random. Existing Rule30 RNG is not retail-verified.",
+          "order_rate_formula": {
+            "method": "SkillTriggerOrderRate..ctor",
+            "rva": "0x35c5710",
+            "operation": "truncate(float32(horse_count * float32(rate / divisor)) + roundingAdd)",
+            "divisor": 100,
+            "roundingAdd": 0.5
+          }
+        }
+      },
+      "profile": {
+        "values": {
+          "experimentalGrid": null,
+          "experimentalLaterStaminaMechanics": false,
+          "experimentalRetailGeometry": true,
+          "experimentalRetailInitialization": true,
+          "experimentalRetailRuntime": true,
+          "experimentalRetailSections": true,
+          "experimentalRetailStartup": false,
+          "laneSelectionVersion": 1,
+          "positionKeepVersion": 1,
+          "raceContextVersion": 2,
+          "raceInitializationVersion": 1,
+          "retainAllFrames": true,
+          "singleMode": false,
+          "skillValueVersion": 4,
+          "wisdomChecks": true
+        },
+        "sha256": "91b24c6acd177343846bb76071eff3f63380c9163de4fe8a575d944564021155"
+      },
+      "worker": {
+        "expectedUpstreamRevision": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
+        "sourceRevision": "expected/not attested",
+        "api": "globalsim::run_worker",
+        "defaultProfileReliedOn": false
+      }
+    },
+    "allComparedChecksPass": true,
+    "originalUnchanged": true,
+    "productionMode": "recorded_only",
+    "evidenceNotes": [
+      "The logged racedAt is a display clock. Its occurrence semantics/offset and original region/version are not established."
+    ],
+    "loggedTime": "2026-10-17T22:44:16",
+    "loggedTimeSource": "game",
+    "raceInstanceId": 800023
+  },
+  "packagedValidation": {
+    "schemaVersion": 1,
+    "executableSha256": "c17d95108924566a718f1e3636ac5fe08b85160d91a16e1039248bb4d61d0d3f",
+    "developerToolchainsOnPath": false,
+    "productionAuthorization": "recorded_only",
+    "recordedOnlyGatePassed": true,
+    "inferenceArtifactPinsPassed": true
+  },
+  "desktopExecutable": {
+    "path": ".cache/dist/Umalytics-IntegrationPreview.exe",
+    "sha256": "5d1cc69a1c216d7474b62e942130a920c976a3e1e78a5f530ebadc34ef11e5c5"
+  },
+  "checks": {
+    "appWorkflows": {
+      "passed": 36,
+      "failed": 0
+    },
+    "pythonGatewayAndAppTests": {
+      "run": 108,
+      "skipped": 1,
+      "failures": 0,
+      "note": "External course class runs separately."
+    },
+    "courseCaptureAndOriginalHashAudit": {
+      "run": 16,
+      "passed": true
+    },
+    "frontendContracts": {
+      "run": 16,
+      "passed": true
+    },
+    "fullTypescriptSvelteBuild": "passed; zero type/Svelte diagnostics; Vite chunk-size warning",
+    "realVersionedWorkerAndCache": "passed; real HTTP service, current plan, future warning restore, policy/artifact invalidation, unknown no worker/cache",
+    "browser": "recorded-only replay visibly seeks to 60 seconds; screenshot in test-output/recorded-only-preview.png",
+    "windowsBuild": "locked worker + PyInstaller + Tauri passed",
+    "packagedService": "Passed: real frozen launcher, encrypted loopback proxy and lifecycle, reference assets, geometry, library, settings, restart; no actual game or certificate trust changes.",
+    "packagedSimulator": "verified new capture using embedded resources with no toolchains on PATH",
+    "nativeWebView": "Passed: native launcher arguments, console suppression, proxy environment, tray lifetime, migration, session shutdown; Explorer checks skipped headless; no actual game or certificate trust changes.",
+    "queuedPolicyChange": "Rejected before gateway execution; regression passed",
+    "realSimulatorHttp": "Passed: measured executable actually launched; cached output compared again; unknown/no-model access; tampered binary denied; eligible inference retained; policy invalidation.",
+    "launcherIdentity": "Passed: own frozen executable/path/data/hash accepted; foreign or missing identities rejected; development separation preserved.",
+    "publicationAudits": "Source and built viewer privacy/naming audit, public-inventory workflow, reference manifest, history-retirement workflow and release YAML parsing passed.",
+    "serviceUpdaterRegression": "Real service signed-release/updater and portable-storage/HTTPS collector workflows passed."
+  },
+  "sourceSha256": {
+    "desktop/service.py": "654e392b222257f59c5412d5326d0cb5a98ee9975595ee4779fa952508b1a2e3",
+    "desktop/race_evidence.py": "b2ed2df10fae5091dc39e226985e8a6b486c71ccddaa2962ba11bc77c87eea8a",
+    "desktop/simulation_service.py": "b21bc46552ab0ce592e597e9bdf64df4415e9978993c7c9e5e3dc5ba801badc2",
+    "desktop/simulation_diagnostic.py": "20ad0fb63be92382c31ddc42e2f7438bb48138f55f517e364fc0f4935713ae47",
+    "scripts/proxy/race_extract.py": "47da98151fbaacd82a26e4f08e0909830e81cab51efe5a1a7a988291ddc9bc06",
+    "src/App.svelte": "b9c9ff2ec82fa237dc995f75cedf5ec138826671beceb10bc3c91717bba37536",
+    "src/analysis/client.ts": "26da7d858f2d250d3ea97b2586348976dd67df66bcab6986b49530c9d767b990",
+    "src/analysis/version-worker.ts": "a3a9bea56a81cf57c54008a877a07423cb4914b95e5757d665de96cf7186426f",
+    "src/data/raw-export.ts": "74b496ae7401572e5723063f62952e0d77fd83bf3548bcf1791bfece5295fd96",
+    "src/data/import.ts": "c0b4bb066ae38db6a0eb262ea711899d7f2361286885362f28244b91df775b48",
+    "src/data/share.ts": "062d073cc42ead5abee880b994650838eb79e05797f34093074d6de37b21079a",
+    "src/data/observational-sample.ts": "27313c7ae47471929fc47b420f5340559bc908741d574fef25727a433246ec72",
+    "scripts/build-desktop.ps1": "22d24d47ef60db162711535ea71dde8bd08e9ae6d13e201ce6a4f93a4a179cae",
+    "scripts/build-inference.mjs": "9cdc046659aa36b485aae48eab0f037ac5c2037674eda1501b8fda04c7b5ad36",
+    "scripts/package-simulator.py": "73327722adfb4b55db61324c25075cc2336b2de120e9541eb3cde9268b043f2e",
+    "desktop/collector.spec": "5e915c7d80ddbd419ded28608026edd20a159b7b1da6b8355f9796792a578bb5",
+    "simulation/simulator-worker/Cargo.lock": "4ae10205ce92f0bb8cedbd3410fa1c240a1de8c3170c11d413ab49e2682e4d84",
+    "desktop/globalsim_bridge/adapter.py": "f9036ce5ed5f6a4a7bf8820af4fd4fee7740a00260178a4ca4a48a3db005900b",
+    "desktop/globalsim_bridge/analysis_gate.py": "864224dfb5945537b7b9c99beb56a426cb61691b3d7e9ca0c4365e192a7d65ed",
+    "desktop/globalsim_bridge/comparator.py": "ffcdc7e9984b0aa8363cc5854c52b3d7daf0cc4845d21da2c0283265b30430c0",
+    "desktop/globalsim_bridge/runtime.py": "dbd23d1568d7bbaaab43ff6e52f6985aa3cda6a9274dfb3f5a66fbef9d14fe82",
+    "desktop/globalsim_bridge/versioning.py": "6794ccdcc8b73347eb1d388365f82ecd1eb674e28275b82cdc978fec4590fcee",
+    "desktop/globalsim_bridge/__init__.py": "681e576e64bd54ec9cfdefd422978ecde591b889a22ecf18da8628789f0ce533",
+    "tests/simulation-http-workflow.py": "a4fe0c280a850918f1f728f985adc62f9bcdd7a9bd5030db90f2015a496c6002",
+    "tests/launcher-identity-workflow.py": "a143b962b8ad3c92b76ab6fe9db5c405a2b0bd723635a0830179239a4a57444e",
+    "desktop/smoke_packaged.py": "739ce828daf2de8804ed543d79a799fe47b23ce1a052f889153ce1e0287654d4",
+    ".github/workflows/release.yml": "9e4b36eacd584da544bd1f7d321d767ad602048a394f63c9ffd0b060a81ef2f6"
+  },
+  "limits": [
+    "No evidenced real region/release-to-engine coverage mapping is configured. All original and new real captures remain recorded-only in production.",
+    "No historical game mechanics bundle or future policy is asserted. Synthetic policy tests are not real release evidence.",
+    "The existing display clock does not establish original occurrence semantics or timezone.",
+    "Stock v74 does not provide hidden state; compared observations alone authorize only the compared fields."
+  ],
+  "httpRouteValidation": {
+    "schemaVersion": 1,
+    "syntheticCoverageOnly": true,
+    "captureSha256": "9dd4721665350c36ec44174c778d8211954bf83b21f25da32ad10a91be44633e",
+    "simulatorArtifactSha256": "cfa215c90a55d9ff5b1c85e1005cca7155c8d2f02b1bec724329fd66aaef63c1",
+    "originalAndProductionRegistryUnchanged": true,
+    "checks": {
+      "realProcessAndComparedDetails": true,
+      "cachedOutputComparedAgain": true,
+      "unknownNoModelAccess": true,
+      "tamperedSimulatorDeniedEligibleInferenceRetained": true,
+      "policyChangeRevokesDetails": true
+    }
+  }
+}

@@ -4,6 +4,13 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 root = Path(SPECPATH).parent
 datas = [(str(root / 'dist'), 'dist')]
+datas += [(str(root / 'simulation' / 'engine-registry.json'), 'simulation')]
+if (root / 'simulation' / 'installed-bundles.json').is_file():
+    datas += [(str(root / 'simulation' / 'installed-bundles.json'), 'simulation'),
+              (str(root / 'simulation' / 'bundles'), 'simulation/bundles')]
+# Runtime code fingerprints remain measurable when frozen. Python imports are
+# collected normally; these source resources are for identity, never execution.
+datas += [(str(root / 'desktop' / 'globalsim_bridge'), 'globalsim_bridge')]
 datas += [(str(root / '.cache' / 'desktop-licenses' / 'THIRD-PARTY-NOTICES.txt'), '.')]
 datas += [(str(root / 'desktop' / name), 'desktop')
           for name in ('build-info.json', 'update-public-key.txt')]

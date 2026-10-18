@@ -5,6 +5,7 @@ import math
 import re
 import struct
 import zlib
+import hashlib
 from datetime import datetime, timezone
 
 MAX_RACES = 100
@@ -234,6 +235,59 @@ def _object_clock(value):
     return None
 
 
+def original_clock_observations(value, route, association):
+    """Preserve candidate clocks without asserting undocumented field semantics.
+
+    The existing display logger includes save/result/create times and loses the
+    Unix offset. Keep it for display, but do not promote it to occurrence proof.
+    """
+    if not isinstance(value, dict):
+        return []
+    result = []
+    for key, raw in value.items():
+        if not _time_key(key) or not isinstance(raw, (str, int)) or isinstance(raw, bool):
+            continue
+        if isinstance(raw, str) and len(raw) > 128:
+            continue
+        if _clock(raw) is None:
+            try:
+                if not isinstance(raw, str) or datetime.fromisoformat(raw.replace('Z', '+00:00')).tzinfo is None:
+                    continue
+            except ValueError:
+                continue
+        offset = 'UTC' if type(raw) is int else None
+        precision = 1
+        if isinstance(raw, str):
+            try:
+                parsed = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+                offset = parsed.strftime('%z') if parsed.tzinfo is not None else None
+                fraction = re.search(r':\d{2}\.(\d+)', raw)
+                precision = 10 ** -len(fraction.group(1)) if fraction else 1
+            except ValueError:
+                pass
+        result.append({'sourceField': key, 'rawValue': raw, 'route': api_route(route),
+            'unit': 'unix-seconds' if type(raw) is int else 'wall-clock',
+            'offset': offset, 'precisionSeconds': precision,
+            'semantics': 'unestablished', 'association': association})
+    return result[:32]
+
+
+def original_version_observations(value, route, association):
+    """Retain only race-adjacent candidates; a replay viewer build is not proof.
+
+    These are observations, never selector facts. Establish upstream semantics
+    and original-race association before promoting any candidate in a sidecar.
+    """
+    if not isinstance(value, dict):
+        return []
+    keys = ('region', 'server_region', 'server', 'race_mode', 'race_type',
+            'game_build', 'game_version', 'ruleset_id', 'master_sha256', 'master_data_version')
+    return [{'sourceField': key, 'rawValue': value[key], 'route': api_route(route),
+             'semantics': 'unestablished', 'association': association}
+            for key in keys if key in value and (type(value[key]) is int
+                or isinstance(value[key], str) and len(value[key]) <= 128)]
+
+
 def api_route(path):
     """Keep a static API route. Drop the query string and any long numeric segment."""
     if not isinstance(path, str):
@@ -320,7 +374,7 @@ def stamp_race_clocks(races, captured_at, saved_replay):
             race['raced_at_source'] = 'capture'
 
 
-def collect_race_times(payload):
+def collect_race_times(payload, route=''):
     """Run times from a saved-race list, keyed so the later replay can reuse one unambiguous clock."""
     found = []
     visits = 0
@@ -341,10 +395,16 @@ def collect_race_times(payload):
         clock = _object_clock(value)
         join = _join_keys(value)
         instance = _int(value.get('race_instance_id') or value.get('raceInstanceId'))
+        candidate = None
         if clock and clock[0] == 'save_time' and instance:
-            found.append({'join': join, 'at': clock[1], 'field': 'save_time', 'instance': instance})
+            candidate = {'join': join, 'at': clock[1], 'field': 'save_time', 'instance': instance}
         elif clock and join:
-            found.append({'join': join, 'at': clock[1]})
+            candidate = {'join': join, 'at': clock[1]}
+        if candidate is not None:
+            linkage = hashlib.sha256(json.dumps(join, sort_keys=True).encode()).hexdigest()
+            candidate['observations'] = original_clock_observations(value, route,
+                {'kind': 'joined-identifiers', 'sha256': linkage})
+            found.append(candidate)
         for key, nested in value.items():
             if key in ENVELOPE or key in RUNNER_BRANCHES:
                 continue
@@ -372,11 +432,17 @@ def apply_race_times(races, memory):
             saved = {item['at'] for item in memory if item.get('field') == 'save_time' and item.get('instance') == instance}
             if instance and len(saved) == 1:
                 race['raced_at'] = next(iter(saved))
+                race.setdefault('original_race', {'schemaVersion': 1})['observations'] = [
+                    {**observation, 'association': {'kind': 'course-instance-only', 'raceInstanceId': instance}}
+                    for item in memory if item.get('field') == 'save_time' and item.get('instance') == instance
+                    for observation in item.get('observations', [])][:32]
                 continue
         matches = [item for item in memory if item.get('field') != 'save_time' and _binding_matches(race, {'join': item['join'], 'course': {}})]
         times = {item['at'] for item in matches}
         if len(times) == 1:
             race['raced_at'] = next(iter(times))
+            observations = [observation for item in matches for observation in item.get('observations', [])]
+            race.setdefault('original_race', {'schemaVersion': 1})['observations'] = observations[:32]
 
 
 def _join_keys(value):
@@ -415,10 +481,10 @@ def _course_fields(value):
     raw_course = meta.get('race_course_set')
     if isinstance(raw_course, dict) or _int(raw_course) is not None:
         course['race_course_set'] = raw_course
-    for key in ('distance', 'race_distance'):
+    for key in ('race_course_id', 'course_id', 'distance', 'race_distance', 'race_grade', 'start_time_type'):
         number = _int(meta.get(key))
-        if number is not None and number > 0 and 'distance' not in course:
-            course['distance'] = number
+        if number is not None and number > 0:
+            course[key] = number
     for key in CONDITIONS:
         condition = meta.get(key)
         if _number(condition) is not None or isinstance(condition, str) and len(condition) <= 32:
@@ -446,14 +512,15 @@ def collect_room_bindings(payload):
             return
         course = _course_fields(value)
         join = _join_keys(value)
-        if 'race_instance_id' not in course and 'race_course_set' not in course:
+        has_identity = any(key in course for key in ('race_instance_id', 'race_course_set', 'race_course_id', 'course_id'))
+        if not has_identity:
             join.pop('random_seed', None)
         elif 'random_seed' not in join:
             seed = _int(value.get('random_seed', value.get('randomSeed')))
             if seed is not None and seed > 0:
                 join['random_seed'] = seed
-        if join and ('race_instance_id' in course or 'race_course_set' in course):
-            found.append({'join': join, 'course': {key: course[key] for key in course if key in ('race_instance_id', 'race_course_set', 'distance', *CONDITIONS)}})
+        if join and has_identity:
+            found.append({'join': join, 'course': course})
         for key, nested in value.items():
             if key in ENVELOPE:
                 continue
@@ -484,8 +551,9 @@ def _binding_matches(race, binding):
 
 def remember_room_bindings(memory, bindings, limit=64):
     for binding in bindings:
-        instance = binding['course'].get('race_instance_id')
-        memory[:] = [item for item in memory if item['course'].get('race_instance_id') != instance or not any(item['join'].get(key) == binding['join'].get(key) for key in ('saved_room_id', 'register_id', 'room_id', 'random_seed') if key in item['join'] and key in binding['join'])]
+        # Retain conflicting definitions until the join's ambiguity check. Two
+        # course-only responses both have instance=None; that is not identity.
+        memory[:] = [item for item in memory if item != binding]
         memory.append(binding)
     if len(memory) > limit:
         del memory[:-limit]
@@ -494,16 +562,30 @@ def remember_room_bindings(memory, bindings, limit=64):
 def apply_room_bindings(races, memory):
     """Copy course fields from a room response that shares a room id or random seed."""
     for race in races:
-        if race.get('race_instance_id') or race.get('race_course_set'):
+        if any(race.get(key) for key in ('race_instance_id', 'race_course_set', 'race_course_id', 'course_id')):
             race.pop('_room_join', None)
             continue
         matches = [binding for binding in memory if _binding_matches(race, binding)]
         race.pop('_room_join', None)
         instances = {binding['course'].get('race_instance_id') for binding in matches if binding['course'].get('race_instance_id')}
-        courses = {json.dumps(binding['course'].get('race_course_set'), sort_keys=True) for binding in matches if binding['course'].get('race_course_set') is not None}
-        if len(instances) > 1 or len(courses) > 1 or not matches:
+        courses, distances = set(), set()
+        for binding in matches:
+            context = binding['course']
+            nested = context.get('race_course_set', {})
+            if not isinstance(nested, dict):
+                nested = {'id': nested}
+            courses.update(context[key] for key in ('race_course_id', 'course_id') if key in context)
+            courses.update(nested[key] for key in ('id', 'Id', 'course_id', 'courseId', '<Id>k__BackingField') if type(nested.get(key)) is int)
+            distances.update(context[key] for key in ('distance', 'race_distance') if key in context)
+            distances.update(nested[key] for key in ('distance', 'Distance', 'race_distance', 'raceDistance') if type(nested.get(key)) is int)
+        # Preserve conflicting candidate definitions in memory and withhold the
+        # join, including direct aliases and independently captured distance.
+        conflicts = any(len({json.dumps(binding['course'][key], sort_keys=True) for binding in matches
+                             if key in binding['course']}) > 1
+                        for key in ('race_grade', 'start_time_type', *CONDITIONS))
+        if len(instances) > 1 or len(courses) > 1 or len(distances) > 1 or conflicts or not matches:
             continue
-        course = matches[-1]['course']
+        course = {key: value for binding in matches for key, value in binding['course'].items()}
         copied = False
         if 'race_instance_id' not in race and course.get('race_instance_id'):
             race['race_instance_id'] = course['race_instance_id']
@@ -511,10 +593,7 @@ def apply_room_bindings(races, memory):
         if 'race_course_set' not in race and course.get('race_course_set') is not None:
             race['race_course_set'] = course['race_course_set']
             copied = True
-        if 'distance' not in race and course.get('distance'):
-            race['distance'] = course['distance']
-            copied = True
-        for key in CONDITIONS:
+        for key in ('race_course_id', 'course_id', 'distance', 'race_distance', 'race_grade', 'start_time_type', *CONDITIONS):
             if key not in race and key in course:
                 race[key] = course[key]
                 copied = True
@@ -579,6 +658,12 @@ def extract_races(payload, endpoint='', captured_at=None, settings=None):
                 clock = _object_clock(value) or _object_clock(room) or _object_clock(value.get('race_result') if isinstance(value.get('race_result'), dict) else None)
                 if clock:
                     race['raced_at'] = clock[1]
+                association = {'kind': 'same-response-scenario',
+                    'scenarioSha256': hashlib.sha256(scenario.encode()).hexdigest()}
+                observations = [observation for node in (value, room, value.get('race_result'))
+                    for observation in (original_clock_observations(node, endpoint, association)
+                                        + original_version_observations(node, endpoint, association))]
+                race['original_race'] = {'schemaVersion': 1, 'observations': observations[:32]}
                 for key in RACE_NUMBERS:
                     n = _number(metadata.get(key))
                     if key == 'race_grade' and (type(n) is not int or not 0 <= n <= 10000):
