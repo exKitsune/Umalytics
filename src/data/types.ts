@@ -94,7 +94,7 @@ export interface Race {
   laneDistanceMax?: number | null;
   category?: RaceCategory;
   capturedAt?: string;
-  /** When the race was run. A game clock has no timezone. A live capture fallback is UTC and ends with Z. */
+  /** When the race was run. Legacy game clocks omit their UTC suffix; local display converts them without changing the stored evidence. */
   racedAt?: string;
   racedAtSource?: 'game' | 'capture';
   savedReplay?: boolean;

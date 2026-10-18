@@ -15,7 +15,7 @@ import { AnalysisClient, type AnalysisState } from '../src/analysis/client';
 import { AnalysisStore } from '../src/analysis/store';
 import { toPortableRace } from '../src/data/share';
 import { trafficIntervals, trafficAt, trafficActive, trafficColor } from '../src/simulation/traffic';
-import {trafficTimeline,trafficSampleAt,trafficCells} from '../src/simulation/traffic-lane';
+import {trafficTimeline,trafficSampleAt,trafficCells,trafficDurations} from '../src/simulation/traffic-lane';
 import type {MotionSample} from '../src/data/race-motion';
 import {powerSummary} from '../src/simulation/power';
 import {telemetrySkillEnd} from '../src/data/telemetry-skills';
@@ -63,7 +63,7 @@ const trafficRows=Array.from({length:10},(_,index)=>{
   const row=Array(43).fill(0);row[m.time]=index/10;row[m.dt]=.1;
   row[m.blocker]=[0,2,4,8].includes(index)?1:-1;
   row[m.nearFrontSeconds]=index===1?.1:0;row[m.nearBehindSeconds]=index===9?.1:0;
-  row[m.selfLoss]=[.075,0,.8,0,1.6,0,0,0,.074,0][index];row[m.finalLoss]=index===2?.6:0;
+  row[m.selfLoss]=[.001,0,.8,0,1.6,0,0,0,.0009,0][index];row[m.finalLoss]=index===2?.6:0;
   return row;
 });
 const traffic=trafficIntervals(trafficRows,1);
@@ -83,12 +83,12 @@ assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.25,finalLoss:0}),
 assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.4,finalLoss:0}),'#ffa825');
 assert.notEqual(trafficColor({...traffic[0].traffic![0],selfLoss:.4}),trafficColor({...traffic[0].traffic![0],selfLoss:.5}),'Severity changes continuously between anchors');
 const lane=trafficTimeline([
-  {time:0,blockingClamps:{self:.075,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
+  {time:0,blockingClamps:{self:.001,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
   {time:.1,blockingClamps:{self:0,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
   {time:.2,blockingClamps:{self:.4,final:.3},constraint:{kind:'recorded-block',runnerId:'r1'}},
   {time:.3,blockingClamps:{self:.6,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
   {time:.4,blockingClamps:{self:2,final:0},constraint:{kind:'none'}},
-  {time:.5,blockingClamps:{self:.074,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
+  {time:.5,blockingClamps:{self:.0009,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},
 ] as MotionSample[],.6);
 assert.equal(trafficSampleAt(lane,.15)?.blocked,true,'Keep contact even with zero instantaneous cut');
 assert.equal(trafficSampleAt(lane,.15)?.selfLoss,0);
@@ -102,6 +102,14 @@ assert.deepEqual(trafficCells(lane,t=>t*t*100),[
   {start:0,end:.1*.1*100,color:'#ffffff'},{start:.2*.2*100,end:.3*.3*100,color:'#ffa825'},{start:.3*.3*100,end:.4*.4*100,color:'#f04444'},
 ],'Use projected start/end boundaries on a nonlinear distance axis');
 assert.equal(trafficCells(lane,()=>null).length,0);
+const trafficTotals=trafficDurations(lane),paintedSeconds=trafficCells(lane,t=>t).reduce((sum,cell)=>sum+cell.end-cell.start,0);
+assert.ok(Math.abs(trafficTotals.slowedSeconds-paintedSeconds)<1e-9,'Results slowed time equals the colored tick windows.');
+assert.ok(Math.abs(trafficTotals.contactSeconds-.5)<1e-9,'Contact includes zero and sub-threshold cuts.');
+assert.ok(Math.abs(trafficTotals.slowedSeconds-.3)<1e-9);
+assert.equal(trafficColor({...lane[0],selfLoss:.001}),'#ffffff');
+const clipped=trafficTimeline([{time:0,blockingClamps:{self:.001,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}},{time:.0666,blockingClamps:{self:.05,final:0},constraint:{kind:'recorded-block',runnerId:'r1'}}] as MotionSample[],.08);
+assert.equal(trafficDurations(clipped).slowedSeconds,.08,'The final colored tick stops at the runner finish.');
+
 
 assert.equal(trafficIntervals(trafficRows,.45)[0].end,.45,'Clamp to the runner finish');
 const ceiling=Array(43).fill(0);ceiling[m.dt]=.1;ceiling[m.blocker]=-1;ceiling[m.selfLoss]=2;

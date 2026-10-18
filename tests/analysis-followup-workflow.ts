@@ -64,6 +64,8 @@ const storage=new Map([['umalytics.telemetry-hidden-statuses.v1','["dueling"]']]
 (globalThis as any).localStorage={getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value)};
 assert.deepEqual([...readHiddenStatuses()],['dueling','conserve-power'],'Migration preserves existing choices and adds the new default');
 saveHiddenStatuses(new Set(['dueling']));assert.deepEqual([...readHiddenStatuses()],['dueling'],'Explicitly enabling conserve power persists');
+saveHiddenStatuses(new Set(['dueling','traffic']));assert.equal(readHiddenStatuses().has('traffic'),true,'Traffic visibility survives a reload.');
+saveHiddenStatuses(new Set(['dueling']));assert.equal(readHiddenStatuses().has('traffic'),false,'Enabling traffic preserves the other status preferences.');
 delete (globalThis as any).localStorage;
 // Exercise the actual client wiring: background reads must pass the same service
 // gate, keep foreground callbacks untouched, and retain the saved preference.

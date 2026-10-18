@@ -1,3 +1,4 @@
+import {raceTimestamp} from './race-time';
 /* Key mappings informed by SSHZ.ORG replay reference (MIT). See THIRD_PARTY_LICENSE.txt. */
 import { decode } from '@msgpack/msgpack';
 import { base64Bytes, MAX_FILE_BYTES, MAX_FRAMES, MAX_RUNNERS, MAX_SAMPLES, parseScenario } from './binary';
@@ -67,10 +68,8 @@ function parseAptitudes(obj: RecordValue, normalized = false): RunnerAptitudes |
 function raceClock(value: unknown) {
   const text = string(value);
   if (!text || text.length > 40) return undefined;
-  const utc = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})Z$/.exec(text);
-  if (utc && Number.isFinite(Date.parse(`${utc[1]}T${utc[2]}Z`))) return `${utc[1]}T${utc[2]}Z`;
-  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/.exec(text);
-  return match && Number.isFinite(Date.parse(`${match[1]}T${match[2]}`)) ? `${match[1]}T${match[2]}` : undefined;
+  const clock=text.replace(' ','T');
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/.test(clock)&&Number.isFinite(raceTimestamp(clock).getTime())?clock:undefined;
 }
 
 function raceDesignation(mode: unknown, saved: boolean, explicit: unknown): Race['raceDesignation'] {

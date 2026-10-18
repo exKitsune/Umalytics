@@ -30,3 +30,13 @@ export function trafficCells(ticks:readonly TrafficSample[],project:(time:number
   }
   return cells;
 }
+
+/** The results total uses exactly the tick windows painted in the traffic lane. */
+export function trafficDurations(ticks:readonly TrafficSample[]){
+  return ticks.reduce((sum,tick)=>{
+    const duration=Math.max(0,tick.end-tick.start);
+    if(tick.blocked)sum.contactSeconds+=duration;
+    if(tick.blocked&&trafficSlowdown(tick)>=TRAFFIC_MIN_SLOWDOWN)sum.slowedSeconds+=duration;
+    return sum;
+  },{contactSeconds:0,slowedSeconds:0});
+}

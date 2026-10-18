@@ -42,6 +42,17 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+test('rapid deletion cancels pending analysis and race clocks display in local time',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/library-lifecycle-workflow.ts')],{cwd:root,windowsHide:true,timeout:15000});
+  assert.match(result.stdout,/Library lifecycle:.*passed/);
+});
+
+test('cached dashboard exports retain original simulator inputs through reimport',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/versioned-capture-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
+  const report=JSON.parse(result.stdout.trim());
+  for(const field of ['rawAliases','distanceFeedbackPrevented','provenance','serviceRoundTrip','cachedDashboardExport','observationalSampler'])assert.equal(report[field],'passed');
+});
+
 test('service analyzes newest races without a window and reuses authenticated dashboards',async()=>{
   const result=await run('python',[join(root,'tests/service-analysis-workflow.py')],{cwd:root,windowsHide:true,timeout:60000});
   assert.match(result.stdout,/Service analysis:.*passed/);

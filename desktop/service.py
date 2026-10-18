@@ -731,7 +731,7 @@ class Service:
                         item['category'] = category[:200]
                     item.update(self.summary_course(entry, reference))
                     raced_at = entry.get('raced_at', entry.get('racedAt'))
-                    if isinstance(raced_at, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?', raced_at):
+                    if isinstance(raced_at, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?', raced_at):
                         item['racedAt'] = raced_at
                     mode = entry.get('race_mode', entry.get('raceMode'))
                     if mode in ('practice', 'room'):

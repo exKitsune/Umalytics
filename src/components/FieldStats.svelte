@@ -1,4 +1,6 @@
 <script lang="ts">
+  import {trafficTimeline,trafficDurations} from '../simulation/traffic-lane';
+  import {telemetryEndTime} from '../telemetry';
   import {statusDescription,statusColor,uphillHelp,downhillHelp} from '../data/analysis-copy';
   import type { Race } from '../data/types';
   import type { RaceAnalysis } from '../data/analytics';
@@ -27,6 +29,7 @@
   const range=(v:MotionBand,d=2)=>Math.abs(v.max-v.min)<10**-d?v.mid.toFixed(d):`${Math.min(v.min,v.mid,v.max).toFixed(d)} – ${Math.max(v.min,v.mid,v.max).toFixed(d)}`;
   $: prepared=preparedFor(analysis);
   $: motions=Object.fromEntries(Object.entries(prepared?.runners??{}).map(([id,r])=>[id,r.motion])) as Record<string,RunnerMotion>;
+  $: traffic=analysis.source==='simulation'?Object.fromEntries(race.runners.map(r=>[r.id,trafficDurations(trafficTimeline(motions[r.id]?.samples??[],telemetryEndTime(race,r.id)))])):{};
   $: modes=Object.fromEntries(Object.entries(prepared?.runners??{}).map(([id,r])=>[id,r.modes])) as Record<string,StatusModeImpact[]>;
   const mode=(id:string,kind:string)=>modes[id]?.find(s=>s.kind===kind);
   $: sorted=[...race.runners].sort((a,b)=>(a.finishOrder??99)-(b.finishOrder??99));
@@ -207,7 +210,7 @@
         <td>{@render statusCell(ss, impact(r.id,'spot-struggle'))}</td><td><PowerStats available={analysis.source!=='recorded'} value={prepared?.runners[r.id]?.power} intervals={intervals[r.id]??[]}/></td>
         <td><div class="fact" class:empty={!s?.rushedDuration}><strong title="Time spent rushed.">{f(s?.rushedDuration)}</strong><span class="unit">s</span></div><ImpactLine bits={rushedBits(r.id)} modeled title="Status effect"/></td>
         <td>{#if debuffs?.intervals}<div class="fact"><strong class="modeled" title="HP lost to incoming debuffs.">{debuffs.modeledHpDelta==null?'—':f(debuffs.modeledHpDelta,0)}</strong><span class="unit">HP</span></div><ImpactLine bits={[...(debuffs.modeledDistanceDelta==null?[]:[{text:`${signed(debuffs.modeledDistanceDelta,1)} m`,tone:signTone(debuffs.modeledDistanceDelta)}]),...(debuffs.modeledTimeDelta==null?[]:[{text:`${Math.abs(debuffs.modeledTimeDelta).toFixed(3)} s`,tone:signTone(-debuffs.modeledTimeDelta)}])]} modeled title="Incoming debuffs"/>{:else}—{/if}</td>
-        <td><div class="fact" title="Time in blocking contact. Only stronger speed cuts are colored in telemetry."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss' as const},{text:`${range(hole.time,3)} s`,tone:'loss' as const},...(hole.partial?[{text:'partial',tone:'' as const}]:[])]} modeled title="Traffic"/>{:else if prepared?.runners[r.id]?.blocking}{@const clamps=prepared.runners[r.id].blocking!}<span class="note" title="Largest speed reduction from traffic.">Peak cut {Math.max(clamps.maximumSelfClamp,clamps.maximumFinalClamp).toFixed(2)} m/s</span>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
+        <td>{#if traffic[r.id]}<div class="fact" title="Time with a traffic speed cut of at least 0.001 m/s; matches the colored lane."><strong>{f(traffic[r.id].slowedSeconds,2)}</strong><span class="unit">s slowed</span></div><span class="note" title="Time in blocking contact, including contact with no speed cut.">{f(traffic[r.id].contactSeconds,2)} s contact</span>{:else}<div class="fact" title="Time in blocking contact."><strong>{f(s?.blockedDuration)}</strong><span class="unit">s blocked</span>{#if near.text!=='—'}<span class="aside" title={near.title}>{near.text} near</span>{/if}</div>{/if}{#if hole}<ImpactLine bits={[{text:`${range(hole.distance)} m`,tone:'loss' as const},{text:`${range(hole.time,3)} s`,tone:'loss' as const},...(hole.partial?[{text:'partial',tone:'' as const}]:[])]} modeled title="Traffic"/>{:else if prepared?.runners[r.id]?.blocking}{@const clamps=prepared.runners[r.id].blocking!}<span class="note" title="Largest speed reduction from traffic.">Peak cut {Math.max(clamps.maximumSelfClamp,clamps.maximumFinalClamp).toFixed(2)} m/s</span>{:else}<span class="note">{motion?'Loss unavailable':'Calculating loss…'}</span>{/if}</td>
       </tr>
     {/each}</tbody>
   </table></div>

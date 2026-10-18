@@ -2,9 +2,9 @@ import type { StatusInterval, TrafficTick } from '../data/analytics';
 import { motionIndex as m } from './trace';
 
 export const TRAFFIC_CLEAR_GAP = .25;
-export const TRAFFIC_MIN_SLOWDOWN = .075;
+export const TRAFFIC_MIN_SLOWDOWN = .001;
 export const TRAFFIC_MAX_SLOWDOWN = .6;
-export const trafficLegend = 'The bottom lane shows blocking contact with an outline and the speed cut at each tick with color. Hover anywhere along it for the blocking state and slowdown at that moment. Contact can continue with no speed cut. Color appears only for cuts of at least 0.075 m/s. White → yellow → amber → red shows increasing slowdown, reaching red at 0.6 m/s. Ticks below the threshold are transparent. The scale uses the larger of the two blocking cuts, not their sum; it is not the difference between target and current speed.';
+export const trafficLegend = 'The bottom lane colors the speed cut at each simulator tick. Hover anywhere along it for the blocking state and speed cut at that moment. Contact without a cut stays transparent. A cut can last just one tick; acceleration afterward is visible in the speed graph and is not a new blocking cut. Color appears at 0.001 m/s, with white → yellow → amber → red reaching red at 0.6 m/s. Smaller cuts stay transparent. Results show slowed time using these same colored ticks; contact time also includes ticks with no speed cut. The scale uses the larger of the two blocking cuts, not their sum or the gap between target and current speed.';
 export const trafficSlowdown=(tick:TrafficTick|null)=>Math.max(tick?.selfLoss??0,tick?.finalLoss??0);
 const active=(tick:TrafficTick)=>(tick.near||tick.blocked)&&trafficSlowdown(tick)>=TRAFFIC_MIN_SLOWDOWN;
 

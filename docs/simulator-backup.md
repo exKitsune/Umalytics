@@ -29,7 +29,10 @@ Packaging separately records both the original and traced commit identities.
 - `globalsim-history.bundle`: portable original Git history and refs.
 - `backup-manifest.json`: SHA-256 hashes, file counts and sizes.
 
-`backups/GlobalSim-review/` is the private repository working checkout.
+The maintained private checkout is `F:\CodeWorkspace\GlobalSim`, beside
+`F:\CodeWorkspace\Umalytics`. `backups/GlobalSim-review/` is a local compatibility
+junction to that checkout. The previous Umalytics path also redirects to F:, so
+existing development tools continue to work without keeping a second copy on C:.
 `backups/globalsim-traced-v74.bundle` preserves the committed traced version and
 its parent history for offline recovery. These local recovery files are outside
 `.cache`; the entire `backups/` directory is ignored and rejected by Umalytics'

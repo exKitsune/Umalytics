@@ -1,4 +1,6 @@
 <script lang="ts">
+  import {trafficTimeline,trafficDurations} from '../simulation/traffic-lane';
+  import {telemetryEndTime} from '../telemetry';
   import { trafficActive, trafficAt, trafficColor } from '../simulation/traffic';
   import {statusDescription,modelHelp,statusColor} from '../data/analysis-copy';
   import type { Race, Runner, RunnerSample } from '../data/types';
@@ -56,12 +58,13 @@
   }
   const mood=(m:number|null|undefined)=>m==null?'—':({1:'Awful',2:'Bad',3:'Normal',4:'Good',5:'Great'} as Record<number,string>)[m]??String(m);
   const aptitudeGroups=[['Distance',[['Short','short'],['Mile','mile'],['Medium','middle'],['Long','long']]],['Surface',[['Turf','turf'],['Dirt','dirt']]],['Style',[['Front','front'],['Pace','pace'],['Late','late'],['End','end']]]] as const;
+  $: traffic=analysis.source==='simulation'?trafficDurations(trafficTimeline(motion.samples,telemetryEndTime(race,runner.id))):null;
   $: metricGroups=summary?[
     ['Finish',[['Time',f(summary.rawTime,3),'s'],['Gap',f(summary.gap,3),'s'],['Behind at the win',f(summary.finishGapDistance),'m'],['Start delay',f(summary.startDelay==null?null:summary.startDelay*1000,1),'ms']]],
     ['HP',[['Start',f(summary.hpStart),''],['Finish',f(summary.hpFinish),''],['Lowest',f(summary.minimumHp),''],['Spent',f(summary.hpUsed),''],['Gained',f(summary.hpRecovered),''],['Empty at',f(summary.hpZeroTime),'s']]],
     ['Speed',[['Top',f(summary.maxSpeed,2),'m/s'],['Average',f(summary.meanSpeed,2),'m/s'],['Time in front',f(summary.leadTime),'s'],['Largest lead',f(summary.maximumLeadGap),'m']]],
     ['Final spurt',[['Started',summary.spurtDistance===-1?'None':f(summary.spurtDistance),'m'],['Started at',f(summary.spurtTime),'s'],['Late by',f(summary.spurtDelayDistance),'m'],['Duration',f(summary.spurtTime==null||summary.rawTime==null?null:Math.max(0,summary.rawTime-summary.spurtTime)),'s'],['Speed',f(summary.spurtSpeed,2),'m/s']]],
-    ['Trouble',[['Rushed',f(summary.rushedDuration),'s'],['Blocked',f(summary.blockedDuration),'s']]],
+    ['Trouble',[['Rushed',f(summary.rushedDuration),'s'],...(traffic?[['Traffic slowdown',f(traffic.slowedSeconds,2),'s'],['Blocking contact',f(traffic.contactSeconds,2),'s']]:[['Blocked',f(summary.blockedDuration),'s']])]],
   ]:[];
 </script>
 <aside class="panel runner-panel" aria-label="Selected runner">

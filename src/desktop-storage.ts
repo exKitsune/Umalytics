@@ -1,6 +1,7 @@
 import { api, type ImportReceipt, type Preferences } from './api';
 import { deleteSavedRace, raceLibraryEntry, savedRaces, type LibraryEntry } from './library';
 import { toPortableRace } from './data/share';
+import { parseRaceJson } from './data/import';
 import type { Race } from './data/types';
 import { FONT_SCALE_KEY, normalizeFontScale } from './typography';
 import { readRaceTags } from './library-filters';
@@ -22,6 +23,16 @@ async function importEntry(entry:LibraryEntry,csrfToken:string):Promise<LibraryE
   if(receipt.id!==entry.id||!/^[a-f0-9]{64}$/.test(receipt.sha256))throw new Error('Race save was not acknowledged. Its original copy is still saved.');
   return {...entry,remoteId:receipt.id,sha256:receipt.sha256,receivedAt:receipt.receivedAt};
 }
+/** Cached dashboards omit raw inputs; exports read the saved source on demand. */
+export async function raceForExport(entry:LibraryEntry|undefined,recorded:Race):Promise<Race> {
+  if(!entry?.remoteId)return recorded;
+  const stored=await api<{data:unknown;sha256:string}>(`races/${encodeURIComponent(entry.remoteId)}`);
+  if(entry.sha256&&stored.sha256!==entry.sha256)throw new Error('The saved race changed. Reopen it before exporting.');
+  const races=parseRaceJson(stored.data);
+  if(races.length!==1)throw new Error('Select one saved race to export.');
+  return races[0];
+}
+
 export async function saveDesktopRace(race:Race,csrfToken:string):Promise<LibraryEntry> {
   return importEntry(await raceLibraryEntry(race),csrfToken);
 }

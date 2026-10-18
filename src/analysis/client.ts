@@ -29,6 +29,7 @@ export class AnalysisClient {
   private cachePolicy:CachePolicy|null=null;
   private cacheBytes=0;
   private worker:Worker|null=null;
+  private cancelWorker:(()=>void)|null=null;
   private generation=0;
   private disposed=false;
   private lease:ReturnType<typeof setTimeout>|null=null;
@@ -71,7 +72,12 @@ export class AnalysisClient {
     if(!busy&&this.activeEntry)this.backgroundQueue?.mark(this.activeEntry);
     this.backgroundQueue?.pause(busy||this.playbackPaused);this.callbacks.state(this.foregroundState);
   }
-  private stop(){this.generation++;this.worker?.terminate();this.worker=null;this.detailRequest=null;if(this.lease)clearTimeout(this.lease);this.lease=null;}
+  private stop(){this.generation++;this.cancelWorker?.();this.cancelWorker=null;this.worker?.terminate();this.worker=null;this.detailRequest=null;if(this.lease)clearTimeout(this.lease);this.lease=null;}
+  clearSelection(){this.stop();this.activeEntry=null;this.state('Ready');}
+  forget(id:string){
+    for(const key of this.prepared.keys())if(key===id||key.startsWith(`${id}:`))this.prepared.delete(key);
+    if(this.activeEntry&&(this.activeEntry.id===id||this.activeEntry.id.startsWith(`${id}:`)))this.clearSelection();
+  }
   async simulatedDetails(){return this.detailRequest?this.detailRequest():null;}
   async open(entry:LibraryEntry,_override?:number){
     this.backgroundQueue?.pause(true);this.activeEntry=entry;this.stop();const generation=this.generation,alive=()=>!this.disposed&&generation===this.generation;
@@ -193,8 +199,9 @@ export class AnalysisClient {
         const warm=prior?.authorization===saved.key&&prior.hash===saved.entrySha256?prior:null;
         const restored=warm?{value:warm.value,reference:warm.reference,recorded:warm.recorded}:await new Promise<{value:PreparedRace;reference:ReferenceData;recorded:Race}>((resolve,reject)=>{
           const worker=this.worker=new Worker(new URL('./dashboard-worker.ts',import.meta.url),{type:'module'});
-          worker.onmessage=event=>{worker.terminate();if(event.data.type!=='complete'){reject(new Error(event.data.error));return;}try{const saved=JSON.parse(new TextDecoder().decode(event.data.bytes)),data=saved.referenceData;resolve({value:restoreDashboard(saved),recorded:saved.recorded,reference:assembleReferenceData(data.metadata,data.courses,data.source,data.skillIds,readGeometry(data.geometry))});}catch(error){reject(error);}};
-          worker.onerror=()=>{worker.terminate();reject(new Error('Saved dashboard could not be loaded.'));};
+          this.cancelWorker=()=>reject(new Error('Race selection changed.'));
+          worker.onmessage=event=>{if(!alive())return;worker.terminate();this.cancelWorker=null;if(event.data.type!=='complete'){reject(new Error(event.data.error));return;}try{const saved=JSON.parse(new TextDecoder().decode(event.data.bytes)),data=saved.referenceData;resolve({value:restoreDashboard(saved),recorded:saved.recorded,reference:assembleReferenceData(data.metadata,data.courses,data.source,data.skillIds,readGeometry(data.geometry))});}catch(error){reject(error);}};
+          worker.onerror=()=>{if(!alive())return;worker.terminate();this.cancelWorker=null;reject(new Error('Saved dashboard could not be loaded.'));};
           worker.postMessage({url:`/api/${endpoint}?key=${saved.key}`});
         });
         if(!alive())return;

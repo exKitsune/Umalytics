@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import {formatRaceTime} from './data/race-time';
   import { importRace, parseRaceJson, sampleAt } from './data';
   import type { Race, RaceCategory } from './data/types';
   import { toPortableRace } from './data/share';
@@ -7,7 +8,7 @@
   import { buildUmalatorExport, jsonDownloadName, umaDownloadName } from './data/umalator';
   import { categories, captureFacet, facetInfo, libraryFacets, runnerColors, saveRace, savedRaces, deleteSavedRace, createLibraryCaptionHydrator, type LibraryEntry } from './library';
   import { api, saveDesktopExport, revealDesktop, defaultSettings, type Health, type CollectionSettings, type CertificateStatus } from './api';
-  import { browserPreferences, migrateBrowserStorage, saveDesktopRace, THEME_KEY } from './desktop-storage';
+  import { browserPreferences, migrateBrowserStorage, saveDesktopRace, raceForExport, THEME_KEY } from './desktop-storage';
   import AnalysisDetails from './components/AnalysisDetails.svelte';
   import AppUpdates from './components/AppUpdates.svelte';
   import { rankSamples, runnerGap } from './view-model';
@@ -82,6 +83,8 @@
   let error = '';
   let busy = false;
   let importing = false;
+  let removingId = '';
+  let libraryRevision = 0;
   let input: HTMLInputElement;
   let polling = false;
   let nextOffset: number|null = null;
@@ -133,7 +136,7 @@
   }
   $: document.documentElement.dataset.theme = theme;
   $: document.documentElement.style.setProperty('--font-scale',String(fontScale/100));
-  $: visible = library.filter(entry => (filter==='all'||captureFacet(entry)===filter) && withinDateRange(entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference)} ${conditionsCaption(entry.race??entry)} ${facetInfo(captureFacet(entry)).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term))).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
+  $: visible = library.filter(entry => (filter==='all'||captureFacet(entry)===filter) && withinDateRange(entry.race?.racedAt??entry.racedAt??entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference)} ${conditionsCaption(entry.race??entry)} ${facetInfo(captureFacet(entry)).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term))).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
   $: identityRace = race ? resolveCourseIdentity(race,reference) : null;
   $: inferredCourse = analysis && analysis.source!=='simulation' && analysis.source!=='recorded' && identityRace ? inferCourse(identityRace,reference) : null;
   $: candidateCourse = getCourse(reference,identityRace?.courseId??inferredCourse?.courseId??null);
@@ -147,21 +150,29 @@
   $: selectedEvents = race?.events.filter(e=>e.runnerId===selected) ?? [];
   $: uma = analysis && runner && analysisRace ? buildUmalatorExport(runner,analysisRace,reference) : null;
   const fmt = (n:number|null|undefined, decimals=0) => n==null?'—':n.toFixed(decimals);
-  const date = (s:string) => new Date(s).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const date = formatRaceTime;
   const tell = (text:string) => {message=text;error='';};
   function merge(entries:LibraryEntry[]) {const byId=new Map(library.map(e=>[e.id,e]));for(const e of entries)byId.set(e.id,e);library=[...byId.values()];}
   function setRace(value:Race,id:string) {const entry=library.find(e=>e.id===id)??{id,title:value.title,receivedAt:value.capturedAt??new Date().toISOString(),race:value};if(!library.some(e=>e.id===id)&&id==='demo')merge([entry]);void selectEntry(entry);}
+  function clearRace() {
+    ++selectionRequest;activeId='';race=null;recordedRace=null;analysis=null;analysisGate=null;historical=null;selected='';
+    time=0;playing=false;skillDetail=null;runnerSelectionTouched=false;analysisClient.clearSelection();
+  }
   async function removeRace(entry:LibraryEntry) {
-    pendingRemoval='';
+    if(importing||removingId)return;
+    pendingRemoval='';removingId=entry.id;++libraryRevision;
+    const wasSelected=activeId===entry.id||activeId.startsWith(`${entry.id}:`);
+    if(wasSelected)clearRace();
     try {
       if(entry.remoteId){if(!health?.csrfToken)throw new Error('Open the desktop app to delete a collected race.');await api('races/delete',{id:entry.remoteId},health.csrfToken);}
       if(!entry.remoteId&&entry.id.startsWith('local-')){if(desktopSession)throw new Error('Wait for the desktop library to finish moving your saved races.');await deleteSavedRace(entry.id);}
       library=library.filter(item=>item.id!==entry.id&&!item.id.startsWith(`${entry.id}:`));
-      if(activeId===entry.id||activeId.startsWith(`${entry.id}:`)){race=null;activeId='';selected='';}
-    } catch(e){error=String(e);}
+      analysisClient.forget(entry.id);analysisClient.setLibrary(library,{});
+    } catch(e){removingId='';if(wasSelected&&!activeId)void selectEntry(entry,true);error=String(e);}
+    finally{removingId='';++libraryRevision;}
   }
   async function selectEntry(entry:LibraryEntry,force=false) {
-    if(!force&&entry.id===activeId)return;
+    if(removingId===entry.id||(!force&&entry.id===activeId))return;
     const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
     try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
   }
@@ -172,11 +183,11 @@
   function sidebarCourse(entry:LibraryEntry){const caption=courseCaption(entry.race??entry,reference);return caption.replace(/\s*[·]?\s*\d[\d,]*\s*m\b/i,'').replace(/^[\s·]+|[\s·]+$/g,'');}
   function sidebarDistance(entry:LibraryEntry){const id=entry.race?.courseId??entry.courseId;return (id?reference?.courses[id]?.distance:null)??entry.race?.distance??entry.distance;}
   async function importFiles(files:FileList|File[]|null) {
-    if(!files||!files.length)return;
+    if(importing||removingId||!files||!files.length)return;
     const picked=Array.from(files).filter(file=>/\.(json|jsonl|msgpack|mpk|har)$/i.test(file.name));
     if(!picked.length){error='Drop a race JSON file.';return;}
-    importing=true;error='';let count=0;
-    try {if(desktopSession&&(!storageReady||!health?.csrfToken))throw new Error('Desktop library is unavailable. Your file has not been imported; try again when it reconnects.');for(const file of picked){if(file.size>64*1024*1024)throw new Error(`${file.name} exceeds 64 MB.`);const parsed=await importRace(await file.arrayBuffer(),file.name);for(const r of parsed){const entry=desktopSession?await saveDesktopRace(r,health!.csrfToken!):await saveRace(r);merge([entry]);setRace(r,entry.id);count++;}}tell(`Imported ${count} race${count===1?'':'s'}.`);}catch(e){error=String(e)}finally{importing=false;if(input)input.value='';}
+    importing=true;++libraryRevision;error='';let count=0;
+    try {if(desktopSession&&(!storageReady||!health?.csrfToken))throw new Error('Desktop library is unavailable. Your file has not been imported; try again when it reconnects.');for(const file of picked){if(file.size>64*1024*1024)throw new Error(`${file.name} exceeds 64 MB.`);const parsed=await importRace(await file.arrayBuffer(),file.name);for(const r of parsed){const entry=desktopSession?await saveDesktopRace(r,health!.csrfToken!):await saveRace(r);merge([entry]);setRace(r,entry.id);count++;}}tell(`Imported ${count} race${count===1?'':'s'}.`);}catch(e){error=String(e)}finally{importing=false;++libraryRevision;if(input)input.value='';}
   }
   function isFileDrag(e:DragEvent){return !!e.dataTransfer&&[...e.dataTransfer.types].includes('Files');}
   function onDragEnter(e:DragEvent){if(!isFileDrag(e))return;e.preventDefault();dragDepth++;dropActive=true;}
@@ -188,9 +199,13 @@
     try {if(health?.mode==='desktop'&&health.csrfToken){const saved=await saveDesktopExport(filename,content,health.csrfToken);tell(saved.revealed?`${label} saved · shown in Explorer.`: `${label} saved: ${saved.path}`);}else{download(content,filename);tell(`${label} downloaded.`);}}catch(e){error=String(e)}
   }
   async function exportRace() {
-    const original=recordedRace??analysisRace;if(!original)return;
-    const filename=jsonDownloadName(courseCaption(original,reference),(original.capturedAt??'').replace(/[:.]/g,'-')||'race');
-    await saveJsonFile(filename,JSON.stringify(toPortableRace(original),null,2),'Race JSON');
+    const recorded=recordedRace??analysisRace;if(!recorded)return;
+    const entry=library.find(item=>item.id===activeId);
+    try{
+      const original=await raceForExport(entry,recorded);
+      const filename=jsonDownloadName(courseCaption(original,reference),(original.capturedAt??'').replace(/[:.]/g,'-')||'race');
+      await saveJsonFile(filename,JSON.stringify(toPortableRace(original),null,2),'Race JSON');
+    }catch(e){error=String(e);}
   }
   async function exportAnalysis() {
     const gate=analysisGate;
@@ -235,7 +250,9 @@
   }
   async function copy(text:string,success:string) {try{await navigator.clipboard.writeText(text);tell(success)}catch{error='Clipboard is unavailable. Use the download button instead.'}}
   async function loadPage(offset=0) {
+    const revision=libraryRevision;
     const page=await api<{races:{id:string;title?:string;category?:RaceCategory;receivedAt:string;racedAt?:string;raceMode?:'practice'|'room';savedReplay?:boolean;raceDesignation?:Race['raceDesignation'];filename:string;courseId?:number|null;distance?:number|null;conditions?:Race['conditions'];raceInstanceId?:number;sha256?:string;courseIdentity?:Race['courseIdentity']}[];total:number;nextOffset:number|null}>(`races?summary=1&limit=200&offset=${offset}`);
+    if(disposed||importing||removingId||revision!==libraryRevision)return false;
     const entries=page.races.map(r=>({id:r.id.startsWith('local-')?r.id:`capture-${r.id}`,remoteId:r.id,title:r.title??r.filename,category:r.category,receivedAt:r.receivedAt,racedAt:r.racedAt,raceMode:r.raceMode,savedReplay:r.savedReplay,raceDesignation:r.raceDesignation,courseId:r.courseId,distance:r.distance,conditions:r.conditions,raceInstanceId:r.raceInstanceId,sha256:r.sha256,courseIdentity:r.courseIdentity}));
     const newest=entries[0], isNew=newest&&!library.some(e=>e.id===newest.id);
     merge(entries.map(e=>{const old=library.find(old=>old.id===e.id);return {...hydrateCaptions.cached(e,reference),...(old?.race?{race:old.race,title:old.race.title,category:old.race.category}:{})}}));totalRemote=page.total;
@@ -243,8 +260,9 @@
     if(offset>0 || !historyLoaded) nextOffset=page.nextOffset;
     if(offset===0&&newest&&(!activeId||(following&&isNew&&!playing)))await selectEntry(newest);
     if(offset===0&&!historyLoaded&&!historyLoading)void loadHistory();
+    return true;
   }
-  async function loadHistory(){historyLoading=true;try{while(nextOffset!==null&&!disposed){const offset=nextOffset;await loadPage(offset);await new Promise(resolve=>setTimeout(resolve,30));}historyLoaded=true;}catch(e){error=`History could not be loaded: ${e}`;}finally{historyLoading=false;}}
+  async function loadHistory(){historyLoading=true;try{while(nextOffset!==null&&!disposed){const offset=nextOffset;if(!await loadPage(offset))return;await new Promise(resolve=>setTimeout(resolve,30));}historyLoaded=true;}catch(e){error=`History could not be loaded: ${e}`;}finally{historyLoading=false;}}
   let healthPolling=false;
   async function prepareDesktopStorage(){if(storageReady||migrationRunning||importing||!health?.csrfToken||Date.now()-migrationAttemptAt<5000)return;migrationRunning=true;migrationAttemptAt=Date.now();try{const preferences=await migrateBrowserStorage(health.csrfToken);theme=preferences.theme;fontScale=normalizeFontScale(preferences.fontScale);raceTags=preferences.raceTags??{};library=library.filter(entry=>!entry.id.startsWith('local-')||entry.remoteId);storageReady=true;migrationError='';}catch{migrationError='Your browser library is still being moved to Umalytics. Originals are saved; retrying shortly.';}finally{migrationRunning=false;}}
   async function pollHealth(){if(!['localhost','127.0.0.1'].includes(location.hostname)||healthPolling)return;healthPolling=true;try{health=await api<Health>('health');certificate=health.certificate??null;if(health.mode==='desktop'&&desktopSession)await prepareDesktopStorage();}catch{health=null;}finally{healthPolling=false;}}
@@ -275,7 +293,7 @@
   {#if dropActive}<div class="drop-overlay" aria-hidden="true"><strong>Drop race JSON</strong><span>It will be imported into this library</span></div>{/if}
   <aside class="sidebar">
     <div class="brand"><span class="brand-mark">u<span>↗</span></span><div>Umalytics<small>RACE WORKSPACE</small></div></div>
-    <button class="primary import-button" onclick={()=>input.click()} disabled={importing}>＋ Import race JSON</button>
+    <button class="primary import-button" onclick={()=>input.click()} disabled={importing||!!removingId}>＋ Import race JSON</button>
     <p class="import-hint">or drop a race JSON anywhere in this window</p>
     <div class="library-heading"><span>RACE LIBRARY</span><span>{visible.length} / {Math.max(library.length,totalRemote)}</span></div>
     <input class="search" type="search" placeholder="Search races…" aria-label="Search races" bind:value={search}/>
@@ -287,7 +305,7 @@
         {@const inference=captionInference(entry.race??entry,reference)}
         {@const manuallySelected=(entry.race?.courseIdentity??entry.courseIdentity)?.source==='manual'}
         {@const entryInferred=!manuallySelected&&((entry.race?.courseIdentity??entry.courseIdentity)?.source==='skill-conditions'||!!inference?.trackId||!!inference?.courseId)}
-        <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span title="When the race was run">{date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title="Course identified from equipped skills.">Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.savedReplay||entry.race?.savedReplay}<small>Saved Replay</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" aria-label={`Remove ${courseCaption(entry.race??entry,reference)}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>
+        <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span title="Race time in your local timezone">{date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title="Course identified from equipped skills.">Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.savedReplay||entry.race?.savedReplay}<small>Saved Replay</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" disabled={importing||!!removingId} onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" disabled={importing||!!removingId} aria-label={`Remove ${courseCaption(entry.race??entry,reference)}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>
       {/each}
       {#if !visible.length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
       {#if historyLoading}<small role="status">Loading history…</small>{:else if nextOffset!==null}<button class="load-more" onclick={loadHistory}>Load older races</button>{/if}
