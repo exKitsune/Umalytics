@@ -11,12 +11,20 @@ import type { AnalysisGateReport, AnalysisGateReportSummary, SimulationJob, Simu
 import { canUseInferencePlan, canUseSimulatedCapability } from '../simulation/contracts';
 import { projectSimulation } from '../simulation/project';
 import { digest } from './codec';
+import {BackgroundQueue} from './background';
 declare const __ANALYSIS_REVISION__:string;
 export interface AnalysisState {busy:boolean;background:boolean;done:number;total:number;message:string}
 interface Authorization extends InferencePlanRevalidation {cacheKey:string;artifactUrl:string;dataUrl:string;uiRevision:string}
 
 /** No mechanics or derived cache access until a fresh service-owned gate passes. */
 export class AnalysisClient {
+  private backgroundQueue:BackgroundQueue|null=null;
+  private foregroundBusy=false;
+  private playbackPaused=false;
+  private activeEntry:LibraryEntry|null=null;
+  private foregroundState:AnalysisState={busy:false,background:false,done:0,total:0,message:''};
+  private cachePolicy:CachePolicy|null=null;
+  private cacheBytes=0;
   private worker:Worker|null=null;
   private generation=0;
   private disposed=false;
@@ -35,16 +43,34 @@ export class AnalysisClient {
     gate?:(report:AnalysisGateReportSummary|null,id:string)=>void; recorded?:(id:string)=>void;
     historical?:(value:PreparedRace,id:string)=>void; reference?:(reference:ReferenceData)=>void;
     token?:()=>string|undefined;
-  }){}
-  async configure(reference:ReferenceData){this.reference=reference;}
-  setLibrary(_library:LibraryEntry[],_assignments:Record<string,number>){} // No whole-library simulation warming.
-  setPaused(_value:boolean){}
-  interacting(){}
-  private state(message:string,busy=false){this.callbacks.state({busy,background:false,done:0,total:0,message});}
+  },background=true){
+    if(background)this.backgroundQueue=new BackgroundQueue(async(entry,signal)=>{
+      let finish!:()=>void;
+      const terminal=new Promise<void>(resolve=>finish=resolve);
+      const child=new AnalysisClient(this.store,{parsed:()=>{},base:()=>{},ready:()=>{},
+        state:state=>{if(!state.busy)finish();},cache:status=>this.cache(status),error:()=>finish(),token:this.callbacks.token},false);
+      const abort=()=>{child.dispose();finish();};signal.addEventListener('abort',abort,{once:true});
+      try{if(this.reference)await child.configure(this.reference);if(signal.aborted)return;await Promise.race([Promise.all([child.open(entry),terminal]),new Promise<void>(resolve=>signal.addEventListener('abort',()=>resolve(),{once:true}))]);}
+      finally{signal.removeEventListener('abort',abort);child.dispose();}
+    },(done,total,running)=>{
+      if(!this.foregroundBusy)this.callbacks.state(running?{busy:true,background:true,done,total,message:`Analyzing recent races · ${done} / ${total}`}:{...this.foregroundState,done,total});
+    });
+  }
+  async configure(reference:ReferenceData){this.reference=reference;this.updateBackground();}
+  setLibrary(library:LibraryEntry[],_assignments:Record<string,number>){this.backgroundQueue?.setLibrary(library);}
+  setPaused(value:boolean){this.playbackPaused=value;this.backgroundQueue?.pause(value||this.foregroundBusy);}
+  interacting(){this.backgroundQueue?.touch();}
+  private updateBackground(){if(this.cachePolicy)this.backgroundQueue?.configure({...this.cachePolicy,background:this.cachePolicy.background&&!!this.reference&&!!this.callbacks.token?.()},this.cacheBytes);}
+  private cache(status:CacheStatus){this.cachePolicy=status.policy;this.cacheBytes=status.bytes;this.callbacks.cache(status);this.updateBackground();}
+  private state(message:string,busy=false){
+    this.foregroundBusy=busy;this.foregroundState={busy,background:false,done:0,total:0,message};
+    if(!busy&&this.activeEntry)this.backgroundQueue?.mark(this.activeEntry);
+    this.backgroundQueue?.pause(busy||this.playbackPaused);this.callbacks.state(this.foregroundState);
+  }
   private stop(){this.generation++;this.worker?.terminate();this.worker=null;this.detailRequest=null;if(this.lease)clearTimeout(this.lease);this.lease=null;}
   async simulatedDetails(){return this.detailRequest?this.detailRequest():null;}
   async open(entry:LibraryEntry,_override?:number){
-    this.stop();const generation=this.generation,alive=()=>!this.disposed&&generation===this.generation;
+    this.backgroundQueue?.pause(true);this.activeEntry=entry;this.stop();const generation=this.generation,alive=()=>!this.disposed&&generation===this.generation;
     this.callbacks.gate?.(null,entry.id);this.callbacks.recorded?.(entry.id);this.state(this.prepared.has(entry.id)?'Loading saved analysis':'Analyzing race',true);
     let storedHash=entry.sha256;
     try{
@@ -92,7 +118,7 @@ export class AnalysisClient {
         if(this.reference){const fresh=await api<SimulationJob>(`${endpoint}?jobId=${job.jobId}`);if(!alive())return;if(fresh.phase!=='complete'||!canUseSimulatedCapability(fresh.report,'recordedResults',report.binding))throw new Error('Simulation authorization changed. Reopen the race.');}
         if(projected){attachPrepared(projected);this.callbacks.ready(projected,entry.id);this.remember(entry.id,storedHash,report.binding!.authorizationSha256,race,projected);}
         this.state(projected?'Simulator analysis ready':'Recorded replay ready');
-        if(packed&&cacheKey)await this.store.put({key:cacheKey,raceId:detail?.simulation?.cacheKey??entry.id,date:new Date().toISOString(),revision:__ANALYSIS_REVISION__},packed).then(status=>this.callbacks.cache(status)).catch(()=>{});
+        if(packed&&cacheKey)await this.store.put({key:cacheKey,raceId:detail?.simulation?.cacheKey??entry.id,date:entry.racedAt??entry.receivedAt,revision:__ANALYSIS_REVISION__},packed).then(status=>this.cache(status)).catch(()=>{});
         this.refresh().catch(()=>{});
         }
       }
@@ -124,9 +150,8 @@ export class AnalysisClient {
                 rememberAnalysis(value.race,event.data.reference,value.analysis);this.callbacks.ready(value,entry.id);
                 this.remember(entry.id,storedHash!,report.binding!.authorizationSha256,race!,value,event.data.reference);
               }else this.callbacks.historical?.(value,entry.id);
-              this.state('Ready');
-              this.callbacks.cache(await this.store.put({key:auth.cacheKey,raceId:entry.id,date:entry.receivedAt,revision:auth.uiRevision},event.data.packed));
-              worker.terminate();
+              this.cache(await this.store.put({key:auth.cacheKey,raceId:entry.id,date:entry.racedAt??entry.receivedAt,revision:auth.uiRevision},event.data.packed));
+              if(alive())this.state('Ready');worker.terminate();
             }catch(error){if(alive()){this.callbacks.recorded?.(entry.id);this.callbacks.gate?.(null,entry.id);this.state('Recorded replay ready');this.callbacks.error(String(error));}}
           };
           worker.onerror=()=>{worker.terminate();if(alive()){this.callbacks.recorded?.(entry.id);this.callbacks.gate?.({...report,mode:'recorded_only'},entry.id);this.state('Recorded replay ready');this.callbacks.error('Versioned inference worker failed.');}};
@@ -139,14 +164,14 @@ export class AnalysisClient {
         try{
           await api<SimulationJob>(`${endpoint}?jobId=${job.jobId}`);
           if(report.mode==='inference_plan')await api(`${endpoint}/inference`,{jobId:job.jobId},token);
-          if(alive())this.lease=setTimeout(check,2000);
+          if(alive()&&this.backgroundQueue)this.lease=setTimeout(check,2000);
         }catch{if(alive()){this.stop();this.callbacks.recorded?.(entry.id);this.callbacks.gate?.(null,entry.id);this.state('Recorded replay ready');}}
       };
-      if(alive())this.lease=setTimeout(check,2000);
+      if(alive()&&this.backgroundQueue)this.lease=setTimeout(check,2000);
     }catch(error){if(alive()){this.stop();this.callbacks.recorded?.(entry.id);this.callbacks.gate?.(null,entry.id);this.state('Recorded replay ready');this.callbacks.error(String(error));}}
   }
-  async policy(policy:CachePolicy){this.callbacks.cache(await this.store.change({action:'policy',policy:{...policy,background:false}}));}
-  async purge(){this.stop();this.prepared.clear();this.callbacks.cache(await this.store.change({action:'purge'}));this.state('Cache cleared');}
-  async refresh(){this.callbacks.cache(await this.store.status());}
-  dispose(){this.disposed=true;this.stop();this.prepared.clear();}
+  async policy(policy:CachePolicy){this.cache(await this.store.change({action:'policy',policy}));}
+  async purge(){this.backgroundQueue?.reset();this.stop();this.prepared.clear();this.cache(await this.store.change({action:'purge'}));this.state('Cache cleared');}
+  async refresh(){this.cache(await this.store.status());}
+  dispose(){this.disposed=true;this.backgroundQueue?.dispose();this.stop();this.prepared.clear();}
 }

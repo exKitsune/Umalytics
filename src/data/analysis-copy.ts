@@ -79,10 +79,11 @@ export const statusLegend:{kind:string;short:string;name:string;source:string;fo
   {kind:'uphill',short:'Up',name:'Uphill',source:'Applied on every uphill grade. Higher power reduces the loss.',formula:'−grade×200/power'},
 ];
 export function statusFormula(kind:string){return statusLegend.find(item=>item.kind===kind)?.formula??null;}
+export const laterGlobalStatuses=new Set(['extra-pace-up','compete-before-spurt','stamina-limit-break','stamina-keep','secure-lead']);
 export function statusColor(kind:string):string {
-  return ({'conserve-power':'#a0b6ca','release-conserve-power':'#ed75d4','pace-up':'#5dcc83',
+  return ({'conserve-power':'#a0b6ca','release-conserve-power':'#e07a2f','pace-up':'#5dcc83',
     'pace-down':'#559deb','speed-up':'#c0d849',overtake:'#e9c44e','extra-pace-up':'#8f87ff',
-    'spot-struggle':'#f39b43','downhill-mode':'#48d0e5',rushed:'#ee7597',dueling:'#b085df',
+    'spot-struggle':'#f39b43','downhill-mode':'#48d0e5',rushed:'#e65050',dueling:'#f58fa8',
     traffic:'#ffffff','front-block':'#ef6a52','near-slowdown':'#f0cb82','lane-bonus':'#49b6a0',
     'last-spurt':'#dbe3ef','force-in':'#b6dcc5','stamina-limit-break':'#e8b493',
     'compete-before-spurt':'#c69a6b','stamina-keep':'#a4b987','secure-lead':'#c4abda',

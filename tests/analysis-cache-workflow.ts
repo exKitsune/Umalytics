@@ -73,12 +73,25 @@ try{
     terminate(){void this.inner.terminate();}
   }});
   const store=new AnalysisStore(()=>true,()=>connection.csrf);
-  let saved!:()=>void;
+  let saved!:()=>void,writeStarted!:()=>void,releaseWrite!:()=>void;
+  const writing=new Promise<void>(resolve=>writeStarted=resolve),writeGate=new Promise<void>(resolve=>releaseWrite=resolve);
+  const originalPut=store.put.bind(store);store.put=async(...args)=>{const status=await originalPut(...args);writeStarted();await writeGate;return status;};
+  let latestBusy=false;
   const persisted=new Promise<void>(resolve=>saved=resolve);
-  const savingClient=new AnalysisClient(store,{parsed:()=>{},base:()=>{},ready:()=>{},state:()=>{},cache:()=>saved(),error:e=>assert.fail(e),token:()=>connection.csrf});
+  const savingClient=new AnalysisClient(store,{parsed:()=>{},base:()=>{},ready:()=>{},state:s=>latestBusy=s.busy,cache:()=>saved(),error:e=>assert.fail(e),token:()=>connection.csrf});
   try{
     await savingClient.open({id:'selected~1',title:'Synthetic',receivedAt:'2001-06-01',remoteId:'selected~1'});
-    await persisted;
+    await writing;
+    const currentFetch=globalThis.fetch;
+    let releaseFetch!:()=>void;
+    const fetchGate=new Promise<void>(resolve=>releaseFetch=resolve);
+    globalThis.fetch=async(input,init)=>{if(String(input)==='/api/races/selected~1')await fetchGate;return currentFetch(input,init);};
+    const reopening=savingClient.open({id:'selected~1',title:'Synthetic',receivedAt:'2001-06-01',remoteId:'selected~1'});
+    assert.equal(latestBusy,true);releaseWrite();await persisted;
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(latestBusy,true,'An old inference cache write must not clear a newer opening loader');
+    store.put=originalPut;releaseFetch();await reopening;globalThis.fetch=currentFetch;
+    assert.equal(latestBusy,false);
     const status=await store.status();assert.equal(status.entries.length,1);
     assert.equal(status.entries[0].revision,bundle.uiRevision);
     const disk=await store.get(status.entries[0].key);assert.ok(disk);

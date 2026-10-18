@@ -7,7 +7,6 @@ import type { PreparedRace, PreparedRunner } from '../analysis/prepared';
 import type { RunnerMotion, MotionSample, MotionBand } from '../data/race-motion';
 import type { ContributionTotal, RunnerStatBreakdown, SlowdownAnalysis } from '../data/effect-types';
 import type { SpurtComparison, SpurtDecision } from '../data/spurt-comparison';
-import type { BranchConditionEvaluation, SkillConditionEvaluation } from '../data/skill-conditions';
 import type { SkillMetric } from '../data/skill-metrics';
 import type { AnalysisGateReport, JsonObject } from './contracts';
 import { decisionTrace, motionIndex as m, motionAt, blockingSummary, type DecisionEvent } from './trace';
@@ -15,6 +14,7 @@ import { rankSamples, runnerGap } from '../view-model';
 import { statusLabel } from '../data/status-presentation';
 import { trafficIntervals } from './traffic';
 import {powerSummary} from './power';
+import {simulationConditions,simulationRestriction} from './conditions';
 import {explainTraceSpeed} from './speed-explanations';
 
 const unavailable='Requires a separate counterfactual simulation; not measured by this execution trace.';
@@ -57,36 +57,8 @@ function internalIntervals(events:DecisionEvent[],stop:number):StatusInterval[] 
   });
 }
 
-function conditions(events:DecisionEvent[]):SkillConditionEvaluation|null {
-  const definitions=events.filter(e=>e.kind==='skill-definition');
-  if(!definitions.length)return null;
-  const branches:BranchConditionEvaluation[]=definitions.map(def=>{
-    const checks=events.filter(e=>e.detail===def.detail),ready=checks.filter(e=>e.kind==='activation-ready');
-    const conditionChecks=checks.filter(e=>e.kind==='condition'),met=conditionChecks.find(e=>e.data.passed===true);
-    const eligible=ready.some(e=>e.data.passed===true),state=met?'met':conditionChecks.length?'unmet':'unknown';
-    // Predicate checks stay tied to the same successful tick. An earlier true
-    // predicate alone cannot prove the branch conjunction or a latched prereq.
-    const predicates=checks.filter(e=>/[<>=!]/.test(e.kind)&&e.kind!=='static-condition');
-    const names=[...new Set(predicates.map(e=>`${e.stage}:${e.kind}`))];
-    return {branchIndex:def.detail,state,inferredState:state,staticOnly:false,firstOpportunity:met?.time??null,
-      opportunities:conditionChecks.filter(e=>e.data.passed===true).reduce((n,e)=>n+e.count,0),unresolved:[],detail:'Actual evaluated condition checks. Activation readiness separately includes targets and cooldown; short-circuited predicates stay unknown.',
-      mechanicsState:'understood',eligibilityState:eligible?'eligible':ready.length?'ineligible':'unresolved',randomTrigger:checks.some(e=>e.kind==='sampled-trigger'),definitiveOpportunity:eligible,
-      observations:[],proxies:[],missingInputs:[],hiddenState:[],inferenceBasis:'observed',absenceAssessment:met?'conditions-supported':conditionChecks.length?'conditions-excluded':'no-observed-candidate',
-      predicates:names.map(name=>{
-        const history=predicates.filter(e=>`${e.stage}:${e.kind}`===name),predicate=history[0];
-        const checked=met?history.find(e=>e.tick<=met.tick&&e.lastTick>=met.tick):undefined;
-        return {expression:predicate.kind,key:predicate.kind.split(/[<>=!]/)[0],meaning:predicate.kind,mechanicsState:'understood' as const,
-          observation:'Evaluated inside the simulator.',limitation:null,state:checked?checked.data.passed===true?'met' as const:'unmet' as const:'unknown' as const,
-          observed:checked?String(checked.data.passed):'No check at this condition opportunity',time:checked?met!.time:null,
-          role:predicate.stage==='precondition'?'precondition' as const:'condition' as const};
-      })};
-  });
-  const met=branches.some(b=>b.state==='met'),state=met?'met':branches.every(b=>b.state==='unmet')?'unmet':'unknown';
-  const eligible=branches.some(b=>b.eligibilityState==='eligible');
-  return {state,inferredState:state,branches,mechanicsState:'understood',eligibilityState:eligible?'eligible':branches.every(b=>b.eligibilityState==='ineligible')?'ineligible':'unresolved',definitiveOpportunity:eligible,randomTrigger:branches.some(b=>b.randomTrigger)};
-}
 
-function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,reference:ReferenceData|null,stop:number,runners:Runner[],allEvents:DecisionEvent[]) {
+function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,reference:ReferenceData|null,stop:number,runners:Runner[],allEvents:DecisionEvent[],motion:number[][]) {
   const reported=objects(modeled.skillEvents).filter(e=>e.horseIndex===runner.index);
   const ids=[...new Set([...(runner.skills??[]).map(s=>s.id),...events.filter(e=>e.skillId&&['skill-definition','skill-wit','skill-activated'].includes(e.kind)).map(e=>Number(e.skillId)),...reported.map(e=>Number(e.skillId))])].filter(Number.isFinite);
   const metrics:Record<number,SkillMetric[]>={},rows:SkillRow[]=[];
@@ -131,10 +103,10 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
         timingKind:passive?'passive':duration===0?'instant':'reported',timingReason:'Engine activation and effect expiry ticks.',
         detail:`Simulator activation; ${applied.length} self effects applied, ${targetRunnerIds.length} confirmed recipients.`};
     });
-    const evaluation=conditions(own),failed=wit.some(e=>e.data.checked===true&&e.data.passed===false);
-    const nonProcReason=activations.length?'Activated in the simulation.':failed?'The simulator’s actual wit check failed.':evaluation?.state==='unmet'?'No branch became ready in the simulation.':'No activation in this simulation; consult the actual checks below.';
+    const evaluation=simulationConditions(own,motion,runners.length),restriction=simulationRestriction(own,evaluation),failed=wit.some(e=>e.data.checked===true&&e.data.passed===false);
+    const nonProcReason=activations.length?'Activated in the simulation.':restriction.detail;
     rows.push({skillId:id,equipped:!!runner.skills?.some(s=>s.id===id),activationCount:activations.length,activations,nonProcReason,evidence:'simulated',
-      activationStatus:activations.length?'simulated':failed?'wit-failure-supported':evaluation?.state==='unmet'?'conditions-unmet':'unknown',effectiveActive:!!activations.length,conditionEvaluation:evaluation,inferredBranches:[],simulation:{checks:own.filter(e=>e.kind!=='rng-draw'),wit}});
+      activationStatus:activations.length?'simulated':failed?'wit-failure-supported':restriction.failed?'conditions-unmet':'unknown',effectiveActive:!!activations.length,conditionEvaluation:evaluation,inferredBranches:[],simulation:{checks:own.filter(e=>e.kind!=='rng-draw'),wit}});
     const items:SkillMetric[]=[];
     const add=(label:string,value:number|string,unit:string,detail:string)=>items.push({label,value,unit,detail,evidence:'simulated'});
     for(const check of wit)add('Wit check',check.data.checked?`${Number(check.data.roll).toFixed(2)} / ${Number(check.data.threshold).toFixed(2)} · ${check.data.passed?'passed':'failed'}`:'Exempt · no draw','',`Actual engine check at ${check.time.toFixed(3)} s.`);
@@ -191,7 +163,7 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
     const events=trace.events.filter(e=>e.horseIndex===runner.index),rows=trace.motion.filter(r=>r[m.horse]===runner.index),stop=runner.finishTimeRaw??race.duration;
     if(!rows.length)throw new Error('Simulator motion is incomplete.');
     const power=powerSummary(events,objects(modeled.conservePowerDiagnostics).find(d=>d.horseIndex===runner.index),stop);
-    const states=[...intervals(rows,stop),...internalIntervals(events,stop),...power.intervals].sort((a,b)=>a.start-b.start),{rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events),activations=skillRows.flatMap(s=>s.activations);
+    const states=[...intervals(rows,stop),...internalIntervals(events,stop),...power.intervals].sort((a,b)=>a.start-b.start),{rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events,rows),activations=skillRows.flatMap(s=>s.activations);
     const samples=frames.filter(f=>f.time<=stop+.067).map((f,index)=>{const s=f.runners.find(s=>s.runnerId===runner.id)!,before=frames[index-1]?.runners.find(s=>s.runnerId===runner.id),dt=index?f.time-frames[index-1].time:0;
       const hpDelta=before?.hp==null||s.hp===null?null:s.hp-before.hp;
       return {time:f.time,distance:s.distance,speed:s.speed,hp:s.hp,lane:s.lane,leadGap:runnerGap(race,f.runners,runner.id),rank:sampleRanks.get(f)!.get(runner.id)??null,

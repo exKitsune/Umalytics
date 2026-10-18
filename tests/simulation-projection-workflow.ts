@@ -100,7 +100,7 @@ const power=powerSummary(powerEvents,{finalStatus:'supported',finalGauge:20,time
 assert.deepEqual(power.intervals.filter(i=>i.kind==='conserve-power').map(i=>[i.start,i.end]),[[.1,2],[4.5,6]]);
 assert.equal(power.releases[0].end,9.73);assert.equal(power.releases[0].acceleration,.12);assert.equal(power.releases[0].gauge,20);
 assert.equal(powerSummary([],undefined,10).accumulationSeconds,null,'Absent ledger is not an invented zero');
-assert.deepEqual([...defaultHiddenStatuses()],['last-spurt','force-in']);
+assert.deepEqual([...defaultHiddenStatuses()],['last-spurt','force-in','conserve-power']);
 assert.deepEqual(decodeHiddenStatuses(null),defaultHiddenStatuses());
 assert.deepEqual(decodeHiddenStatuses('broken'),defaultHiddenStatuses());
 assert.deepEqual([...decodeHiddenStatuses('[]')],[],'Explicitly showing all statuses survives reload');

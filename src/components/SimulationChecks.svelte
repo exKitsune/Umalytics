@@ -3,7 +3,7 @@
   export let checks:DecisionEvent[]=[];
   export let onSeek:(time:number)=>void;
   let predicates=false;
-  const kinds=new Set(['skill-wit','precondition-latched','precondition-ready','condition','activation-ready','skill-activated','effect-ended','cooldown-start','cooldown-ready','target-available','sampled-trigger','effect-queued','effect-immune','effect-deferred']);
+  const kinds=new Set(['skill-wit','precondition-latched','precondition-ready','condition','activation-ready','skill-activated','effect-ended','cooldown-start','cooldown-ready','target-available','sampled-trigger','sampled-window','trigger-window','effect-queued','effect-immune','effect-deferred']);
   $: rows=checks.filter(e=>predicates?e.kind!=='skill-definition':kinds.has(e.kind));
   const label=(e:DecisionEvent)=>e.kind.replaceAll('-',' ');
   function result(e:DecisionEvent){

@@ -26,7 +26,7 @@ Automated gates: `npm test` includes a synthetic projection regression with deli
 18. Hover each result metric separately: elapsed time versus finish gap, HP spent versus recovered, status duration versus speed bonus, corner distance versus equivalent time. In Stats, verify phase targets, maximum/selected spurt, acceleration, HP/wit formula inputs and actual section values. Spurt duration is finish time minus start time. Analysis details and meaningful race notes use matching collapsible panels; routine course provenance lives inside analysis details.
 19. Warm A → B → A for both matched and fallback dashboards. Check fresh service authorization but no new native run, full-trace transfer or analysis worker for retained entries. Repeat after restart to exercise the persistent path. Changing the diagnostics/runtime identity invalidates older baselines once; later opens must hit cache again.
 
-20. Check the per-status legend checkboxes on matched and inference races. Last spurt and Inward start off in telemetry, while replay still shows both. Enable a band, switch races and reload: the choice must persist. Reset defaults restores those two hidden bands. Turn all statuses off and verify empty status rows collapse without overlapping elevation, course, phase or skill rows.
+20. Check the per-status legend checkboxes on matched and inference races. Last spurt, Inward and Conserve power start off in telemetry, while replay still shows both. Enable a band, switch races and reload: the choice must persist. Reset defaults restores those three hidden bands. Turn all statuses off and verify empty rows disappear. Restore the original velocity/elevation/course/skill spacing; only status bands move down one bar. Traffic owns the bottom status lane. No “STATUSES” caption appears. Rushed and Exhausted share red; Dueling is pink and Release shares acceleration orange. Separate Extra pace up, Pre-spurt competition, Stamina limit break, Stamina keep and Secure lead under the later-mechanics notice.
 21. Verify the race date includes its year in the library and header. Hover values and bar segments: descriptions must identify the specific metric and amount, without sign explanations or long calculation prose. Detailed formulas belong in Stats → Formulas & inputs; scoring and accounting details belong in the FAQ/legend.
 
 Previous tracing validation on 2026-10-18: all 39 system workflows passed; Python bridge tests
@@ -52,3 +52,22 @@ replay at 95 s, traffic toggle removal, collapsed hidden rows, Reset defaults,
 and dark/light legend contrast. The selected traffic fixture had measured peaks
 of 0.81 and 0.23 m/s; a runner whose peak was 0.0863 m/s had no Traffic bands.
 Tooltip calculation details now live in the FAQ, legend and expandable formulas.
+
+
+22. For an absent activation, check the closest conjunction against dynamic trace predicates. Show passed predicates as checkmarks without “true at” text. Verify a rank failure, failed prerequisite, static course exclusion, failed wit roll, missing target and cooldown independently. A short-circuited predicate must not become a failure. A missing check must say unavailable, never fabricate a failed roll. Successful skills show earlier restricting conditions. Clicking a received-skill card opens the caster’s detail while retaining the selected runner.
+23. Compare a pure speed skill with a speed + recovery/lane skill with the same movement effect. The latter must keep HP/field positions fixed and retain full carryover coverage without requiring reference-course physics. Complete totals show a percentage, zero speed potential says “No speed effects,” and genuine gaps say “Partial.”
+24. Enable background analysis in Settings. With the window open and playback paused, confirm newest race date first, one job at a time, persistent cache growth and no selected-runner change. Open another race during warming: foreground work takes priority. Resume idle processing; interrupted work can retry, completed work does not loop. Test count/size limits, disable/re-enable, playback pause/resume and disposal. Reopen a warmed match/fallback and verify fresh authorization with no unnecessary engine rerun. The tray collector continues capture independently when the window closes.
+
+
+Follow-up validation on 2026-10-18: all 40 system workflows passed, including the
+background client’s service-gate wiring, newest-first ordering/cancellation,
+retention limits, hidden-status preference migration, precise failed predicates,
+latched prerequisites and mixed-effect carryover. The production build and public
+artifact audit passed. A private nine-runner matched race now has complete local
+carryover coverage for every runner; the three previously missing percentages
+are restored. An isolated desktop session saved background analyses, then reopened
+the warmed match with a fresh comparison and no extra native run. Browser checks
+confirmed the reserved Traffic lane, compact graph spacing, default-hidden
+Conserve power, later-mechanics legend, readable course/rank restrictions and
+received-skill dialogs preserving the selected runner. Private fixtures and
+screenshots remain outside Git.

@@ -42,6 +42,7 @@
     {:else if row}<p class="outcome" class:active={row.effectiveActive}>{row.effectiveActive?'✓':'×'} {nonProcLabel(row,reference)}</p>{/if}
     {#if impact&&row?.effectiveActive&&(!componentMetrics.length||skill?.branches.some(b=>b.effects.some(e=>[9,21,22,27,31].includes(e.type))))}<section><h3>Effectiveness <small class="calculated">Calculated</small></h3><SkillImpact {impact} expanded motion={runner?motionSkillImpact(race,reference,analysis,runner.id,skillId):null}/></section>{/if}
     {#if runner}<SkillMetrics expanded metrics={componentMetrics}/>{/if}
+    {#if row?.simulation&&!row.effectiveActive}<p class="muted">{row.nonProcReason}</p>{/if}
     {#if row?.simulation}<SimulationChecks checks={row.simulation.checks} {onSeek}/>{/if}
     {#if skill}
       <div class="activation-rule"><span>Activation</span><strong>{skill.activateLot===0?'Guaranteed if conditions are met':skill.activateLot===1?'Wit check':'Unknown'}</strong></div>
@@ -65,6 +66,7 @@
                 <ConditionRules expression={branch.condition} {reference} showCode={showConditionCode} fieldSize={race.runners.length} predicates={evaluated?.predicates??[]} {onSeek}/>
                 {#if evaluated?.firstOpportunity!=null&&!evaluated.staticOnly}<button class="seek-condition" onclick={()=>onSeek(evaluated.firstOpportunity!)}>▶ {evaluated.firstOpportunity.toFixed(2)} s</button>{/if}
               {/if}
+              {#if row?.simulation&&row.effectiveActive}{#each row.conditionEvaluation?.branches.filter(b=>b.state==='met')??[] as completed}<p class="muted">{completed.detail}</p>{/each}{/if}
               {#if !activation&&!usedBranches.size&&summary?.state==='unknown'}<p class="muted">{analysis.source==='simulation'?'This branch was not fully evaluated. See the activation checks above.':summary.randomTrigger?'The random trigger is not in the replay.':summary.missingInputs.length?'Some required race details are missing.':'The replay cannot confirm every check.'}</p>{/if}
             </details>
           {/if}

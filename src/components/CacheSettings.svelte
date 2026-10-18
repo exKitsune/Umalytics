@@ -12,7 +12,8 @@
   <p>{new Set(status.entries.map(entry=>entry.raceId)).size} saved analyses · {(status.bytes/1024/1024).toFixed(1)} MB saved</p>
   <label class="setting-row">Limit <select aria-label="Analysis cache limit" disabled={working} value={status.policy.mode} onchange={e=>change({mode:e.currentTarget.value as CachePolicy['mode']})}><option value="unlimited">Unlimited</option><option value="races">Most recent analyses</option><option value="size">Disk size</option></select></label>
   {#if status.policy.mode!=='unlimited'}<label class="setting-row">{status.policy.mode==='races'?'Number of races':'Maximum MB'}<input aria-label="Cache limit value" type="number" min="1" max="1000000" step="1" value={status.policy.value} disabled={working} onchange={e=>{const value=Number(e.currentTarget.value);if(Number.isInteger(value)&&value>0&&value<=1000000)change({value});}}/></label>{/if}
-  <p>Saved analysis is reused when compatible. New or changed races are analyzed when opened. Automatic background analysis is currently unavailable.</p>
+  <p>Saved analysis is reused when compatible. Background analysis works newest first while this window is open, pauses during playback, and gives priority to the race you open.</p>
+  <label class="setting-row">Analyze recent races in the background <input type="checkbox" checked={status.policy.background} disabled={working} onchange={e=>change({background:e.currentTarget.checked})}/></label>
   {#if state.busy}<p role="status">{state.message}</p>{/if}
   <button disabled={working||state.busy&&!state.background} onclick={clear}>Clear analysis cache</button>
   <p class="note">Races and tags stay saved when clearing the cache. Web storage is managed by your browser.</p>

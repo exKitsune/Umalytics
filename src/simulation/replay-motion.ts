@@ -33,7 +33,10 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
           value:effectValue(source,a.referenceSkillId??a.skillId,e),
         }))));
       const selected=effects.filter(e=>excluded.has(e.key)&&(!options.excludeEffectTypes||options.excludeEffectTypes.includes(e.type)));
-      const complicated=selected.some(e=>![21,22,27,31].includes(e.type));
+      // HP, lane position and other decisions are held fixed in this comparison.
+      // Only stat effects need the formula difference; a speed + heal skill is
+      // still a direct removal of its known speed modifier.
+      const complicated=selected.some(e=>[1,2,3,4,5].includes(e.type));
       const altered=selected.length>0||!!options.excludeStatusKey;
       const samples:MotionSample[]=[];let self=3,freeSelf=3,previousRaw=3,distance=0,timeLoss=0;
       for(let index=0;index<ticks.length;index++){

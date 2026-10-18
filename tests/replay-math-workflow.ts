@@ -40,6 +40,15 @@ assert.ok(Math.abs(benefit.time!.mid+.1)<1e-8,'2 m at 20 m/s = .1 s equivalent t
 assert.equal(benefit.coverage,1);
 assert.ok(without.samples.every(s=>s.constrained!.mid===20));
 assert.equal(engine.build({runnerId:'r0',excludeActivationKey:key}).runners.r0,without,'Repeated comparisons reuse indexed paths');
+// Mixed speed + HP/lane effects keep the trace's HP and field positions fixed.
+// They must not require a reference-course formula to remove a known speed bonus.
+const mixedAnalysis=structuredClone(analysis);
+mixedAnalysis.runners.r0.skillActivations[0].effects.push(...[9,28].map(type=>({type,rawValue:1000,evaluatedValue:.1,valueUsage:1,levelUsage:0,targetType:1})));
+const mixed=createTraceMotionEngine({...value.race,courseId:null},reference,mixedAnalysis,trace);
+const mixedWithout=mixed.build({runnerId:'r0',excludeActivationKey:key}).runners.r0;
+assert.deepEqual(mixedWithout.samples.map(s=>s.constrained),without.samples.map(s=>s.constrained));
+const mixedBenefit=measureMotionBenefit(mixed.build().runners.r0,mixedWithout,[{start:1,end:3}],mixed.build({runnerId:'r0',excludeActivationKey:key,excludeEffectTypes:[21,22,27]}).runners.r0,mixed.speedPotential('r0',[key]));
+assert.equal(mixedBenefit.coverage,1);assert.equal(mixedBenefit.carryoverComplete,true);assert.equal(mixedBenefit.carryoverEfficiency,0);
 const blockedTrace=structuredClone(trace);
 blockedTrace.motion.forEach((r:number[])=>{r[m.cap]=20;r[m.blocker]=1;r[m.finalLoss]=r[m.skillSpeed]-20;r[m.speed]=20;});
 const blocked=createTraceMotionEngine(value.race,reference,analysis,blockedTrace);

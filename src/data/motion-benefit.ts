@@ -30,7 +30,7 @@ export function measureMotionBenefit(withSkill:RunnerMotion,without:RunnerMotion
     const valid=!unresolved&&p.constrained&&q.constrained&&u?.constrained&&v?.constrained&&q.intervalConstrained&&v.intervalConstrained&&q.intervalFree&&v.intervalFree&&(!speedBaseline||su?.constrained&&sv?.constrained&&sv.intervalConstrained);
     if(!valid){
       carryoverComplete=false;
-      for(const reason of [...p.reasons,...q.reasons])reasons.add(reason);
+      for(const reason of [p,q,u,v,su,sv].flatMap(s=>s?.reasons??[]))reasons.add(reason);
       reasons.add('A missing interval prevents tracing the full speed advantage.');
       // Do not resurrect a tail after both paths re-anchor at a missing sample.
       if(!active)tailOpen=false;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {conditionLabel} from '../data/condition-label';
   import type { Race } from '../data/types';
   import type { RaceAnalysis, SkillRow } from '../data/analytics';
   import { skillImpactSummary } from '../data/skill-impact';
@@ -24,6 +25,7 @@
   let search='',filter='all',enrich=false,token=0,enrichKey='';
   function verdictParts(row:SkillRow):{kind:'bad'|'good'|'plain';label:string;conditions:string}{
     const split=conditionSplit(row);
+    if(row.simulation){const failed=[...new Set(row.conditionEvaluation?.branches.flatMap(b=>b.predicates.filter(p=>p.state==='unmet').map(p=>conditionLabel(p.expression,reference,race.runners.length)))??[])];return {kind:'bad',label:nonProcLabel(row,reference),conditions:failed.join(' ')};}
     if(row.activationStatus==='conditions-unmet')return {kind:'bad',label:'Conditions unmet',conditions:split.unmet.join(', ')};
     if(row.activationStatus==='wit-failure-inferred'||row.activationStatus==='wit-failure-supported')return {kind:'bad',label:'Wit check failed',conditions:split.met.join(', ')};
     if(row.activationStatus==='conditions-met'||row.activationStatus==='conditions-inferred')return {kind:'good',label:'Conditions met',conditions:split.met.join(', ')};
@@ -45,7 +47,7 @@
     return {distance:benefit?.distance?.mid??null,time:benefit?.time?-benefit.time.mid:null,score:totals.score,coverage:totals.coverage,
       counted:skills.length,skills,scale:Math.max(.01,...skills.map(skill=>Math.abs(skill.distance??0))),
       carryDistance:benefit?.carryoverDistance?.mid??null,carryTime:benefit?.carryoverTime?-benefit.carryoverTime.mid:null,
-      carry:benefit?.carryoverEfficiency??null,complete:benefit?.carryoverComplete&&benefit.coverage>=.999};
+      carry:benefit?.carryoverEfficiency??null,carryLabel:!benefit?'No movement effects':benefit.speedPotentialDistance?.mid===0?'No speed effects':!benefit.carryoverComplete||benefit.coverage<.999?'Partial':'Unavailable',complete:benefit?.carryoverComplete&&benefit.coverage>=.999};
   }
   $: needle=search.toLowerCase();
   $: groups=race.runners.filter(runner=>runner.id===selected).map(runner=>({runner,rows:(analysis.runners[runner.id]?.skillRows??[])
@@ -66,7 +68,7 @@
             <div title="Combined skill movement gain."><span>Movement gain</span><strong>{totals.distance===null?'—':`${totals.distance>=0?'+':''}${totals.distance.toFixed(2)} m`}</strong></div>
             <div title="Equivalent travel time saved."><span>Time saved</span><strong>{totals.time===null?'—':`${totals.time.toFixed(3)} s`}</strong></div>
             {#if totals.score!=null}<div title="Overall skill effectiveness."><span>Effectiveness</span><strong>{Math.round(totals.score*100)}% effective</strong><b><i class="score" style:width={`${Math.round(Math.max(0,Math.min(1,totals.score))*100)}%`}></i></b>{#if totals.coverage<.999}<small>{Math.round(totals.coverage*100)}% assessed</small>{/if}</div>{/if}
-            <div title="Extra benefit after speed effects end."><span>Carryover gain</span><strong class="carry-total">{totals.carry===null?'—':`+${Math.round(totals.carry*100)}%`}</strong><small>{totals.carryDistance===null?'':`+${totals.carryDistance.toFixed(2)} m`}{#if totals.carry!==null&&!totals.complete} · partial{/if}</small></div>
+            <div title="Extra benefit after speed effects end."><span>Carryover gain</span><strong class="carry-total">{totals.carry===null?totals.carryLabel:`+${Math.round(totals.carry*100)}%`}</strong><small>{totals.carryDistance===null?'':`+${totals.carryDistance.toFixed(2)} m`}{#if totals.carryDistance!==null&&!totals.complete} · partial{/if}</small></div>
             <div title="Equivalent travel time saved by the retained speed."><span>Carryover time saved</span><strong class="carry-total">{totals.carryTime===null?'—':`${totals.carryTime.toFixed(3)} s`}</strong></div>
           </div>
           <div class="totals-chart" aria-label="Skill movement gains">

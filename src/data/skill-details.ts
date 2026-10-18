@@ -1,3 +1,4 @@
+import {simulationRestriction} from '../simulation/conditions';
 import { getSkillReference, type ReferenceData, type SkillReference } from './reference';
 import type { SkillRow } from './analytics';
 import type { Runner } from './types';
@@ -164,7 +165,7 @@ export function conditionSplit(row:SkillRow): ConditionSplit {
 }
 /** Short presentation of what an absent activation can actually establish. */
 export function nonProcLabel(row:SkillRow,reference:ReferenceData|null):string {
-  if(row.simulation)return row.activationCount?'Activated':row.simulation.wit.some(w=>w.data.checked&&w.data.passed===false)?'Wit check failed':row.conditionEvaluation?.state==='unmet'?'Conditions unmet':'Not activated';
+  if(row.simulation)return row.activationCount?'Activated':simulationRestriction(row.simulation.checks,row.conditionEvaluation??null).label;
   const failed = conditionSplit(row).unmet;
   if(row.activationCount)return 'Activated';
   if(row.activationStatus==='inferred-initial')return 'Activated · inferred';
