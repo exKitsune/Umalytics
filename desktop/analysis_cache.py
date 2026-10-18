@@ -1,17 +1,19 @@
 """Disposable, compressed analysis. Race files and preferences are never touched."""
 import base64
+from datetime import datetime, timezone
 import json
 import re
 import sqlite3
 import threading
 from contextlib import contextmanager
 
-DEFAULT_POLICY = {'mode': 'unlimited', 'value': 1000, 'background': True}
+DEFAULT_POLICY = {'mode': 'unlimited', 'value': 1000, 'background': False}
 
 
 class AnalysisCache:
     def __init__(self, data_dir):
         self.path = data_dir / 'cache' / 'analysis.sqlite'
+        self.simulation_root = (data_dir / 'cache' / 'globalsim').resolve()
         self.lock = threading.RLock()
 
     @contextmanager
@@ -41,18 +43,44 @@ class AnalysisCache:
         if policy['mode'] == 'unlimited':
             return
         used = 16384
-        for index, (key, size) in enumerate(db.execute('SELECT key,length(payload) FROM entries ORDER BY date DESC,key').fetchall()):
-            used += size + 4096
+        for index, entry in enumerate(self.inventory(db)):
+            used += entry['bytes'] + (0 if '_path' in entry else 4096)
             if (policy['mode'] == 'races' and index >= policy['value']) or (policy['mode'] == 'size' and used > policy['value'] * 1024 * 1024):
-                db.execute('DELETE FROM entries WHERE key=?', (key,))
+                self.remove_entry(db, entry)
+
+    def inventory(self, db):
+        entries = [{'key': key, 'raceId': race, 'date': date, 'bytes': size, 'revision': revision}
+                   for key, race, date, size, revision in db.execute('SELECT key,race,date,length(payload),revision FROM entries')]
+        # Read metadata only. Simulator payloads remain in their own authenticated
+        # storage and are never writable through the inference-cache API.
+        for path in self.simulation_root.glob('*/globalsim-modeled-v1/*.json'):
+            if path.is_symlink() or not path.resolve().is_relative_to(self.simulation_root):
+                continue
+            try:
+                stat = path.stat()
+                entries.append({'key': path.stem, 'raceId': path.stem, 'bytes': stat.st_size,
+                    'date': datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                    'revision': 'simulation-v1', '_path': path})
+            except OSError:
+                pass
+        return sorted(entries, key=lambda entry: (entry['date'], entry['key']), reverse=True)
+
+    def remove_entry(self, db, entry):
+        path = entry.get('_path')
+        if path is None:
+            db.execute('DELETE FROM entries WHERE key=?', (entry['key'],))
+        elif not path.is_symlink() and path.resolve().is_relative_to(self.simulation_root):
+            path.unlink(missing_ok=True)
 
     def read(self, key=None):
         with self.lock, self.connect() as db:
             if key is not None:
                 row = db.execute('SELECT payload FROM entries WHERE key=?', (self.identifier(key),)).fetchone()
                 return {'payload': base64.b64encode(row[0]).decode('ascii') if row else None}
-            entries = [{'key': key, 'raceId': race, 'date': date, 'bytes': size, 'revision': revision} for key, race, date, size, revision in db.execute('SELECT key,race,date,length(payload),revision FROM entries ORDER BY date DESC')]
-            return {'policy': self.policy(db), 'entries': entries, 'bytes': self.path.stat().st_size}
+            rows = self.inventory(db)
+            entries = [{key: value for key, value in entry.items() if key != '_path'} for entry in rows]
+            return {'policy': self.policy(db), 'entries': entries,
+                    'bytes': self.path.stat().st_size + sum(entry['bytes'] for entry in rows if '_path' in entry)}
 
     def update(self, body):
         with self.lock, self.connect() as db:
@@ -74,7 +102,10 @@ class AnalysisCache:
                     raise ValueError('Invalid cache policy.')
                 db.execute("INSERT OR REPLACE INTO options VALUES ('policy',?)", (json.dumps(policy),))
             elif action == 'purge':
-                db.execute('DELETE FROM entries')
+                for entry in self.inventory(db):
+                    self.remove_entry(db, entry)
+            elif action == 'prune':
+                pass
             elif action == 'revision':
                 db.execute('DELETE FROM entries WHERE revision<>?', (self.identifier(body.get('revision')),))
             elif action == 'remove':
@@ -88,11 +119,11 @@ class AnalysisCache:
                 db.execute('VACUUM')
             policy = self.policy(db)
             if policy['mode'] == 'size':
-                while self.path.stat().st_size > policy['value'] * 1024 * 1024:
-                    oldest = db.execute('SELECT key FROM entries ORDER BY date,key LIMIT 1').fetchone()
-                    if not oldest:
+                while True:
+                    rows = self.inventory(db)
+                    if self.path.stat().st_size + sum(entry['bytes'] for entry in rows if '_path' in entry) <= policy['value'] * 1024 * 1024 or not rows:
                         break
-                    db.execute('DELETE FROM entries WHERE key=?', oldest)
+                    self.remove_entry(db, rows[-1])
                     db.commit()
                     db.execute('VACUUM')
         return self.read()

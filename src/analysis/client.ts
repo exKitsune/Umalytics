@@ -39,16 +39,16 @@ export class AnalysisClient {
   async simulatedDetails(){return this.detailRequest?this.detailRequest():null;}
   async open(entry:LibraryEntry,_override?:number){
     this.stop();const generation=this.generation,alive=()=>!this.disposed&&generation===this.generation;
-    this.callbacks.gate?.(null,entry.id);this.callbacks.recorded?.(entry.id);this.state('Opening recorded replay…',true);
+    this.callbacks.gate?.(null,entry.id);this.callbacks.recorded?.(entry.id);this.state('Analyzing race',true);
     let storedHash=entry.sha256;
     try{
       let race=entry.race;
       if(entry.remoteId){const stored=await api<{data:unknown;sha256:string}>(`races/${encodeURIComponent(entry.remoteId)}`);storedHash=stored.sha256;const races=parseRaceJson(stored.data);if(races.length!==1)throw new Error('Select one saved race entry.');race=races[0];}
       if(!alive())return;
       if(!race)throw new Error('Recorded race is unavailable.');
-      this.callbacks.parsed(race,entry.id);this.state('Recorded replay ready');
+      this.callbacks.parsed(race,entry.id);
       const token=this.callbacks.token?.();
-      if(!entry.remoteId||!storedHash||!token)return;
+      if(!entry.remoteId||!storedHash||!token){this.state('Recorded replay ready');return;}
       const endpoint=`simulation/races/${encodeURIComponent(entry.remoteId)}`;
       let job=await api<SimulationJob>(endpoint,{expectedEntrySha256:storedHash},token);
       while(alive()&&job.phase!=='complete'){
@@ -58,7 +58,7 @@ export class AnalysisClient {
       if(!alive()||job.phase!=='complete')return;
       const report=job.report;this.callbacks.gate?.(report,entry.id);
       if(canUseSimulatedCapability(report,'recordedResults',report.binding)){
-        this.state('Preparing simulator analysis…',true);
+        this.state('Analyzing race',true);
         this.detailRequest=async()=>{
         const detail=await api<SimulationJobDetails>(`${endpoint}?jobId=${job.jobId}&include=payloads`);
         if(!alive()||!canUseSimulatedCapability(detail.report,'recordedResults',report.binding))return null;
@@ -68,15 +68,16 @@ export class AnalysisClient {
         const projected=detail?projectSimulation(race,detail,this.reference):null;
         if(projected){attachPrepared(projected);this.callbacks.ready(projected,entry.id);}
         this.state(projected?'Simulator analysis ready':'Recorded replay ready');
+        this.refresh().catch(()=>{});
       }
-      if(report.mode==='inference_plan'&&canUseInferencePlan(report,report.binding)){
+      else if(report.mode==='inference_plan'&&canUseInferencePlan(report,report.binding)){
         const authorize=()=>api<Authorization>(`${endpoint}/inference`,{jobId:job.jobId},token);
         const auth=await authorize();if(!alive())return;
         if(!auth.authorized||!auth.plan)throw new Error('Inference unavailable.');
         // Never restore legacy unqualified entries or look up cache before authorization.
         const cached=await this.store.get(auth.cacheKey).catch(()=>null);if(!alive())return;
         await authorize();if(!alive())return;
-        this.state('Preparing versioned inference…',true);
+        this.state('Analyzing race',true);
         const execute=(payload:Uint8Array|null)=>{
           const worker=this.worker=new Worker(auth.artifactUrl,{type:'module'});
           worker.onmessage=async event=>{
@@ -93,7 +94,7 @@ export class AnalysisClient {
                 rememberAnalysis(value.race,event.data.reference,value.analysis);this.callbacks.ready(value,entry.id);
               }else this.callbacks.historical?.(value,entry.id);
               this.state('Ready');
-              await this.store.put({key:auth.cacheKey,raceId:entry.id,date:entry.receivedAt,revision:'versioned-v1'},event.data.packed);
+              this.callbacks.cache(await this.store.put({key:auth.cacheKey,raceId:entry.id,date:entry.receivedAt,revision:auth.uiRevision},event.data.packed));
               worker.terminate();
             }catch(error){if(alive()){this.callbacks.recorded?.(entry.id);this.callbacks.gate?.(null,entry.id);this.state('Recorded replay ready');this.callbacks.error(String(error));}}
           };
@@ -101,7 +102,7 @@ export class AnalysisClient {
           worker.postMessage({type:'run',raceId:entry.remoteId,entrySha256:storedHash,jobId:job.jobId,cacheKey:auth.cacheKey,token,cached:payload});
         };
         execute(cached);
-      }
+      }else this.state('Recorded replay ready');
       const check=async()=>{
         try{
           await api<SimulationJob>(`${endpoint}?jobId=${job.jobId}`);

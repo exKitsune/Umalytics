@@ -295,7 +295,9 @@
     <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>Race analysis</strong>{#if analysisGate?.mode==='verified_simulation'}<small class="analysis-source" title={analysisNotice(analysisGate)}>Simulation matched</small>{/if}</div><div class="toolbar"><button onclick={()=>faqOpen=true}>FAQ</button><span class="connection"><i class="status-dot" class:live={gameConnected} class:ready={collecting&&!gameConnected}></i>{collectorLabel}</span><button class="icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} title="Toggle theme" onclick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'☀':'☾'}</button></div></header>
     {#if migrationError}<div class="notice" role="status">{migrationError}</div>{/if}
     {#if error||message}<div class="notice" class:error={!!error} role="status"><span>{error||message}</span><button aria-label="Dismiss message" onclick={()=>{message='';error=''}}>×</button></div>{/if}
-    {#if race && analysisRace}
+    {#if activeId && analysisState.busy && !analysis}
+      <div class="workspace"><AnalysisSkeleton title={courseCaption(race??library.find(e=>e.id===activeId)??{},reference)} conditions={race?.conditions??library.find(e=>e.id===activeId)?.conditions} runners={race?.runners.length??9} message="Analyzing race"/></div>
+    {:else if race && analysisRace}
       <div class="workspace">
         {#if analysisGate?.mode!=='verified_simulation'}<div class="notice" role="status" data-analysis-mode={analysisGate?.mode??'recorded_only'}>{analysisNotice(analysisGate)}</div>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">

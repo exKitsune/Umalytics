@@ -11,6 +11,10 @@ import { replayCards } from '../src/replay/cards';
 import { parseRaceJson } from '../src/data/import';
 import { motionIndex as m, TRACE_SCHEMA, type DecisionEvent } from '../src/simulation/trace';
 import type { Race } from '../src/data/types';
+import { AnalysisClient, type AnalysisState } from '../src/analysis/client';
+import { AnalysisStore } from '../src/analysis/store';
+import { toPortableRace } from '../src/data/share';
+import { trafficIntervals, trafficAt, trafficActive, trafficColor, trafficGradient } from '../src/simulation/traffic';
 
 const report=JSON.parse(execFileSync('python',['tests/globalsim/export_contract_fixtures.py'],{encoding:'utf8',windowsHide:true})).trial;
 const runners=[0,1].map(index=>({id:`r${index}`,index,gate:2-index,name:`Runner ${index}`,charaId:null,cardId:null,trainer:null,strategy:null,finishTime:9,finishOrder:2-index,skills:[{id:123,level:1},{id:456,level:1}]}));
@@ -31,7 +35,7 @@ assert.equal(result.race.runners[0].finishOrder,1,'Request index, not gate or fi
 const detail=result.analysis.runners.r0,ready=result.runners.r0;
 assert.equal(detail.statBreakdown.stats.speed.final,1234);
 assert.equal(detail.intervals.find(s=>s.kind==='pace-up')?.end,1);
-assert.equal(detail.intervals.find(s=>s.kind==='front-block')?.start,.2);
+assert.equal(detail.intervals.find(s=>s.kind==='traffic')?.start,.2);
 assert.ok(!detail.intervals.some(s=>s.kind==='release-conserve-power'),'A prepared magnitude does not mean the effect is active');
 assert.equal(ready.blocking?.maximumSelfClamp,2);assert.equal(ready.blocking?.maximumFinalClamp,.25);
 assert.equal(ready.spurt.decisions[0].rolls?.[0].roll,30);assert.equal(ready.spurt.decisions[0].observedTarget,23);
@@ -47,6 +51,29 @@ assert.equal(sampleAt(result.race,.5)[0].hp,475,'Playback interpolates engine fr
 assert.equal(hpTimeline(result.race,'r0',null).length,4);assert.deepEqual(hpSampledBridges(result.race,'r0',null),[]);
 const cards=replayCards({race:result.race,analysis:result.analysis} as any,'r0',.25,result.race.frames[0].runners[0]);
 assert.ok(cards.some(c=>c.kind==='status'&&c.label==='Pace up'));assert.ok(cards.some(c=>c.kind==='skill'));
+const trafficRows=Array.from({length:10},(_,index)=>{
+  const row=Array(43).fill(0);row[m.time]=index/10;row[m.dt]=.1;
+  row[m.blocker]=[0,2,4,8].includes(index)?1:-1;
+  row[m.nearFrontSeconds]=index===1?.1:0;row[m.nearBehindSeconds]=index===9?.1:0;
+  row[m.selfLoss]=[.2,0,.8,0,1.6,0,0,0,.1,0][index];row[m.finalLoss]=index===2?.6:0;
+  return row;
+});
+const traffic=trafficIntervals(trafficRows,1);
+assert.equal(traffic.length,2,'Rapid blocked/near transitions and short clear gaps share one label');
+assert.equal(traffic[0].start,0);assert.equal(traffic[0].end,.5);
+assert.equal(traffic[1].start,.8,'A longer clear gap separates episodes');
+assert.equal(trafficActive(traffic[0],.15),true,'Actual nearby-runner checks keep the band continuous');
+assert.equal(trafficActive(traffic[0],.35),false,'A joined clear gap is not a claimed traffic state');
+assert.equal(trafficAt(traffic[0],-.01),null);assert.equal(trafficAt(traffic[0],.5),null);
+assert.equal(trafficColor(trafficAt(traffic[0],.25)),trafficColor({...traffic[0].traffic![2],finalLoss:0}),'Never add the two cuts');
+assert.equal(trafficColor(trafficAt(traffic[0],.45)),'#e28f7f');
+assert.ok(trafficGradient(traffic[0],t=>t*100).some(s=>s.opacity<1));
+assert.equal(trafficIntervals(trafficRows,.45)[0].end,.45,'Clamp to the runner finish');
+const ceiling=Array(43).fill(0);ceiling[m.dt]=.1;ceiling[m.blocker]=-1;ceiling[m.selfLoss]=2;
+assert.deepEqual(trafficIntervals([ceiling],.1),[],'Global speed ceiling without a blocker is not traffic loss');
+const trafficAnalysis={...result.analysis,runners:{...result.analysis.runners,r0:{...detail,intervals:traffic}}};
+assert.ok(replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',.25,result.race.frames[0].runners[0]).some(c=>c.label==='Traffic'));
+assert.ok(!replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',.35,result.race.frames[0].runners[0]).some(c=>c.label==='Traffic'));
 assert.equal(ready.totals.score,null,'Unavailable counterfactual effectiveness is not zero');
 for(const mutate of [(r:any)=>r.mode='recorded_only',(r:any)=>r.simulation.status='mismatch',(r:any)=>r.simulation.modeled.decisionTrace.complete=false]){
   const changed=structuredClone(report);mutate(changed);assert.equal(projectSimulation(original,changed,null),null);
@@ -64,4 +91,48 @@ if(process.argv[2]&&process.argv[3]){
     assert.equal(p.runners[r.id].motion.samples[0].targetActive?.mid,t.motion.find((v:number[])=>v[m.horse]===r.index)[m.target]);
   }
 }
-console.log('Simulator projection: original capture preserved; engine frames, stats, states, skills, rolls and clamp stages reach the existing UI; mismatches stay gated; no inference fallback.');
+// Deferred HTTP replies exercise the entire busy lifecycle, including the
+// parsed-but-not-analyzed window that previously flashed the replay page.
+const savedFetch=globalThis.fetch;
+type RequestReply={url:string;reply:(value:unknown,status?:number)=>void};
+const requests:RequestReply[]=[];
+globalThis.fetch=async input=>new Promise<Response>(resolve=>requests.push({url:String(input),reply:(value,status=200)=>resolve(new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}}))}));
+const nextRequest=async()=>{
+  const until=Date.now()+5000;
+  while(!requests.length){assert.ok(Date.now()<until,'Expected client request');await new Promise(resolve=>setTimeout(resolve,5));}
+  return requests.shift()!;
+};
+const states:AnalysisState[]=[],readyIds:string[]=[],parsedIds:string[]=[],errors:string[]=[];
+const client=new AnalysisClient({status:async()=>({entries:[],bytes:0,policy:{mode:'unlimited',value:1000,background:false}})} as unknown as AnalysisStore,{
+  parsed:(_,id)=>parsedIds.push(id),base:()=>assert.fail('No inference'),ready:(_,id)=>readyIds.push(id),state:s=>states.push(s),
+  cache:()=>{},error:e=>errors.push(e),token:()=> 'synthetic-token',
+});
+const entry=(id:string)=>({id,remoteId:id,title:'synthetic',receivedAt:'2000-01-01T00:00:00Z'});
+const stored={data:toPortableRace(original),sha256:'a'.repeat(64)};
+const job=(r:any,phase='complete')=>({jobId:'synthetic-job',phase,report:r});
+const busy=()=>states.at(-1)?.busy;
+try{
+  let opening=client.open(entry('first'));
+  assert.equal(busy(),true);
+  (await nextRequest()).reply(stored);
+  const submit=await nextRequest();assert.equal(parsedIds.at(-1),'first');assert.equal(busy(),true);
+  submit.reply(job(null,'queued'));
+  const poll=await nextRequest();assert.equal(busy(),true);poll.reply(job(report));
+  const details=await nextRequest();assert.match(details.url,/include=payloads/);assert.equal(busy(),true);
+  assert.equal(readyIds.length,0);details.reply(job(report));await opening;
+  assert.equal(busy(),false);assert.deepEqual(readyIds,['first']);
+  // Terminal fallback and failure must never leave a permanent skeleton.
+  for(const mode of ['recorded_only','simulation_mismatch']){
+    opening=client.open(entry(mode));(await nextRequest()).reply(stored);
+    (await nextRequest()).reply(job({...report,mode}));await opening;assert.equal(busy(),false);
+  }
+  opening=client.open(entry('failed'));(await nextRequest()).reply({error:'synthetic transport failure'},500);
+  await opening;assert.equal(busy(),false);assert.equal(errors.length,1);
+  // A late response for the prior race cannot clear the current race's loader.
+  const old=client.open(entry('old'));(await nextRequest()).reply(stored);const oldSubmit=await nextRequest();
+  opening=client.open(entry('new'));(await nextRequest()).reply(stored);const newSubmit=await nextRequest();
+  oldSubmit.reply(job({...report,mode:'recorded_only'}));await old;assert.equal(busy(),true);
+  newSubmit.reply(job({...report,mode:'recorded_only'}));await opening;assert.equal(busy(),false);
+  await client.open({id:'local',title:'local',receivedAt:'',race:original});assert.equal(busy(),false);
+}finally{client.dispose();globalThis.fetch=savedFetch;}
+console.log('Simulator projection: original capture preserved; engine frames, stats, states, skills, rolls and clamp stages reach the existing UI; mismatches stay gated; loading remains visible until completion and clears on fallback, error and race changes.');

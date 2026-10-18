@@ -1,6 +1,6 @@
 # Simulator-first race analysis
 
-A matched simulator is now the primary mechanics source. The production path is stored race selection → app-owned installed artifact → input-only setup → fresh instrumented execution → independent recorded-field comparison → simulator timeline. Existing inference is a separately authorized fallback; its formulas do not populate the simulator panels.
+A matched simulator is now the primary mechanics source. The production path is stored race selection → app-owned installed artifact → input-only setup → authenticated saved output or instrumented execution → fresh independent recorded-field comparison → simulator timeline. Existing inference is a separately authorized fallback; its formulas do not populate the simulator panels.
 
 ## What is traced
 
@@ -32,7 +32,11 @@ No real date ranges were invented. Enter documented original-occurrence windows,
 
 The upstream Git dependency remains pinned at `efc2decdfeaff227ada0e9847f5deceb42c3b97f`. `scripts/prepare-simulator.py` extracts that exact Git archive into an isolated source cache and applies `simulation/instrumentation/engine.patch` plus `decision_trace.rs`. It never edits the upstream checkout. Cargo uses the reviewed local patch. Package manifests pin the executable, data, patch files and prepared source. The runtime requires the installed trace schema, complete bounded rows, correct runner mappings and a fresh successful comparison.
 
-Trace requests always execute again when reopening a race. Recorded samples cannot authenticate hidden decisions copied from disk, so persistent modeled caches are not used for decision traces. A currently authorized job's payload is reused while inspecting its timeline. Observation-only engines retain the previous cache/recomparison behavior. Active selections are revoked on capture, policy, manifest, executable or reference changes.
+Simulation output, including decision traces, is saved across race switches and service restarts. Before cache access, the service freshly selects compatibility and binds the capture, context, evidence, registry/policy and installed manifest. The runtime key also includes prepared inputs, measured executable, reference and bridge identities. Each open independently compares saved output against recorded observations and validates the trace; no saved verdict authorizes the UI. A service-owned installation secret authenticates the cache key and modeled digest with HMAC-SHA256, because recorded samples alone cannot authenticate hidden decisions. Unsigned, damaged or differently signed traces are cache misses. Without a usable secret, trace execution remains available but caching is disabled. Active selections are revoked on capture, policy, manifest, executable or reference changes.
+
+Simulation files remain separate from inference payloads. Settings count both stores and apply one retention budget; clearing analysis removes both without touching captures, tags or the installation key. New analyses show an “Analyzing race” skeleton until completion; unsupported races and errors leave that state. The capture service keeps collecting races, but automatic whole-library background analysis is currently disabled. Opening a race schedules its analysis, which can finish and save even after the user selects another race.
+
+The Traffic display groups actual front-block and near-front/near-behind timer ticks into one episode. Gaps up to 0.25 seconds are joined for label layout only, remain faded, and do not assert a blocked/near state. Color runs from amber at zero cut to red at 1 m/s or above, using the larger of the two blocking-stage reductions; those stages are not summed. A global speed cap without a blocker is excluded. Replay cards and active status chips use each exact tick, including the clear gaps. The original trace and blocked-time totals remain separate from the presentation grouping.
 
 ## Validation and limitations
 
@@ -191,8 +195,8 @@ that sharing a seed is sufficient ([L'Ecuyer, WSC 2015](https://informs-sim.org/
 5. Cache summaries by capture/setup digest, exact executable/data/instrumentation
    identities, intervention, metric version and RNG policy. Display cached
    results only after a fresh baseline authorization; revoke them on the same
-   changes that revoke the baseline. Persistent caches cannot authenticate
-   hidden baseline decisions.
+   changes that revoke the baseline. Authenticate saved hidden decisions using
+   the same service-owned cache mechanism as the baseline.
 
 Individual removal deltas are marginal effects and must not be added together.
 Calculate a combined all-selected-skills intervention for the total. If an

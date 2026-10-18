@@ -13,6 +13,7 @@ import type { AnalysisGateReport, JsonObject } from './contracts';
 import { decisionTrace, motionIndex as m, motionAt, blockingSummary, type DecisionEvent } from './trace';
 import { rankSamples, runnerGap } from '../view-model';
 import { statusLabel } from '../data/status-presentation';
+import { trafficIntervals } from './traffic';
 
 const unavailable='Requires a separate counterfactual simulation; not measured by this execution trace.';
 const exact=(value:number):MotionBand=>({min:value,mid:value,max:value});
@@ -26,14 +27,14 @@ const keys=['speed','stamina','power','guts','wisdom'] as const;
 function intervals(rows:number[][],stop:number):StatusInterval[] {
   const conditions:[string,(r:number[])=>boolean][]=[
     ['rushed',r=>r[m.rushing]>0],['rushed-boost',r=>r[m.rushing]===4],['downhill-mode',r=>r[m.downhill]===1],
-    ['front-block',r=>r[m.blocker]>=0],['hp-empty',r=>r[m.hp]<=0],
+    ['hp-empty',r=>r[m.hp]<=0],
     ['last-spurt',r=>r[m.spurt]===1],['spot-struggle',r=>r[m.spotStruggle]===1],
     ['dueling',r=>r[m.duel]===1],
     ['speed-up',r=>r[m.paceMode]===1],['overtake',r=>r[m.paceMode]===2],
     ['pace-up',r=>r[m.paceMode]===3],['pace-down',r=>r[m.paceMode]===4],
     ['extra-pace-up',r=>r[m.paceMode]===5],['force-in',r=>r[m.forceIn]===1],
   ];
-  return conditions.flatMap(([kind,active])=>{
+  return [...trafficIntervals(rows,stop),...conditions.flatMap(([kind,active])=>{
     const result:StatusInterval[]=[];let start:number|null=null;
     for(const row of rows){if(row[m.time]>=stop)break;
       if(active(row)&&start===null)start=row[m.time];
@@ -41,7 +42,7 @@ function intervals(rows:number[][],stop:number):StatusInterval[] {
     }
     if(start!==null)result.push({kind,label:statusLabel(kind),start,end:stop,evidence:'simulated',detail:'Engine state remains active through the finish.'});
     return result;
-  }).sort((a,b)=>a.start-b.start);
+  })].sort((a,b)=>a.start-b.start);
 }
 
 /** cp_acc is a precomputed magnitude, not an active-state flag. These internal

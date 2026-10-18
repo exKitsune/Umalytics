@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { trafficActive, trafficAt, trafficColor } from '../simulation/traffic';
   import {statusHelp,modelHelp,statusColor} from '../data/analysis-copy';
   import type { Race, Runner, RunnerSample } from '../data/types';
   import type { RaceAnalysis } from '../data/analytics';
@@ -40,7 +41,7 @@
   $: summary=detail?.summary;
   $: skillRows=[...(detail?.skillRows??[])].sort((a,b)=>compareDisplayedSkills(reference,a.skillId,b.skillId));
   $: displayIntervals=combinedStatusIntervals(detail?.intervals??[],{includeModels:true}).filter(s=>s.kind!=='downhill-section');
-  $: activeStatuses=displayIntervals.filter(status=>time>=status.start&&(status.end===null?time<=(status.observedUntil??status.start):time<status.end));
+  $: activeStatuses=displayIntervals.filter(status=>(!status.traffic||trafficActive(status,time))&&time>=status.start&&(status.end===null?time<=(status.observedUntil??status.start):time<status.end));
   $: current=analyticsAt(analysis,runner.id,time);
   const f=(v:number|null|undefined,d=1)=>v==null?'—':v.toFixed(d);
   const statNames:Record<StatKey,string>={speed:'Speed',stamina:'Stamina',power:'Power',guts:'Guts',wisdom:'Wit'};
@@ -64,7 +65,7 @@
 <aside class="panel runner-panel" aria-label="Selected runner">
   <div class="runner-panel-header"><div class="eyebrow">SELECTED UMA</div><div class="runner-identity"><UmaPortrait {runner} size={48}/><div><h2>{runnerName(reference,runner)}</h2><span class="muted">{runnerOutfit(reference,runner)??runner.strategy??'Style unknown'}</span></div></div><div class="runner-actions"><button class="simulator-launch" onclick={onDownload}>Download Uma JSON</button></div></div>
   <div class="live-stats"><div><small>SPEED</small><strong>{f(sample?.speed,2)}<em>m/s</em></strong></div><div><small>HP</small><strong>{f(sample?.hp,0)}<em>/ {f(summary?.hpStart,0)}</em></strong></div><div><small title="Positive behind first; negative ahead of second.">GAP</small><strong>{f(gap)}<em>m</em></strong></div><div><small>ACCELERATION</small><strong>{f(current.sample?.acceleration,2)}<em>m/s²</em></strong></div></div>
-  <div class="active-statuses">{#each activeStatuses as status}<span style={`--status:${statusColor(status.kind)}`} title={statusHelp(status.kind)}>{statusShortLabel(status.kind)}</span>{:else}<small>No status detected</small>{/each}</div>
+  <div class="active-statuses">{#each activeStatuses as status}<span style={`--status:${status.traffic?trafficColor(trafficAt(status,time)):statusColor(status.kind)}`} title={status.traffic?status.detail:statusHelp(status.kind)}>{statusShortLabel(status.kind)}</span>{:else}<small>No status detected</small>{/each}</div>
   <div class="build-stats">
     {#each statKeys as stat}<div><GameIcon name={`stat-${stat}`} label={statNames[stat]} size={19}/><small>{({speed:'SPD',stamina:'STA',power:'POW',guts:'GUT',wisdom:'WIT'} as Record<StatKey,string>)[stat]}</small><strong>{f(runner.stats?.[stat],0)}</strong></div>{/each}
     <span class="effective-label" title="Starting race stats after mood, green skills, course and other bonuses.">Effective</span>

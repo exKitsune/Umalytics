@@ -3,7 +3,7 @@ export interface CachePolicy {mode:'unlimited'|'races'|'size';value:number;backg
 export interface CacheEntry {key:string;raceId:string;date:string;bytes:number;revision:string}
 interface StoredEntry extends CacheEntry {payload:Uint8Array}
 export interface CacheStatus {policy:CachePolicy;entries:CacheEntry[];bytes:number}
-export const defaultCachePolicy=():CachePolicy=>({mode:'unlimited',value:1000,background:true});
+export const defaultCachePolicy=():CachePolicy=>({mode:'unlimited',value:1000,background:false});
 const base64=(bytes:Uint8Array)=>{let value='';for(let i=0;i<bytes.length;i+=16384)value+=String.fromCharCode(...bytes.subarray(i,i+16384));return btoa(value);};
 const unbase64=(value:string)=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
 let opening:Promise<IDBDatabase>|undefined;

@@ -6,8 +6,9 @@ Cached modeled output is decoded and compared again on every evaluation.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -58,6 +59,8 @@ class RuntimeConfig:
     # hash alone is not an attestation that an arbitrary binary came from Git.
     expected_engine_sha256: str | None = None
     decision_trace_schema: str | None = None
+    # Service-owned installation secret; never supplied by a capture or browser.
+    cache_auth_key: bytes | None = field(default=None, repr=False)
 
     def __post_init__(self):
         for name in ("engine_path", "umalytics_root", "globalsim_root", "work_root", "cache_root"):
@@ -66,6 +69,8 @@ class RuntimeConfig:
                 object.__setattr__(self, name, Path(value).expanduser().resolve())
         if self.decision_trace_schema not in (None, "umalytics-decisions-v1"):
             raise ValueError("Unsupported decision trace schema")
+        if self.cache_auth_key is not None and (not isinstance(self.cache_auth_key, bytes) or len(self.cache_auth_key) != 32):
+            raise ValueError("cache_auth_key must be a 32-byte installation secret")
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be finite and positive")
         for name in ("max_capture_bytes", "max_input_bytes", "max_output_bytes", "max_stderr_bytes"):
@@ -291,7 +296,11 @@ def _cache_path(config: RuntimeConfig, key: str) -> Path | None:
     return config.cache_root / "globalsim-modeled-v1" / f"{key}.json" if config.cache_root else None
 
 
-def _read_cache(path: Path | None, key: str, byte_limit: int) -> dict | None:
+def _cache_mac(secret: bytes, key: str, modeled_hash: str) -> str:
+    return hmac.new(secret, _canonical([CACHE_SCHEMA, key, modeled_hash]), hashlib.sha256).hexdigest()
+
+
+def _read_cache(path: Path | None, key: str, byte_limit: int, auth_key: bytes | None = None) -> dict | None:
     if path is None:
         return None
     try:
@@ -307,19 +316,25 @@ def _read_cache(path: Path | None, key: str, byte_limit: int) -> dict | None:
         modeled = entry["modeled"]
         if not isinstance(modeled, dict) or entry.get("modeledSha256") != _digest(_canonical(modeled)):
             return None
+        if auth_key is not None and not hmac.compare_digest(str(entry.get("authentication", "")),
+                _cache_mac(auth_key, key, entry["modeledSha256"])):
+            return None
         return modeled
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError):
         return None
 
 
-def _write_cache(path: Path | None, key: str, modeled: dict, byte_limit: int):
+def _write_cache(path: Path | None, key: str, modeled: dict, byte_limit: int, auth_key: bytes | None = None):
     if path is None:
         return
     model_bytes = _canonical(modeled)
     if len(model_bytes) > byte_limit:
         return
-    entry = _canonical({"schemaVersion": CACHE_SCHEMA, "cacheKey": key,
-                        "modeledSha256": _digest(model_bytes), "modeled": modeled})
+    metadata = {"schemaVersion": CACHE_SCHEMA, "cacheKey": key,
+                "modeledSha256": _digest(model_bytes), "modeled": modeled}
+    if auth_key is not None:
+        metadata["authentication"] = _cache_mac(auth_key, key, metadata["modeledSha256"])
+    entry = _canonical(metadata)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -470,11 +485,13 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
         report["cacheKey"] = _digest(_canonical(key_material))
         if not cache_eligible:
             report["warnings"].append("Code source identities unavailable; simulation cache is disabled.")
-        # Recorded samples cannot independently authenticate cached hidden decisions.
-        # Trace requests execute afresh; ordinary observation-only runs retain
-        # their independently re-compared persistent model cache.
-        cache_path = _cache_path(config, report["cacheKey"]) if cache_eligible and not config.decision_trace_schema else None
-        modeled = _read_cache(cache_path, report["cacheKey"], config.max_output_bytes)
+        # Hidden decisions are not observable in replay samples. Authenticate saved
+        # traces with the installation secret as well as comparing observations
+        # afresh below. Unsigned legacy traces cannot authorize hidden state.
+        trace_cache_allowed = config.cache_auth_key is not None and config.expected_engine_sha256 == engine_hash
+        cache_path = _cache_path(config, report["cacheKey"]) if cache_eligible and (
+            not config.decision_trace_schema or trace_cache_allowed) else None
+        modeled = _read_cache(cache_path, report["cacheKey"], config.max_output_bytes, config.cache_auth_key)
         report["cacheHit"] = modeled is not None
         if modeled is None:
             modeled, elapsed, stderr = _run_worker(config, payload)
@@ -505,7 +522,7 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
                 report["warnings"].append("Decision trace unavailable: " + trace_error)
         if not report["cacheHit"]:
             try:
-                _write_cache(cache_path, report["cacheKey"], modeled, config.max_output_bytes)
+                _write_cache(cache_path, report["cacheKey"], modeled, config.max_output_bytes, config.cache_auth_key)
             except OSError as error:
                 report["warnings"].append("Simulation result could not be cached: "+str(error))
         return finish(status)

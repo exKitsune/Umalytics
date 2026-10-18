@@ -1,6 +1,7 @@
 import type { StatusInterval } from './analytics';
 import type { MotionSample } from './race-motion';
 const labels: Record<string, [string, string]> = {
+  traffic: ['Traffic', 'Traffic'],
   'pace-up': ['Pace up', 'PU'], 'pace-down': ['Pace down', 'PD'],
   'speed-up': ['Speed up', 'SU'], overtake: ['Overtake', 'OT'],
   'spot-struggle': ['Spot struggle', 'SS'], 'downhill-mode': ['Downhill mode', 'DH'],

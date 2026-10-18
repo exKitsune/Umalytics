@@ -2,9 +2,11 @@
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import secrets
+import sqlite3
 import threading
 from globalsim_bridge import (RuntimeConfig, SimulatorBinding, InferenceBinding,
     evaluate_for_analysis, revalidate_inference_plan, select_compatibility)
@@ -77,6 +79,7 @@ class SimulationService:
                     globalsim_root=self.path(row['resourceRoot']),
                     expected_engine_sha256=row['artifact_sha256'],
                     decision_trace_schema=row.get('decisionTraceSchema'),
+                    cache_auth_key=self.cache_auth_key(),
                     cache_root=self.service.data_dir / 'cache/globalsim' / namespace,
                     work_root=self.service.data_dir / 'cache/simulation-work'))
                 simulators[binding.engine_id] = binding
@@ -84,6 +87,25 @@ class SimulationService:
                 binding = InferenceBinding(**kwargs)
                 inferences[binding.engine_id] = binding
         return simulators, inferences
+
+    def cache_auth_key(self):
+        """Persist across restarts, outside the disposable/browser-writable cache."""
+        path = self.service.data_dir / 'simulation-cache.key'
+        try:
+            with self.lock:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as stream:
+                        stream.write(secrets.token_bytes(32))
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                except FileExistsError:
+                    pass
+                with path.open('rb') as stream:
+                    key = stream.read(33)
+            return key if len(key) == 32 else None
+        except OSError:
+            return None  # Analysis still works when persistent caching is unavailable.
 
     def selected(self, race_id, expected=None):
         if not isinstance(race_id, str) or not re.fullmatch(r'[A-Za-z0-9_.~-]{1,240}', race_id) or '..' in race_id:
@@ -168,7 +190,7 @@ class SimulationService:
             if (report.get('simulation') or {}).get('cacheKey'):
                 try:
                     self.trim_simulation_cache()
-                except OSError:
+                except (OSError, sqlite3.Error):
                     pass
             # Recompute before publishing. Artifact files are measured separately
             # on inference authorization; simulator runtime measures its binary.
@@ -182,20 +204,9 @@ class SimulationService:
             job.update(phase='complete', report=report)
 
     def trim_simulation_cache(self):
-        """Bound this service's derived files; never follow a path outside it."""
-        root = (self.service.data_dir / 'cache/globalsim').resolve()
-        if not root.is_dir():
-            return
-        paths = [path for path in root.glob('*/globalsim-modeled-v1/*.json')
-                 if not path.is_symlink() and path.resolve().is_relative_to(root)]
-        used = 0
-        for index, path in enumerate(sorted(paths, key=lambda item: item.stat().st_mtime, reverse=True)):
-            try:
-                used += path.stat().st_size
-                if index >= 16 or used > 256 * 1024 * 1024:
-                    path.unlink()
-            except OSError:
-                pass  # Cache maintenance must not change a comparison verdict.
+        from analysis_cache import AnalysisCache
+        with self.service.lock:
+            AnalysisCache(self.service.data_dir).update({'action': 'prune'})
 
     def project(self, job, payloads=False):
         out = {key: job[key] for key in ('schemaVersion', 'jobId', 'raceId', 'entrySha256', 'phase')}

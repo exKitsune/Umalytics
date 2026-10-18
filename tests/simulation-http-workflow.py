@@ -122,14 +122,26 @@ def main():
                 checks['realProcessAndComparedDetails'] = True
                 warm = begin()
                 assert warm['report']['mode'] == 'verified_simulation'
-                assert warm['report']['simulation']['cacheHit'] is (not traced)
-                expected_workers = 2 if traced else 1
+                assert warm['report']['simulation']['cacheHit']
+                expected_workers = 1
                 expected_comparisons = 2
                 assert worker.call_count == expected_workers and compare.call_count == expected_comparisons
-                checks['freshTraceReexecuted' if traced else 'cachedOutputComparedAgain'] = True
+                checks['cachedOutputComparedAgain'] = True
                 if traced:
                     assert details['report']['simulation']['capabilities']['hiddenState'] == 'simulated_trace'
                     assert details['report']['simulation']['modeled']['decisionTrace']['complete']
+                # A new service instance has no jobs or in-memory model cache.
+                from simulation_service import SimulationService
+                store.simulation.close()
+                store.simulation = SimulationService(store, root)
+                restarted = begin()
+                expected_comparisons += 1
+                assert restarted['report']['mode'] == 'verified_simulation'
+                assert restarted['report']['simulation']['cacheHit']
+                assert worker.call_count == expected_workers and compare.call_count == expected_comparisons
+                assert request('/api/analysis-cache')['entries']
+                warm = restarted
+                checks['savedAnalysisSurvivesRestart'] = True
                 cache_before = {p: p.read_bytes() for p in (store.data_dir / 'cache/globalsim').rglob('*.json')}
                 with patch.object(ReferenceData, 'load', side_effect=AssertionError('Unknown race loaded model references')):
                     assert begin('unknown')['report']['mode'] == 'recorded_only'

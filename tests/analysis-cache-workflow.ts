@@ -63,6 +63,27 @@ try{
   await client.configure(built.reference);client.setLibrary([{id:'unknown',title:'Unknown',receivedAt:'2000-01-01',remoteId:'unknown'}],{});
   await client.open({id:'unknown',title:'Unknown',receivedAt:'2000-01-01',remoteId:'unknown'});client.dispose();
   assert.equal(parsed,1);assert.equal(cacheReads+workerStarts,0);
+  // The client must save using the authorized bundle's revision, which is a
+  // SHA-256 identity accepted by the actual desktop cache API.
+  Object.assign(globalThis,{__ANALYSIS_REVISION__:bundle.uiRevision,Worker:class{
+    onmessage:((event:any)=>void)|null=null;onerror:(()=>void)|null=null;
+    inner=new Worker(new URL('./version-worker-host.mjs',import.meta.url),{execArgv:[],workerData:{url:connection.url,artifact:join(folder,bundle.artifact)}});
+    constructor(){this.inner.on('message',data=>this.onmessage?.({data}));this.inner.on('error',()=>this.onerror?.());}
+    postMessage(message:any){this.inner.postMessage(message);}
+    terminate(){void this.inner.terminate();}
+  }});
+  const store=new AnalysisStore(()=>true,()=>connection.csrf);
+  let saved!:()=>void;
+  const persisted=new Promise<void>(resolve=>saved=resolve);
+  const savingClient=new AnalysisClient(store,{parsed:()=>{},base:()=>{},ready:()=>{},state:()=>{},cache:()=>saved(),error:e=>assert.fail(e),token:()=>connection.csrf});
+  try{
+    await savingClient.open({id:'selected~1',title:'Synthetic',receivedAt:'2001-06-01',remoteId:'selected~1'});
+    await persisted;
+    const status=await store.status();assert.equal(status.entries.length,1);
+    assert.equal(status.entries[0].revision,bundle.uiRevision);
+    const disk=await store.get(status.entries[0].key);assert.ok(disk);
+    assert.equal(JSON.stringify((await run(job,disk)).value),JSON.stringify(built.value));
+  }finally{savingClient.dispose();}
   globalThis.fetch=originalFetch;
   // Provisional policy and warnings survive real worker cache/reload/export.
   race.originalRace=facts('2002-06-01T00:00:00Z');await writeFile(join(folder,'storage/races/future.json'),JSON.stringify(race));

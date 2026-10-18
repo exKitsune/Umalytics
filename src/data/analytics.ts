@@ -20,6 +20,9 @@ import { rankSamples, runnerGap } from '../view-model';
 import type { RunnerStatBreakdown, HillImpact, ContributionTotal, SkillImpact, DebuffActivation, SlowdownAnalysis } from './effect-types';
 
 export type Evidence = 'recorded' | 'derived' | 'estimated' | 'simulated' | 'unknown';
+export interface TrafficTick {
+  start:number; end:number; near:boolean; blocked:boolean; selfLoss:number; finalLoss:number;
+}
 export interface StatusInterval {
   kind: string; label: string; start: number; end: number | null;
   evidence: Evidence; detail: string; skillId?: number;
@@ -32,6 +35,8 @@ export interface StatusInterval {
     /** Endpoint speed sits on this mode's ceiling, so a one-sample plateau still counts. */
     velocityCeiling?: boolean };
   impact?: StatusImpact;
+  /** Display episode, including explicitly clear short gaps; raw ticks stay exact. */
+  traffic?: TrafficTick[];
 }
 export interface AnalyticsSample {
   time: number; distance: number | null; speed: number | null; hp: number | null; lane: number | null;

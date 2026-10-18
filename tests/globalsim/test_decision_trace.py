@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'desktop'))
 from globalsim_bridge import versioning
+from globalsim_bridge import runtime
 from globalsim_bridge.decision_trace import MOTION_COLUMNS, SCHEMA, validate_trace
 from test_versioning import registry, evidence, CAPTURE_SHA
 from simulation_service import SimulationService
@@ -116,3 +117,54 @@ class TracedRuntimeTests(unittest.TestCase):
         self.assertEqual(calls,1)
         self.assertFalse(second['cacheHit'])
         self.assertEqual(list(self.root.rglob('*.json')),[])
+
+    def cache_fixture(self):
+        self.fixture.config=replace(self.fixture.config, cache_auth_key=b'k'*32)
+        model=deepcopy(self.modeled);model['decisionTrace']=trace()
+        first,calls=self.evaluate(model)
+        self.assertEqual(calls,1)
+        return model, first, runtime._cache_path(self.fixture.config,first['cacheKey'])
+
+    def test_authenticated_trace_is_reused_and_independently_compared(self):
+        model,first,_=self.cache_fixture()
+        with patch.object(runtime,'compare_observations',wraps=runtime.compare_observations) as compare:
+            second,calls=self.evaluate(model)
+        self.assertEqual(calls,0)
+        self.assertEqual(compare.call_count,1)
+        self.assertTrue(second['cacheHit'])
+        self.assertEqual(second['capabilities']['hiddenState'],'simulated_trace')
+        self.assertEqual(first['modeled'],second['modeled'])
+
+    def test_changed_hidden_roll_cannot_be_authorized_by_plain_checksum(self):
+        model,_,path=self.cache_fixture()
+        entry=json.loads(path.read_bytes())
+        entry['modeled']['decisionTrace']['events'][0]['data']['roll']=1.
+        entry['modeledSha256']=hashlib.sha256(runtime._canonical(entry['modeled'])).hexdigest()
+        path.write_bytes(runtime._canonical(entry))
+        second,calls=self.evaluate(model)
+        self.assertEqual(calls,1)
+        self.assertFalse(second['cacheHit'])
+        self.assertEqual(second['modeled']['decisionTrace']['events'][0]['data']['roll'],99.)
+
+    def test_unsigned_trace_and_changed_installation_key_are_cache_misses(self):
+        model,_,path=self.cache_fixture()
+        entry=json.loads(path.read_bytes());del entry['authentication']
+        path.write_bytes(runtime._canonical(entry))
+        self.assertEqual(self.evaluate(model)[1],1)
+        self.fixture.config=replace(self.fixture.config,cache_auth_key=b'j'*32)
+        self.assertEqual(self.evaluate(model)[1],1)
+
+    def test_valid_cache_never_skips_comparison_or_trace_validation(self):
+        model,_,path=self.cache_fixture()
+        model['frames'][1]['horses'][0]['pos']+=10
+        # A service-signed payload still needs fresh observation comparison.
+        key=json.loads(path.read_bytes())['cacheKey']
+        runtime._write_cache(path,key,model,100000,b'k'*32)
+        report,calls=self.evaluate()
+        self.assertEqual((calls,report['cacheHit'],report['status']),(0,True,'mismatch'))
+        self.assertEqual(report['capabilities']['hiddenState'],'not_provided')
+        model=deepcopy(self.modeled);model['decisionTrace']=trace();model['decisionTrace']['complete']=False
+        runtime._write_cache(path,key,model,100000,b'k'*32)
+        report,calls=self.evaluate()
+        self.assertEqual((calls,report['cacheHit']),(0,True))
+        self.assertEqual(report['capabilities']['hiddenState'],'not_provided')

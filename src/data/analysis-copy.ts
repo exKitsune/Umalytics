@@ -12,6 +12,7 @@ export function statusHelp(kind:string):string {
     rushed:'Spends extra HP while rushed.',
     'rushed-boost':'Extra speed while rushed.',
     'front-block':'Another runner is blocking the path ahead.',
+    traffic:'Nearby runners and blocking in one band. Amber to red shows increasing speed cuts; faded sections are clear gaps.',
     'near-slowdown':'Traffic ahead slows her by more than 0.15 m/s. Pace and downhill modes can remain active.',
     'lane-bonus':'A lane-speed skill is active while her lane is changing. Forward target speed gains sqrt(0.0002×power) for that movement.',
     'last-spurt':'The runner has started its final spurt.',
