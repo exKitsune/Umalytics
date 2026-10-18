@@ -4,3 +4,5 @@ public/data/* -text
 docs/*.json -text
 # Unified patches require a space on blank context lines.
 simulation/instrumentation/*.patch -whitespace
+# Apply patches to Git archive bytes and preserve instrumentation hash identities.
+simulation/instrumentation/* -text

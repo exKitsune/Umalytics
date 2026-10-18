@@ -18,6 +18,7 @@ npm run build
 python -m unittest discover -s tests/globalsim -p 'test_*.py'
 node tests/globalsim/test_contracts.mjs --python python
 python tests/launcher-identity-workflow.py
+python tests/simulator-checkout-workflow.py
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-desktop.ps1 -OutputFile Umalytics-IntegrationPreview.exe
 ```
 
@@ -126,6 +127,8 @@ historical coverage requires them.
 ## Decision-trace acceptance
 
 1. Prepare the pinned instrumented source with `python scripts/prepare-simulator.py --source .cache/globalsim-source`, then build the locked worker. Check the manifest pins and isolated source identity.
+   Instrumentation files must retain identical bytes under Git's Windows CRLF,
+   LF and input-only checkout settings; the checkout regression runs in CI.
 2. For every corpus capture, run the original pinned worker, patched worker with tracing off, and patched worker with tracing on. Remove only `decisionTrace`; require complete JSON output equality, unchanged prepared-input hash and unchanged comparison verdict. Keep the known mismatch and missing-input capture as negative controls.
 3. Require each actual wit roll to agree with its threshold/result; exempt skills must have no roll. Include failed ordinary lotteries and forced activation. Check condition/precondition stages, skipped predicates, activation ordering, cooldown and effect delivery.
 4. Include spurt success without any roll, multiple rejected candidates, accepted/rejected lottery rolls, fallback and recovery recalculation. Do not invent rolls for calculations that did not draw.

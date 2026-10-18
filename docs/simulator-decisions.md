@@ -39,3 +39,65 @@ The compact `simulation/evidence/decision-trace-validation.json` records unchang
 The untouched upstream Rust library has eleven failing fixture tests on this Windows toolchain; the instrumented library has exactly the same eleven failures and one additional passing observation test. These upstream failures were not fixed by changing physics or test expectations. Umalytics application, contract and new trace tests pass independently. Keep this baseline comparison in upgrade review: do not report the upstream suite as fully passing.
 
 There is no dependency-update notification monitor configured. The Git revision remains locked until deliberately updated. An upgrade should refresh/review the instrumentation patch, repeat trace-on/off and original-capture comparisons, review mechanics-date evidence, and only then change the installed/era bindings.
+
+## Tracking and applying upstream updates
+
+Subscribe to the [upstream commit feed](https://github.com/daftuyda/GlobalSim/commits/main.atom)
+in an RSS/Atom reader, or check the [commit history](https://github.com/daftuyda/GlobalSim/commits/main/).
+As checked on October 17, 2026, upstream's latest commit is our pinned v74
+revision, and its GitHub Releases list is empty. GitHub's Watch → Custom →
+Releases setting is useful if upstream starts publishing formal releases, but
+does not cover its current commit-only updates. No subscription is created by
+building or installing Umalytics.
+
+A quick manual check requires no checkout changes:
+
+```powershell
+git ls-remote https://github.com/daftuyda/GlobalSim.git refs/heads/main
+```
+
+Compare the returned SHA to the revision in `simulation/simulator-worker/Cargo.toml`.
+For an upgrade, request: “Update GlobalSim to <commit or version>, preserve the
+decision traces, run the engine acceptance plan, and commit and push after it
+passes.” Updating this integration requires these coordinated changes:
+
+1. Review upstream mechanics/API/data changes and rebase the observation patch.
+2. Update the Cargo revision/lock, archive/build revision, adapter/runtime pins,
+   packaged version/profile and applicable reference hashes together. A version
+   label alone does not establish a game's date range.
+3. Rebuild, verify original = trace-off = trace-on output, compare the real
+   capture corpus, and run the [acceptance plan](engine-test-plan.md).
+4. Register supported dates independently for simulation and inference. Retain
+   historical bundles needed by existing registrations.
+5. Push the tested change. The passing release workflow builds and publishes a
+   Umalytics desktop update containing the new worker and resources. Installed
+   users receive it through the existing application updater, without Rust,
+   Python or Git installations.
+
+`cargo update` or replacing an executable alone is insufficient: the trace patch,
+reference data, executable identity and compatibility registration belong to
+the same reviewed integration.
+
+## Runtime and build boundaries
+
+The Svelte UI talks to the local Python service over loopback HTTP. The service
+owns bounded jobs, capture/evidence binding and engine selection. The adapter
+constructs simulator inputs only from original setup, owned skills, seed and
+runner/course data. Observed outcomes are reserved for the independent comparator.
+
+The service starts a separate Rust worker using JSON lines over standard input
+and output. Our small worker calls the upstream library; an isolated source
+archive plus the observation patch supplies its implementation. It is not a
+remote simulation API or a browser port. Instrumentation reads actual decision
+sites without drawing more randomness or evaluating conditions again.
+
+The comparator checks results, supported sampled movement/state, and supported
+skill/competition events. A complete match exposes the model's decision timeline.
+Failure falls back to a separately authorized inference worker, or recorded
+replay when inference is ineligible. Trace executions are fresh when reopening;
+changing capture, policy, executable or resources invalidates authorization.
+
+The desktop build packages the worker, pinned data, Python service and shared
+frontend into the Tauri application. Their hashes are recorded in the installed
+bundle manifest. Instrumentation inputs are stored without Git newline conversion
+so Windows checkout cannot change patch application or their hashes.
