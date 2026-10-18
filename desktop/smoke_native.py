@@ -127,6 +127,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         else:
             raise AssertionError('Native background tray did not start its collector.')
         assert health['staticReady'] and not health['certificate']['trusted']
+        assert health['analysisService'] and health['analysisBackground']['available'], 'Bundled background analysis runtime missing.'
         assert not legacy.exists(), 'The old adjacent data directory was not removed.'
         assert str(executable) in health['launchOption']
         for _ in range(120):

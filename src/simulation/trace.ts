@@ -39,9 +39,9 @@ export function blockingSummary(rows:readonly number[][]) {
   const i=motionIndex;
   return rows.reduce((sum,row)=>({
     blockedSeconds:sum.blockedSeconds+(row[i.blocker]>=0?row[i.dt]:0),
-    constrainedSeconds:sum.constrainedSeconds+(row[i.selfLoss]>0||row[i.finalLoss]>0?row[i.dt]:0),
-    maximumSelfClamp:Math.max(sum.maximumSelfClamp,row[i.selfLoss]),
-    maximumFinalClamp:Math.max(sum.maximumFinalClamp,row[i.finalLoss]),
+    constrainedSeconds:sum.constrainedSeconds+(row[i.blocker]>=0&&(row[i.selfLoss]>0||row[i.finalLoss]>0)?row[i.dt]:0),
+    maximumSelfClamp:Math.max(sum.maximumSelfClamp,row[i.blocker]>=0?row[i.selfLoss]:0),
+    maximumFinalClamp:Math.max(sum.maximumFinalClamp,row[i.blocker]>=0?row[i.finalLoss]:0),
   }),{blockedSeconds:0,constrainedSeconds:0,maximumSelfClamp:0,maximumFinalClamp:0});
 }
 export type BlockingSummary = ReturnType<typeof blockingSummary>;

@@ -12,7 +12,7 @@ The original dashboard is the acceptance surface: race results, track replay and
 8. In an isolated updater fixture, exercise available, downloading, waiting-for-game and restarting states. Check dark/light themes and 150% text. The sidebar card must remain readable, aligned above Settings and disabled while installation is pending; no actual updater is triggered by this fixture.
 9. Open an uncached race. Keep the dashboard skeleton, visible “Analyzing race” label and spinner throughout parsing, queueing, comparison and payload loading. Never flash the fallback replay while work is pending. Success replaces the skeleton with the dashboard; mismatch, missing setup and network failure leave the loading state. Switch races during each phase and confirm late responses cannot replace the current selection.
 10. Open A, B, then A again and restart the service before reopening A. Confirm the saved output is reused with zero new engine starts and a fresh comparison on each open. Change evidence, policy, engine or reference identity and confirm stale output is rejected. Alter only a cached hidden roll and recompute its plain checksum: the service must reject it and rerun. Settings must count saved simulations, enforce the shared number/size limit and clear both caches while preserving original race files and tags.
-11. Select a runner with repeated blocking and nearby-runner checks. Telemetry and the status list should show grouped Traffic episodes rather than separate Blocked/Near labels. Check both chart axes: cuts below 0.15 m/s are hidden, white starts at 0.15 m/s, yellow is 0.35 m/s, amber is 0.65 m/s, and red is 1 m/s or more. Use the larger blocking-stage cut; never add the stages. Colors interpolate smoothly within each box, with transparent fades at the edges and below-threshold gaps and the status legend/sidebar show a labeled scale. Clear gaps up to 0.25 s are faded inside an episode, show no active Traffic chip or replay card. Raw blocked-time and loss calculations remain unchanged by this display threshold. Longer gaps split episodes. Check finish clipping and that the global speed ceiling without a blocker is not labeled traffic loss.
+11. Select a runner with repeated blocking and nearby-runner checks. Telemetry and the status list should show grouped Traffic episodes rather than separate Blocked/Near labels. Check both chart axes: cuts below 0.075 m/s are hidden, white starts at 0.075 m/s, yellow is 0.25 m/s, amber is 0.4 m/s, and red is 0.6 m/s or more. Use the larger blocking-stage cut; never add the stages. Colors interpolate smoothly within each box, with transparent fades at the edges and below-threshold gaps and the status legend/sidebar show a labeled scale. Clear gaps up to 0.25 s are faded inside an episode, show no active Traffic chip or replay card. Raw blocked-time and loss calculations remain unchanged by this display threshold. Longer gaps split episodes. Check finish clipping and that the global speed ceiling without a blocker is not labeled traffic loss.
 
 Automated gates: `npm test` includes a synthetic projection regression with deliberately different recorded and simulated values, slot mapping, original-capture preservation, replay cards, states, skills, rolls and version-bound inference fallback. `tests/decision-trace-parity.py` compares original == instrumented-off == instrumented-on across private captures and verifies initialization event ownership. Python bridge tests, the HTTP/packaged workflows, Windows native smoke and the release workflow remain required. Private captures and screenshots stay outside Git.
 
@@ -71,3 +71,24 @@ confirmed the reserved Traffic lane, compact graph spacing, default-hidden
 Conserve power, later-mechanics legend, readable course/rank restrictions and
 received-skill dialogs preserving the selected runner. Private fixtures and
 screenshots remain outside Git.
+
+
+25. With background analysis enabled, close every viewer window. The service must process the newest race date first, discover another capture, and persist both comparison and complete dashboard calculations. Restart the service and reopen a warmed race: no native or inference worker should rerun. Foreground requests precede the remaining backlog, while a calculation already running finishes safely.
+26. Leave a dashboard open while at least twelve other races are analyzed. It must remain on that dashboard. Change capture evidence or an installed artifact: old derived values must be withdrawn and reauthorized, with recorded fields retained in the same UI if no engine qualifies. A brief connection error must not invent an unknown-version warning.
+27. Click the selected race again after seeking and selecting another runner: no request, spinner, selection change or time reset. Switch between two warmed races and measure the ready callback separately from a first disk load and a first calculation.
+28. Compare raw blocked seconds with traffic contact outlines. The color threshold remains 0.075 m/s; a long contact can have only a few colored ticks. Check transparent lane backgrounds, continuous color fades, the rotating legend triangle, and PD/PU or OT/SU guide markers. Toggle Position-keep guides off and on: markers and their hover lines hide together, the gap graph remains visible, and the choice survives reload. Sub-centimetre-per-second cuts must not print 0.00 / 0.00.
+29. Force a genuinely unsupported engine selection. Recorded results, runner build, skills, replay, and velocity/HP samples stay in the ordinary dashboard; targets, skill checks, effective stats and effectiveness remain blank. No current-engine formulas may run for those fields.
+
+Service follow-up validation (2026-10-18): all 41 functional workflows passed;
+124 compatibility tests completed with one existing skip. Svelte checking found
+zero errors or warnings. Isolated service testing finished five copied races,
+including matched simulation and a long-race inference fallback, with no viewer
+required for the queue. The inference worker allows a 2 GiB V8 heap because the
+existing long-race inference calculation exceeds 768 MiB; only one calculation
+runs at a time. Saved-load ready callbacks measured 373/481 ms from disk and
+14/14 ms on retained race switches, excluding final UI rendering. A missing-engine
+fixture retained the dashboard with unavailable mechanics blank. Browser checks
+verified a same-race click preserves 31 s playback, the guide checkbox persists
+across reloads, and the scale runs from 0.075 to 0.6 m/s. Windows release smoke
+checks additionally exercise the bundled headless worker with system toolchains
+removed from PATH. Existing display caches rebuild once for the new format.

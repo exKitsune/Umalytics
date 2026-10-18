@@ -8,6 +8,8 @@ import re
 import secrets
 import sqlite3
 import threading
+import time
+from collections import OrderedDict
 from globalsim_bridge import (RuntimeConfig, SimulatorBinding, InferenceBinding,
     evaluate_for_analysis, revalidate_inference_plan, select_compatibility)
 from globalsim_bridge.adapter import _external_context
@@ -37,6 +39,8 @@ class SimulationService:
         self.service, self.root = service, Path(root)
         self.lock = threading.RLock()
         self.jobs = {}
+        self.snapshots = OrderedDict()
+        self.integrity = {}
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='race-analysis')
         self.closed = False
 
@@ -131,6 +135,19 @@ class SimulationService:
         return capture, row['sha256']
 
     def snapshot(self, race_id, expected, context):
+        if not isinstance(race_id, str) or not re.fullmatch(r'[A-Za-z0-9_.~-]{1,240}', race_id) or '..' in race_id:
+            raise ValueError('Invalid stored race identity.')
+        stem = race_id.rpartition('~')[0] if '~' in race_id and race_id.rpartition('~')[2].isdigit() else race_id
+        paths = [getattr(self.service, 'inbox', self.service.data_dir / 'races') / (stem + '.json'), self.root / 'simulation/engine-registry.json', self.root / 'simulation/installed-bundles.json']
+        paths.extend((self.service.data_dir / 'analysis-evidence').glob('*.json'))
+        stamp = (digest(context), tuple((str(p), st.st_mtime_ns, st.st_ctime_ns, st.st_size) if (st := p.stat() if p.exists() else None) else (str(p), None) for p in paths)) if hasattr(self.service, 'inbox') else None
+        with self.lock:
+            cached = self.snapshots.get(race_id)
+            if stamp is not None and cached and cached[0] == stamp:
+                if expected and cached[1]['entry_hash'] != expected:
+                    raise StaleAnalysis('Selected race changed.')
+                self.snapshots.move_to_end(race_id)
+                return cached[1]
         capture, entry_hash = self.selected(race_id, expected)
         registry, manifest = self.config()
         sidecar_path = self.service.data_dir / 'analysis-evidence' / (capture_hash(capture) + '.json')
@@ -139,8 +156,13 @@ class SimulationService:
         selection = select_compatibility(capture_hash(capture), evidence, registry)
         identity = digest({'selection': selection, 'context': context, 'manifest': manifest,
                            'sidecar': sidecar, 'mapper': 1})
-        return dict(capture=capture, entry_hash=entry_hash, registry=registry, manifest=manifest,
-                    evidence=evidence, notes=notes, identity=identity, context=context)
+        snap = dict(capture=capture, entry_hash=entry_hash, registry=registry, manifest=manifest,
+                    evidence=evidence, notes=notes, identity=identity, context=context, selection=selection)
+        with self.lock:
+            self.snapshots[race_id] = (stamp, snap)
+            while len(self.snapshots) > 8:
+                self.snapshots.popitem(last=False)
+        return snap
 
     def status(self):
         try:
@@ -153,7 +175,7 @@ class SimulationService:
         except (OSError, ValueError, TypeError, KeyError):
             return {'schemaVersion': 1, 'available': False, 'reason': 'Engine configuration is unavailable.'}
 
-    def submit(self, race_id, body):
+    def submit(self, race_id, body, transient=False):
         if set(body) - {'expectedEntrySha256', 'context'} or not re.fullmatch(r'[a-f0-9]{64}', str(body.get('expectedEntrySha256', ''))):
             raise ValueError('Only expectedEntrySha256 and independently sourced context are accepted.')
         context = _external_context(body.get('context')) or None
@@ -162,18 +184,20 @@ class SimulationService:
             if self.closed:
                 raise QueueFull('Analysis service is shutting down.')
             for job in self.jobs.values():
-                if job['raceId'] == race_id and job['identity'] == snap['identity'] and job['phase'] in ('queued', 'running'):
+                if job.get('transient', False) == transient and job['raceId'] == race_id and job['identity'] == snap['identity'] and job['phase'] in ('queued', 'running'):
                     return self.project(job)
             if sum(j['phase'] in ('queued', 'running') for j in self.jobs.values()) >= 2:
                 raise QueueFull('Analysis is busy. Recorded replay remains available; retry shortly.')
             for ident in list(self.jobs):
                 if len(self.jobs) < 8:
                     break
-                if self.jobs[ident]['phase'] == 'complete':
+                if self.jobs[ident]['phase'] == 'complete' and time.monotonic() - self.jobs[ident].get('accessed', 0) > 20:
                     del self.jobs[ident]
+            if len(self.jobs) >= 64:
+                raise QueueFull('Analysis is busy; retry shortly.')
             job = dict(schemaVersion=1, jobId=secrets.token_hex(16), raceId=race_id,
                        entrySha256=snap['entry_hash'], phase='queued', report=None,
-                       identity=snap['identity'], snapshot=snap)
+                       identity=snap['identity'], snapshot=snap, accessed=time.monotonic(), transient=transient)
             self.jobs[job['jobId']] = job
             self.executor.submit(self.run, job)
             return self.project(job)
@@ -228,6 +252,7 @@ class SimulationService:
             job = self.jobs.get(job_id)
             if job is None or job['raceId'] != race_id:
                 raise StaleAnalysis('Analysis job does not belong to this race.')
+        job['accessed'] = time.monotonic()
         current = self.snapshot(race_id, job['entrySha256'], job['snapshot']['context'])
         if current['identity'] != job['identity']:
             raise StaleAnalysis('Race evidence or engine configuration changed; reopen the race.')
@@ -235,9 +260,16 @@ class SimulationService:
             from globalsim_bridge.adapter import ReferenceData
             sims, _ = self.bindings(current['manifest'], current['identity'])
             binding = sims[job['report']['binding']['simulation']['engineId']]
-            if (hashlib.sha256(binding.config.engine_path.read_bytes()).hexdigest() != binding.artifact_sha256
-                or ReferenceData.load(binding.config.umalytics_root, binding.config.globalsim_root).fingerprint != binding.data_sha256):
-                raise StaleAnalysis('Simulator artifacts changed; previous comparison is no longer authorized.')
+            paths = [binding.config.engine_path]
+            for folder in (binding.config.umalytics_root, binding.config.globalsim_root):
+                paths.extend(sorted(p for p in folder.rglob('*') if p.is_file()))
+            stamp = tuple((str(p), p.stat().st_mtime_ns, p.stat().st_ctime_ns, p.stat().st_size) for p in paths)
+            key = (binding.artifact_sha256, binding.data_sha256)
+            if self.integrity.get(key) != stamp:
+                if (hashlib.sha256(binding.config.engine_path.read_bytes()).hexdigest() != binding.artifact_sha256
+                    or ReferenceData.load(binding.config.umalytics_root, binding.config.globalsim_root).fingerprint != binding.data_sha256):
+                    raise StaleAnalysis('Simulator artifacts changed; previous comparison is no longer authorized.')
+                self.integrity[key] = stamp
         return job, current
 
     def get(self, race_id, job_id, payloads=False):

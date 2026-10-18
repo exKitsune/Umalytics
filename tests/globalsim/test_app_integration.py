@@ -117,6 +117,16 @@ class JobTests(unittest.TestCase):
         self.capture['changed']=True
         with self.assertRaises(StaleAnalysis):self.service.get('synthetic~7',receipt['jobId'])
 
+    def test_active_dashboard_survives_more_than_eight_completed_jobs(self):
+        first = self.service.submit('dashboard', self.body)
+        for index in range(12):
+            job = self.service.submit('background-' + str(index), self.body)
+            for _ in range(100):
+                if self.service.get('background-' + str(index), job['jobId'])['phase'] == 'complete':
+                    break
+                time.sleep(.01)
+            self.assertEqual(self.service.get('dashboard', first['jobId'])['phase'], 'complete')
+
     def test_coalescing_bounded_queue_and_forbidden_options(self):
         entered=threading.Event();release=threading.Event()
         from globalsim_bridge import evaluate_for_analysis

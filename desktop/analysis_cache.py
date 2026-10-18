@@ -21,6 +21,7 @@ class AnalysisCache:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.path, timeout=15)
         db.execute('CREATE TABLE IF NOT EXISTS entries (key TEXT PRIMARY KEY, race TEXT UNIQUE, revision TEXT, date TEXT, payload BLOB)')
+        db.execute('CREATE TABLE IF NOT EXISTS prepared (key TEXT PRIMARY KEY, race TEXT, revision TEXT, date TEXT, payload BLOB, signature BLOB, summary TEXT)')
         db.execute('CREATE TABLE IF NOT EXISTS options (key TEXT PRIMARY KEY, value TEXT)')
         try:
             yield db
@@ -53,6 +54,8 @@ class AnalysisCache:
     def inventory(self, db):
         entries = [{'key': key, 'raceId': race, 'date': date, 'bytes': size, 'revision': revision}
                    for key, race, date, size, revision in db.execute('SELECT key,race,date,length(payload),revision FROM entries')]
+        entries += [dict(key=key, raceId=race, date=date, bytes=size, revision=revision, _prepared=True)
+                    for key, race, date, size, revision in db.execute('SELECT key,race,date,length(payload),revision FROM prepared')]
         # Read metadata only. Simulator payloads remain in their own authenticated
         # storage and are never writable through the inference-cache API.
         for path in self.simulation_root.glob('*/globalsim-modeled-v1/*.json'):
@@ -69,7 +72,9 @@ class AnalysisCache:
 
     def remove_entry(self, db, entry):
         path = entry.get('_path')
-        if path is None:
+        if entry.get('_prepared'):
+            db.execute('DELETE FROM prepared WHERE key=?', (entry['key'],))
+        elif path is None:
             db.execute('DELETE FROM entries WHERE key=?', (entry['key'],))
         elif not path.is_symlink() and path.resolve().is_relative_to(self.simulation_root):
             path.unlink(missing_ok=True)
@@ -80,7 +85,7 @@ class AnalysisCache:
                 row = db.execute('SELECT payload FROM entries WHERE key=?', (self.identifier(key),)).fetchone()
                 return {'payload': base64.b64encode(row[0]).decode('ascii') if row else None}
             rows = self.inventory(db)
-            entries = [{key: value for key, value in entry.items() if key != '_path'} for entry in rows]
+            entries = [{key: value for key, value in entry.items() if not key.startswith('_')} for entry in rows]
             return {'policy': self.policy(db), 'entries': entries,
                     'bytes': self.path.stat().st_size + sum(entry['bytes'] for entry in rows if '_path' in entry)}
 

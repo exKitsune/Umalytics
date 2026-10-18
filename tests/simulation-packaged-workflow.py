@@ -1,6 +1,7 @@
 """Exercise frozen engine resources and production gate without build tools."""
 import argparse
 import hashlib
+import gzip
 import json
 import os
 from pathlib import Path
@@ -95,6 +96,23 @@ with tempfile.TemporaryDirectory(prefix='umalytics-frozen-analysis-') as tempora
         assert not (data/'cache/simulation-work').exists()
         result.update(installed=status['installed'],provisionalReplayGatePassed=True,
                       versionedInferenceAuthorizationPassed=True,inferenceArtifactPinsPassed=True)
+        # Exercise bundled Node with no system Node/Python toolchain and no UI.
+        assert health['analysisService'] and health['analysisBackground']['available']
+        (data/'races/synthetic.json').write_bytes((ROOT/'tests/fixtures/race.json').read_bytes())
+        request('analysis-cache',{'action':'policy','policy':{'mode':'unlimited','value':1000,'background':True}})
+        for _ in range(600):
+            background=request('health')['analysisBackground']
+            if background['checked']>=1:break
+            assert not background['error'],background['error']
+            time.sleep(.1)
+        assert background['checked']>=1,'Packaged background analysis did not finish.'
+        saved=request('analysis/races/synthetic~0',{'revision':authorized['uiRevision']})
+        assert saved['phase']=='complete' and saved['hasAnalysis']
+        with opener.open(url+'/api/analysis/races/synthetic~0?key='+saved['key']) as response:
+            dashboard=json.loads(gzip.decompress(response.read()))['value']
+        assert len(dashboard['race']['runners'])==2 and len(dashboard['runners'])==2
+        assert dashboard['authorization']['plan']['engine']['engineId']==authorized['plan']['engine']['engineId']
+        result['bundledHeadlessBackgroundPassed']=True
         if args.capture:
             # Copy the real capture into disposable storage. Production trial
             # policy must work in a frozen install with no source/toolchain.

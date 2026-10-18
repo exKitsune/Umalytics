@@ -25,7 +25,7 @@
   let canvas:HTMLCanvasElement,scene:ReplayScene|null=null,frame:number|null=null;
   let canvasWidth=1280,canvasHeight=780;
   let mounted=false,portraitRace:Race|null=null,iconReference:ReferenceData|null|undefined=undefined,iconAnalysis:RaceAnalysis|null|undefined=undefined,cardTitle='';
-  $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,intervals,analysis,courseMarkers:{phases:phaseMarkers,sections:sectionMarkers,slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[replayMinimapObstacle(canvasWidth)]:[]} satisfies ReplayOptions;
+  $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,intervals,analysis,courseMarkers:{phases:phaseMarkers&&analysis?.source!=='recorded',sections:sectionMarkers&&analysis?.source!=='recorded',slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[replayMinimapObstacle(canvasWidth)]:[]} satisfies ReplayOptions;
   // Include every visual dependency explicitly; playback time does not rebuild data.
   $: if(canvas){options;time;schedule();}
   $: if(mounted&&race!==portraitRace){portraitRace=race;Promise.all([preloadPortraits(race.runners)]).then(()=>{if(mounted)schedule();});}

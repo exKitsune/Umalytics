@@ -194,6 +194,7 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
         else:
             raise RuntimeError('Packaged service did not become ready.')
         assert_owned(health, data)
+        assert health['analysisService'] and health['analysisBackground']['available'], 'Bundled background analysis runtime missing.'
         assert health['app'] == 'UmaTrace' and health['staticReady'] and not health['certificate']['trusted']
         with opener.open(url + '/api/data/status', timeout=3) as response:
             assert len(json.load(response)['manifestSha256']) == 64

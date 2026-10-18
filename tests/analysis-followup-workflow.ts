@@ -84,3 +84,14 @@ try{
   await client.open(entries[0]);assert.deepEqual(shown,['race1']);assert.equal((await fakeStore.status()).policy.background,true);
 }finally{client.dispose();globalThis.fetch=previousFetch;}
 console.log('Analysis follow-up: condition blockers, latched prerequisites, skipped predicates, cooldown, static exclusions, unknown evidence, newest-first background priority, cancellation, limits and status preferences passed.');
+
+// The ordinary dashboard remains available without authorizing any mechanics.
+const {recordedDashboard}=await import('../src/analysis/recorded');
+const {parseRaceJson}=await import('../src/data/import');
+const {packDashboard,restoreDashboard}=await import('../src/analysis/dashboard-codec');
+const observations=recordedDashboard(parseRaceJson(JSON.parse(readFileSync(new URL('./fixtures/race.json',import.meta.url),'utf8')))[0]);
+assert.equal(observations.analysis.source,'recorded');
+for(const runner of Object.values(observations.runners)){assert.equal(runner.spurt.target,null);assert.equal(runner.totals.benefit,null);assert.deepEqual(runner.motion.samples,[]);}
+for(const runner of Object.values(observations.analysis.runners)){assert.equal(runner.statBreakdown.stats.speed.final,null);assert.ok(runner.samples.length);assert.equal(runner.summary.blockedDuration,null);assert.equal(runner.summary.finishTime!==null,true);}
+const before=JSON.stringify(observations),after=restoreDashboard(JSON.parse(JSON.stringify(packDashboard(observations))));
+assert.equal(JSON.stringify(after),before,'Dashboard codec preserves observations and missing mechanics.');

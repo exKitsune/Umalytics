@@ -34,9 +34,9 @@
   import { courseCaption, conditionsCaption, captionInference } from './race-display';
   import { inferCourse } from './data/course-inference';
   import { sampleRecordedAt } from './data/observational-sample';
-  import RecordedReplay from './components/RecordedReplay.svelte';
+  import {analysisNotice} from './simulation/presentation';
+  import {recordedDashboard} from './analysis/recorded';
   import SidebarUpdate from './components/SidebarUpdate.svelte';
-  import { analysisNotice } from './simulation/presentation';
   import type { AnalysisGateReportSummary } from './simulation/contracts';
   import type { PreparedRace } from './analysis/prepared';
   import { resolveCourseIdentity } from './data/course-detection';
@@ -108,7 +108,9 @@
     ready:(value,id)=>{if(activeId!==id)return;race=value.race;analysis=value.analysis;selectDefaultRunner(race);},
     state:value=>analysisState=value,cache:value=>cacheStatus=value,error:value=>error=value,
   });
+  $: analysisClient.useService(health?.analysisService===true);
   $: analysisClient.setLibrary(library,{});
+  $: if(race&&!analysis&&!analysisState.busy){const value=recordedDashboard(race);race=value.race;analysis=value.analysis;}
   $: analysisClient.setPaused(playing);
   $: selectedReady=!!analysis&&!!preparedFor(analysis)?.runners[selected];
   $: allTags=[...new Set(Object.values(raceTags).flat())].sort((a,b)=>a.localeCompare(b));
@@ -133,7 +135,7 @@
   $: document.documentElement.style.setProperty('--font-scale',String(fontScale/100));
   $: visible = library.filter(entry => (filter==='all'||captureFacet(entry)===filter) && withinDateRange(entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference)} ${conditionsCaption(entry.race??entry)} ${facetInfo(captureFacet(entry)).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term))).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
   $: identityRace = race ? resolveCourseIdentity(race,reference) : null;
-  $: inferredCourse = analysis && analysis.source!=='simulation' && identityRace ? inferCourse(identityRace,reference) : null;
+  $: inferredCourse = analysis && analysis.source!=='simulation' && analysis.source!=='recorded' && identityRace ? inferCourse(identityRace,reference) : null;
   $: candidateCourse = getCourse(reference,identityRace?.courseId??inferredCourse?.courseId??null);
   $: course = candidateCourse && race?.distance && candidateCourse.distance!==race.distance ? null : candidateCourse;
   $: analysisRace = race;
@@ -158,7 +160,8 @@
       if(activeId===entry.id||activeId.startsWith(`${entry.id}:`)){race=null;activeId='';selected='';}
     } catch(e){error=String(e);}
   }
-  async function selectEntry(entry:LibraryEntry) {
+  async function selectEntry(entry:LibraryEntry,force=false) {
+    if(!force&&entry.id===activeId)return;
     const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
     try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
   }
@@ -259,7 +262,7 @@
   function dismissPopups(event:PointerEvent){analysisClient.interacting();const node=event.target as HTMLElement|null;if(!node)return;if(pendingRemoval&&!node.closest('.race-delete'))pendingRemoval='';}
   onMount(()=>{
     let cancelled=false;
-    loadReferenceData().then(async data=>{if(!cancelled){reference=data;await analysisClient.configure(data);if(cancelled)return;referenceReady=true;void hydrateCaptions(library,reference);const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry);}}).catch(e=>error=String(e));
+    loadReferenceData().then(async data=>{if(!cancelled){reference=data;await analysisClient.configure(data);if(cancelled)return;referenceReady=true;void hydrateCaptions(library,reference);const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry,true);}}).catch(e=>error=String(e));
     if(!desktopSession)savedRaces().then(entries=>{if(cancelled||desktopSession)return;entries=entries.map(entry=>{if(!entry.race||entry.race.distance)return entry;try{return {...entry,race:parseRaceJson(entry.race)[0]}}catch{return entry}});merge(entries);if(!race&&entries.length)selectEntry(entries.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt))[0]);}).catch(e=>error=`Local library unavailable: ${e}`);
     poll();const healthTimer=setInterval(pollHealth,1000);const timer=setInterval(poll,5000);let previous=performance.now(),animation=0;
     const step=(now:number)=>{if(playing&&race){time=Math.min(race.duration,time+Math.min(.15,(now-previous)/1000)*playbackSpeed);if(time>=race.duration)playing=false;}previous=now;animation=requestAnimationFrame(step)};animation=requestAnimationFrame(step);
@@ -302,7 +305,7 @@
       <div class="workspace"><AnalysisSkeleton title={courseCaption(race??library.find(e=>e.id===activeId)??{},reference)} conditions={race?.conditions??library.find(e=>e.id===activeId)?.conditions} runners={race?.runners.length??9} message={analysisState.message}/></div>
     {:else if race && analysisRace}
       <div class="workspace">
-        {#if !analysis && analysisGate?.mode!=='verified_simulation'}<div class="notice" role="status" data-analysis-mode={analysisGate?.mode??'recorded_only'}>{analysisNotice(analysisGate)}</div>{/if}
+        {#if analysis?.source==='recorded'}<p class="muted">Recorded data · unavailable analysis fields are left blank.</p>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
         <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/>{#if analysisRace.racedAt || analysisRace.savedReplay}<p class="race-run">{analysisRace.racedAt ? date(analysisRace.racedAt) : ''}{#if analysisRace.savedReplay}{analysisRace.racedAt ? ' · Saved Replay' : 'Saved Replay'}{/if}</p>{/if}</div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>
         <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={selectRunner}/>
@@ -318,9 +321,7 @@
           {#if analysisGate}<AnalysisDetails report={analysisGate} frames={race.frames.length} events={race.events.length} courseSource={analysisRace.courseIdentity?.source??(race.courseId?'recorded':'unknown')} onExport={exportAnalysis}/>{/if}
         </div>
         {#if runner&&selectedReady}<div class="analysis-side"><RunnerPanel {runner} race={analysisRace} {course} {reference} {analysis} {time} sample={selectedSample} gap={selectedGap} onSkill={id=>openSkill(id)} onSeek={seek} onDownload={()=>void downloadUmaJson()}/></div>{:else}<div class="analysis-side"><AnalysisSkeleton part="runner" message="Preparing runner…"/></div>{/if}
-        </div>{:else}<RecordedReplay race={analysisRace} {reference} {time} {selected} {historical} onSeek={seek} onSelect={selectRunner} onExport={exportRace}>
-          <div class="transport main-transport"><button class="play-button" aria-label={playing?'Pause replay':'Play replay'} onclick={togglePlay}>{playing?'Ⅱ':'▶'}</button><button aria-label="Restart replay" onclick={()=>{time=0;playing=false}}>↺</button><span class="time">{time.toFixed(1)} / {race.duration.toFixed(1)}s</span><input aria-label="Replay time" type="range" min="0" max={race.duration} step=".05" bind:value={time}/><select aria-label="Playback speed" bind:value={playbackSpeed}><option value={.5}>½×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></div>
-        </RecordedReplay>{/if}
+        </div>{/if}
         {#if analysisGate&&!analysis}<AnalysisDetails report={analysisGate} frames={race.frames.length} events={race.events.length} courseSource={analysisRace.courseIdentity?.source??(race.courseId?'recorded':'unknown')} onExport={exportAnalysis}/>{/if}
       </div>
     {:else if activeId}<div class="workspace">{#if analysisState.busy&&!analysisState.background}<AnalysisSkeleton title={courseCaption(library.find(e=>e.id===activeId)??{},reference)} conditions={library.find(e=>e.id===activeId)?.conditions} message="Opening race…"/>{:else}<section class="panel"><h2>Recorded replay unavailable</h2><p>{error||'This file could not be decoded. Select another race or import a supported replay.'}</p></section>{/if}</div>{:else}<div class="empty-workspace"><span class="empty-symbol">↗</span><div class="eyebrow">RACE ANALYSIS</div><h1>Explore your races.</h1><p>Collect races as you play, or drop a race JSON anywhere in this window.<br/>View stats, skills, and replay data.</p><div class="toolbar"><button class="primary" onclick={()=>input.click()}>Import race JSON</button></div><button class="setup-cta" onclick={requestAutoCollection}>Set up auto collection</button><div class="empty-features"><span>LOCAL COLLECTION</span><span>PORTABLE JSON</span><span>RUNNER COMPARISON</span></div></div>{/if}
@@ -400,7 +401,7 @@
           <small>{settings.downloadsDirectory?`Downloads folder: ${settings.downloadsDirectory}`:'Uses your Windows Downloads folder unless you choose another path.'}</small>
         </section>
         {#if health?.dataDirectory}<section><h3>Saved data</h3><button class="saved-data-path" onclick={()=>revealFolder('data')} disabled={!health?.csrfToken}><code class="launch-option">{health.dataDirectory}</code></button><small>Click to open this folder in Explorer. Race imports, preferences, certificates and collection history are saved here.</small></section>{/if}
-        <CacheSettings client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>
+        <CacheSettings serviceStatus={health?.analysisBackground} client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>
         {#if setupSettled}{@render certSection()}{@render steamSection()}{/if}
         <section>
           <h3>Uninstall</h3>

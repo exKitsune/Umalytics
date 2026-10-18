@@ -12,3 +12,10 @@ export function readHiddenStatuses():Set<string>{
 export function saveHiddenStatuses(hidden:Set<string>){
   try{localStorage.setItem(key,JSON.stringify([...hidden]));}catch{}
 }
+
+export function readPositionKeepGuides():boolean {
+  try{return localStorage.getItem('umalytics.position-keep-guides')!=='false';}catch{return true;}
+}
+export function savePositionKeepGuides(shown:boolean){
+  try{localStorage.setItem('umalytics.position-keep-guides',String(shown));}catch{}
+}

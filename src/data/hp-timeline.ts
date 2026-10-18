@@ -59,8 +59,8 @@ export function hpTimeline(race:Race,runnerId:string,reference:ReferenceData|nul
   let byRef=caches.get(race);if(!byRef){byRef=new Map();caches.set(race,byRef);}
   let cache=byRef.get(reference);if(!cache){cache=new Map();byRef.set(reference,cache);}
   const key=`${runnerId}:${maximumHp??''}`;const saved=cache.get(key);if(saved)return saved;
-  if(race.analysisSource==='simulation'){
-    const points:HpTimelinePoint[]=race.frames.map(f=>({time:f.time,hp:f.runners.find(r=>r.runnerId===runnerId)?.hp??null,evidence:'simulated',kind:'sample'}));
+  if((race.analysisSource==='simulation'||race.analysisSource==='recorded')){
+    const points:HpTimelinePoint[]=race.frames.map(f=>({time:f.time,hp:f.runners.find(r=>r.runnerId===runnerId)?.hp??null,evidence:race.analysisSource==='simulation'?'simulated':'recorded',kind:'sample'}));
     cache.set(key,points);return points;
   }
   const runner=race.runners.find(r=>r.id===runnerId);
@@ -128,7 +128,7 @@ export function hpTimeline(race:Race,runnerId:string,reference:ReferenceData|nul
 /** Display-only linear sampled HP segments. These are not reconstructed debuff
  * amounts or resolved immunity, and do not enter analytical effect attribution. */
 export function hpSampledBridges(race:Race,runnerId:string,reference:ReferenceData|null,maximumHp?:number|null,context?:HpHitModelContext):HpSampledBridge[]{
-  if(race.analysisSource==='simulation')return [];
+  if((race.analysisSource==='simulation'||race.analysisSource==='recorded'))return [];
   hpTimeline(race,runnerId,reference,maximumHp);
   const rows=bridgeCaches.get(race)?.get(reference)?.get(`${runnerId}:${maximumHp??''}`)??[];
   if(!context)return rows;

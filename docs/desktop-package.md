@@ -1,7 +1,8 @@
 # Umalytics Windows desktop package
 
 `.cache/dist/Umalytics.exe` is the single distributable Windows executable. It embeds
-the Svelte SPA, Tauri shell, Python runtime, mitmproxy, and race observer. End users
+the Svelte SPA, Tauri shell, Python runtime, mitmproxy, race observer, and a
+Node 22 runtime for headless analysis. End users
 do not install Node.js, Python, or Rust. The Windows WebView2 runtime is required;
 current Windows installations normally provide it. The executable is currently
 unsigned, so Windows may show a reputation prompt on a new download.
@@ -47,7 +48,11 @@ files. PyInstaller normally removes its temporary `_MEI*` directory on exit.
 The WebView profile is browser cache; races and preferences live outside it after
 migration. Never remove the profile before migration completes.
 
-Closing the window hides it to the system tray. Both normal launch and
+Closing the window hides it to the system tray. When background analysis is
+enabled, the Python service continues processing new captures and the backlog,
+newest race date first. It runs one local analysis process at a time and persists
+authenticated dashboard snapshots. No visible or hidden webview is needed.
+Closing the window does not stop the queue; exiting Umalytics does. Both normal launch and
 `--background` keep a native Umalytics process and tray icon alive. Double-click
 the icon to open the window; **Exit Umalytics and stop collection** stops the
 collector too. Steam's launch wrapper starts the tray if needed, then stops that

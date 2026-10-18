@@ -38,7 +38,7 @@ function missing(e:Effect):string {
 }
 /** Resolved applications are deliberately separate from equipped definitions. */
 export function metricsForSkill(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,skillId:number):SkillMetric[] {
-  if(analysis.source==='simulation')return preparedFor(analysis)?.runners[runnerId]?.metrics[skillId]??[];
+  if((analysis.source==='simulation'||analysis.source==='recorded'))return preparedFor(analysis)?.runners[runnerId]?.metrics[skillId]??[];
   const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&skillId in ready.metrics)return ready.metrics[skillId];
   const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];
   if(!runner||!detail||!reference)return [];

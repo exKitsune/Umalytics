@@ -16,7 +16,7 @@ export function movementUse(effects:EffectUtilization[]){
 
 const cache=new WeakMap<RaceAnalysis,Map<string,ReturnType<typeof buildTotals>>>();
 export function skillTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null):ReturnType<typeof buildTotals>{
-  if(analysis.source==='simulation'){
+  if((analysis.source==='simulation'||analysis.source==='recorded')){
     const totals=preparedFor(analysis)?.runners[runnerId]?.totals;
     if(!totals)throw new Error('Simulator skill totals are unavailable.');
     return totals;

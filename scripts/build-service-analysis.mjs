@@ -1,0 +1,12 @@
+import {build} from 'esbuild';
+import {mkdir,writeFile,readFile,readdir} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {analysisRevision} from './analysis-revision.mjs';
+const directory='simulation/analysis';
+await mkdir(directory,{recursive:true});
+const result=await build({entryPoints:['scripts/service-analysis.ts'],bundle:true,platform:'node',format:'esm',target:'node22',write:false});
+const artifact=result.outputFiles[0].contents,hash=createHash('sha256').update(artifact);
+for(const dir of ['desktop','desktop/globalsim_bridge'])for(const file of (await readdir(dir)).filter(f=>f.endsWith('.py')).sort())hash.update(file).update(await readFile(`${dir}/${file}`));
+await writeFile(`${directory}/worker.mjs`,artifact);
+await writeFile(`${directory}/build.json`,JSON.stringify({revision:analysisRevision(),identity:hash.digest('hex')}));
+console.log('Built service analysis worker.');

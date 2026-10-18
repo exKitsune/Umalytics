@@ -28,6 +28,11 @@ def notices(source, label):
             add_notice(path, label + '/' + path.name)
 
 
+node_license = root / '.cache/analysis-runtime/LICENSE'
+if node_license.is_file():
+    add_notice(node_license, 'Node.js-LICENSE')
+    inventory.append('Node.js 22 — MIT and bundled dependency licenses; headless analysis runtime')
+
 python_license = Path(sys.base_prefix) / 'LICENSE.txt'
 add_notice(python_license, 'Python-LICENSE.txt')
 inventory.append(f'Python {sys.version.split()[0]} — PSF license; includes Windows runtime')

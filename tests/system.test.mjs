@@ -42,6 +42,11 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+test('service analyzes newest races without a window and reuses authenticated dashboards',async()=>{
+  const result=await run('python',[join(root,'tests/service-analysis-workflow.py')],{cwd:root,windowsHide:true,timeout:60000});
+  assert.match(result.stdout,/Service analysis:.*passed/);
+});
+
 test('simulation condition blockers and background queue behave consistently',async()=>{
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/analysis-followup-workflow.ts')],{cwd:root,windowsHide:true,timeout:15000});
   assert.match(result.stdout,/Analysis follow-up:/);

@@ -94,7 +94,7 @@ export interface RunnerAnalysis {
   receivedDebuffImpacts: SkillImpact[];
   receivedDebuffTotals: ContributionTotal;
 }
-export interface RaceAnalysis { source?: 'simulation'; runners: Record<string, RunnerAnalysis>; debuffs: DebuffActivation[]; warnings: string[] }
+export interface RaceAnalysis { source?: 'simulation'|'recorded'; runners: Record<string, RunnerAnalysis>; debuffs: DebuffActivation[]; warnings: string[] }
 const unresolvedContribution = (): ContributionTotal => ({ intervals:0,duration:0,assessedDuration:0,observedDistance:null,
   observedHpConsumed:null,observedHpRecovered:null,modeledDistanceDelta:null,modeledTimeDelta:null,modeledHpDelta:null,detail:'Reference contribution analysis is unavailable.' });
 

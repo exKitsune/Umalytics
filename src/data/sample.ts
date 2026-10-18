@@ -5,7 +5,7 @@ import { sampleRecordedAt } from './observational-sample';
 
 /** Interpolates observations for playback. A missing endpoint stays unknown. */
 export function sampleAt(race: Race, time: number, reference: ReferenceData | null = null): RunnerSample[] {
-  if(race.analysisSource==='simulation')return sampleRecordedAt(race,time);
+  if((race.analysisSource==='simulation'||race.analysisSource==='recorded'))return sampleRecordedAt(race,time);
   const frames = race.frames;
   if (!frames.length) return [];
   if (!Number.isFinite(time) || time <= frames[0].time) return frames[0].runners.map(r => ({ ...r }));

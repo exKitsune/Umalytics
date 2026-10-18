@@ -212,6 +212,8 @@ class Service:
         manifest = self.assets.get('/data/update-manifest.json')
         self.bundled_data_sha256 = hashlib.sha256(manifest[0]).hexdigest() if manifest else None
         self.simulation = SimulationService(self, RESOURCE_ROOT)
+        from background_analysis import BackgroundAnalysis
+        self.analysis_service = BackgroundAnalysis(self, RESOURCE_ROOT)
 
     def game_active(self):
         proxy = self.proxy_status()
@@ -796,6 +798,7 @@ class Service:
         return {'ok': True}
 
     def shutdown(self):
+        self.analysis_service.close()
         self.simulation.close()
         self.updater.close()
         self.closed.set()
@@ -848,6 +851,7 @@ def make_handler(service):
             try:
                 if path == '/api/health':
                     self.send(200, {'ok': True, 'app': 'UmaTrace', 'mode': 'desktop', 'staticReady': '/' in service.assets,
+                                    'analysisService': service.analysis_service.available, 'analysisBackground': service.analysis_service.status(),
                                     'csrfToken': service.csrf, 'proxy': service.proxy_status(), 'certificate': service.certificate(),
                                     'launchOption': f'"{service.desktop_exe}" --launch-game -- %command%' if service.desktop_exe else None,
                                     'dataDirectory': str(service.data_dir),
@@ -870,6 +874,10 @@ def make_handler(service):
                     query = parse_qs(url.query)
                     self.send(200, service.simulation.get(unquote(path[len('/api/simulation/races/'):]),
                         query.get('jobId', [''])[0], query.get('include', [''])[0] == 'payloads'))
+                elif path.startswith('/api/analysis/races/'):
+                    key = parse_qs(url.query).get('key', [''])[0]
+                    raw = service.analysis_service.payload(unquote(path[len('/api/analysis/races/'):]), key)
+                    self.send(200, raw=raw, content_type='application/gzip')
                 elif path == '/api/analysis-cache' or path.startswith('/api/analysis-cache/'):
                     from analysis_cache import AnalysisCache
                     with service.lock:
@@ -948,6 +956,8 @@ def make_handler(service):
                     else:
                         job = service.simulation.submit(unquote(suffix), body)
                         self.send(200 if job['phase'] == 'complete' else 202, job)
+                elif self.path.startswith('/api/analysis/races/'):
+                    self.send(200, service.analysis_service.request(unquote(self.path[len('/api/analysis/races/'):]), body))
                 elif self.path == '/api/preferences':
                     with service.lock:
                         result = service.update_preferences(body)
@@ -956,6 +966,8 @@ def make_handler(service):
                     from analysis_cache import AnalysisCache
                     with service.lock:
                         self.send(200, AnalysisCache(service.data_dir).update(body))
+                    if getattr(service, 'analysis_service', None):
+                        service.analysis_service.changed()
                 elif self.path == '/api/settings':
                     with service.lock:
                         result = service.update_settings(body)

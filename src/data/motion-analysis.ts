@@ -15,7 +15,7 @@ function motionEntry(race:Race,reference:ReferenceData|null,analysis:RaceAnalysi
 /** Lazy, immutable replay-context scenarios shared by charts and skill cards. */
 export function motionFor(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,courseId?:number|null,excludeActivationKey?:string|readonly string[],applyInferredModes=false,excludeEffectTypes?:readonly number[]):RunnerMotion {
   const ready=preparedFor(analysis)?.runners[runnerId];
-  if(analysis.source==='simulation'){
+  if((analysis.source==='simulation'||analysis.source==='recorded')){
     if(!ready||excludeActivationKey||excludeEffectTypes)throw new Error('A simulator counterfactual must be supplied by the simulator.');
     return ready.motion;
   }

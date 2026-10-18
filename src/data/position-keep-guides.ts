@@ -8,7 +8,7 @@ export interface PositionKeepGuideSpan {id:PositionKeepGuide['id'];start:number;
 export interface PositionKeepGuideSample {time:number;guides:PositionKeepGuide[]}
 
 export function positionKeepGuideTimeline(race:Race,analysis:RaceAnalysis,selected:string):PositionKeepGuideSample[]{
-  if(analysis.source==='simulation')return [];
+  if(analysis.source==='recorded')return [];
   return race.frames.flatMap(frame=>{
     const guides=positionKeepGuides(race,analysis,selected,frame.time);
     return guides.length?[{time:frame.time,guides}]:[];
@@ -31,7 +31,7 @@ export function positionKeepGuides(race:Race,analysis:RaceAnalysis,selected:stri
   if(field.some(r=>r.distance==null||r.style==null))return [];
   const own=field.find(r=>r.runner.id===selected)!,others=field.filter(r=>r!==own);
   if(!others.length)return [];
-  const second=Math.max(...others.map(r=>r.distance!)),style=own.style!,window='Sections 1–10. Reference threshold; mode checks are not recorded.';
+  const second=Math.max(...others.map(r=>r.distance!)),style=own.style!,window=analysis.source==='simulation'?'Position-keeping distance guide. Actual mode activation is shown in the status bands.':'Position-keeping distance guide; activation depends on the mode check.';
   if(style===1||style===5){
     const peers=others.filter(r=>r.style===style),fronts=field.filter(r=>r.style===1).length;
     const su=style===5?17.5:fronts===1?12.5:4.5;
@@ -46,7 +46,7 @@ export function positionKeepGuides(race:Race,analysis:RaceAnalysis,selected:stri
   const pacer=field.filter(r=>r.style===forward).sort((a,b)=>b.distance!-a.distance!)[0];
   // A self-pacer cannot supply an independent following-distance reference.
   if(!pacer||pacer===own)return [];
-  const factor=1+.0008*(distance-1000),range=style===2?[3,5*factor]:style===3?[6.5*factor,7*factor]:style===4?[7.5*factor,8*factor]:null;
+  const factor=Math.max(1,1+.0008*(distance-1000)),range=style===2?[3,5*factor]:style===3?[6.5*factor,7*factor]:style===4?[7.5*factor,8*factor]:null;
   if(!range)return [];
   const shift=second-pacer.distance!,context=`Uses the leading forward-strategy runner as pacemaker. ${Math.abs(shift)>.01?'Adjusted to the overall gap scale. ':''}${window}`;
   return [{id:'PD',gap:shift+range[0],threshold:range[0],detail:`Pace Down start · closer than ${range[0].toFixed(1)} m behind pacemaker, without a speed skill. ${context}`},
@@ -56,7 +56,7 @@ export function positionKeepGuides(race:Race,analysis:RaceAnalysis,selected:stri
 /** Visible portions of a threshold guide, not inferred active mode intervals.
  * Split at interpolated passes and the exact end of section 10. */
 export function positionKeepGuideSpans(race:Race,analysis:RaceAnalysis,selected:string):PositionKeepGuideSpan[]{
-  if(analysis.source==='simulation')return [];
+  if(analysis.source==='recorded')return [];
   if(!race.distance)return [];
   const limit=race.distance*10/24,spans:PositionKeepGuideSpan[]=[],last=new Map<PositionKeepGuide['id'],PositionKeepGuideSpan>();
   for(let i=1;i<race.frames.length;i++){

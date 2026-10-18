@@ -129,7 +129,7 @@ export function activationImpact(race:Race,reference:ReferenceData|null,analysis
     detail:'Gain compares movement with and without this skill in the same replay context. Acceleration’s full head start is direct gain. Carryover is retained speed from speed effects. The two parts are counted once. Time is an equivalent travel saving, not a rerun finish time.'};
 }
 export function motionSkillImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,skillId:number,courseId?:number|null):MotionSkillImpact|null {
-  if(analysis.source==='simulation')return preparedFor(analysis)?.runners[runnerId]?.impacts[skillId]??null;
+  if((analysis.source==='simulation'||analysis.source==='recorded'))return preparedFor(analysis)?.runners[runnerId]?.impacts[skillId]??null;
   const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&(courseId==null||courseId===race.courseId)&&skillId in ready.impacts)return ready.impacts[skillId];
   let map=cache.get(analysis);if(!map)cache.set(analysis,map=new Map());const key=`${courseId??race.courseId}/${runnerId}/${skillId}`;
   if(map.has(key))return map.get(key)!;

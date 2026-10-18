@@ -61,11 +61,11 @@ const trafficRows=Array.from({length:10},(_,index)=>{
   const row=Array(43).fill(0);row[m.time]=index/10;row[m.dt]=.1;
   row[m.blocker]=[0,2,4,8].includes(index)?1:-1;
   row[m.nearFrontSeconds]=index===1?.1:0;row[m.nearBehindSeconds]=index===9?.1:0;
-  row[m.selfLoss]=[.15,0,.8,0,1.6,0,0,0,.149,0][index];row[m.finalLoss]=index===2?.6:0;
+  row[m.selfLoss]=[.075,0,.8,0,1.6,0,0,0,.074,0][index];row[m.finalLoss]=index===2?.6:0;
   return row;
 });
 const traffic=trafficIntervals(trafficRows,1);
-assert.equal(traffic.length,1,'Rapid substantial cuts share a label, while negligible cuts are hidden');
+assert.equal(traffic.length,2,'Contact spans remain visible; negligible cuts stay transparent');
 assert.equal(traffic[0].start,0);assert.equal(traffic[0].end,.5);
 trafficRows[8][m.selfLoss]=.35;
 assert.equal(trafficIntervals(trafficRows,1)[1].start,.8,'A longer clear gap separates substantial episodes');
@@ -75,9 +75,10 @@ assert.equal(trafficActive(traffic[0],.35),false,'A joined clear gap is not a cl
 assert.equal(trafficAt(traffic[0],-.01),null);assert.equal(trafficAt(traffic[0],.5),null);
 assert.equal(trafficColor(trafficAt(traffic[0],.25)),trafficColor({...traffic[0].traffic![2],finalLoss:0}),'Never add the two cuts');
 assert.equal(trafficColor(trafficAt(traffic[0],.45)),'#f04444');
+assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.6,finalLoss:0}),'#f04444','Red begins at 0.6 m/s');
 assert.equal(trafficColor(traffic[0].traffic![0]),'#ffffff');
-assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.35,finalLoss:0}),'#ffec4a');
-assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.65,finalLoss:0}),'#ffa825');
+assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.25,finalLoss:0}),'#ffec4a');
+assert.equal(trafficColor({...traffic[0].traffic![0],selfLoss:.4,finalLoss:0}),'#ffa825');
 assert.notEqual(trafficColor({...traffic[0].traffic![0],selfLoss:.4}),trafficColor({...traffic[0].traffic![0],selfLoss:.5}),'Severity changes continuously between anchors');
 const gradient=trafficGradient(traffic[0],t=>t*100);
 assert.ok(gradient.some(s=>s.opacity===0)&&gradient.some(s=>s.opacity===1));
@@ -178,3 +179,8 @@ try{
   await client.open({id:'local',title:'local',receivedAt:'',race:original});assert.equal(busy(),false);
 }finally{client.dispose();globalThis.fetch=savedFetch;}
 console.log('Simulator projection: original capture preserved; engine frames, stats, states, skills, rolls and clamp stages reach the existing UI; mismatches stay gated; loading remains visible until completion and clears on fallback, error and race changes.');
+
+const {packDashboard,restoreDashboard}=await import('../src/analysis/dashboard-codec');
+const roundTrip=restoreDashboard(JSON.parse(JSON.stringify(packDashboard(structuredClone(result)))));
+assert.deepEqual(roundTrip.runners.r0.motion.samples,JSON.parse(JSON.stringify(result.runners.r0.motion.samples)),'Compact snapshots retain exact simulator motion and missing values.');
+assert.deepEqual(roundTrip.analysis.runners.r0.samples,JSON.parse(JSON.stringify(result.analysis.runners.r0.samples)));

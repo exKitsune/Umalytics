@@ -2,8 +2,9 @@ import type { StatusInterval, TrafficTick } from '../data/analytics';
 import { motionIndex as m } from './trace';
 
 export const TRAFFIC_CLEAR_GAP = .25;
-export const TRAFFIC_MIN_SLOWDOWN = .15;
-export const trafficLegend = 'Traffic appears at a speed cut of at least 0.15 m/s. White → yellow → amber → red shows increasing slowdown, reaching red at 1 m/s. Transparent gaps are below the threshold. The scale uses the larger of the two blocking cuts, not their sum; it is not the difference between target and current speed.';
+export const TRAFFIC_MIN_SLOWDOWN = .075;
+export const TRAFFIC_MAX_SLOWDOWN = .6;
+export const trafficLegend = 'The outline shows blocking contact; contact can continue without reducing speed. Color appears only for cuts of at least 0.075 m/s. White → yellow → amber → red shows increasing slowdown, reaching red at 0.6 m/s. Transparent gaps are below the threshold. The scale uses the larger of the two blocking cuts, not their sum; it is not the difference between target and current speed.';
 export const trafficSlowdown=(tick:TrafficTick|null)=>Math.max(tick?.selfLoss??0,tick?.finalLoss??0);
 const active=(tick:TrafficTick)=>(tick.near||tick.blocked)&&trafficSlowdown(tick)>=TRAFFIC_MIN_SLOWDOWN;
 
@@ -24,12 +25,12 @@ export function trafficIntervals(rows:readonly number[][],finish:number):StatusI
     if(first<0)return;
     const traffic=ticks.slice(first,last+1);
     const blocked=traffic.reduce((sum,t)=>sum+(t.blocked?t.end-t.start:0),0);
-    const cut=traffic.reduce((sum,t)=>sum+(Math.max(t.selfLoss,t.finalLoss)>0?t.end-t.start:0),0);
+    const cut=traffic.reduce((sum,t)=>sum+(Math.max(t.selfLoss,t.finalLoss)>=TRAFFIC_MIN_SLOWDOWN?t.end-t.start:0),0);
     result.push({kind:'traffic',label:'Traffic',start:traffic[0].start,end:traffic.at(-1)!.end,evidence:'simulated',traffic,
       detail:`Traffic · ${blocked.toFixed(2)} s blocked · ${cut.toFixed(2)} s with a speed cut. ${trafficLegend}`});
   };
   for(let index=0;index<ticks.length;index++){
-    if(!active(ticks[index]))continue;
+    if(!ticks[index].blocked&&!active(ticks[index]))continue;
     if(first<0)first=index;
     else if(ticks[index].start-ticks[last].end>TRAFFIC_CLEAR_GAP+1e-6){flush();first=index;}
     last=index;
@@ -49,8 +50,8 @@ export function trafficActive(interval:StatusInterval,time:number):boolean {
   const tick=trafficAt(interval,time);return !!tick&&active(tick);
 }
 export function trafficColor(tick:TrafficTick|null):string {
-  const severity=Math.min(1,Math.max(TRAFFIC_MIN_SLOWDOWN,trafficSlowdown(tick)));
-  const anchors=[[.15,[255,255,255]],[.35,[255,236,74]],[.65,[255,168,37]],[1,[240,68,68]]] as const;
+  const severity=Math.min(TRAFFIC_MAX_SLOWDOWN,Math.max(TRAFFIC_MIN_SLOWDOWN,trafficSlowdown(tick)));
+  const anchors=[[TRAFFIC_MIN_SLOWDOWN,[255,255,255]],[.25,[255,236,74]],[.4,[255,168,37]],[TRAFFIC_MAX_SLOWDOWN,[240,68,68]]] as const;
   const upper=anchors.findIndex(([value])=>value>=severity),[low,from]=anchors[Math.max(0,upper-1)],[high,to]=anchors[upper];
   const blend=high===low?0:(severity-low)/(high-low);
   return '#'+from.map((value,index)=>Math.round(value+(to[index]-value)*blend).toString(16).padStart(2,'0')).join('');

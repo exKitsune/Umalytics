@@ -20,3 +20,5 @@ const row={kind:'inference',engine_id:engineId,version:engineId,profile:'umalyti
 manifest.bundles=manifest.bundles.filter(item=>item.engine_id!==engineId);manifest.bundles.push(row);
 await writeFile('simulation/installed-bundles.json',JSON.stringify(manifest,null,2)+'\n');
 console.log(JSON.stringify(row,null,2));
+
+await import('./build-service-analysis.mjs');

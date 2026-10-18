@@ -53,6 +53,7 @@ jobs:
           await cp('dist', join(bundle, 'dist'), { recursive: true });
           await cp('simulation/bundles', join(bundle, 'simulation/bundles'), { recursive: true });
           await cp('simulation/installed-bundles.json', join(bundle, 'simulation/installed-bundles.json'));
+          await cp('simulation/analysis', join(bundle, 'simulation/analysis'), { recursive: true });
           for (const name of ['svelte', 'pako', '@msgpack/msgpack']) {
             const source = join('node_modules', name);
             const target = join(bundle, source);
@@ -137,6 +138,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12.10'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.20.0'
       # All keys are frozen here, before release.py stamps package/Cargo versions.
       - name: Restore Python environment
         id: python-cache

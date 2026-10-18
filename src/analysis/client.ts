@@ -2,9 +2,11 @@ import type { Race } from '../data/types';
 import { parseRaceJson } from '../data/import';
 import type { RaceAnalysis } from '../data/analytics';
 import { rememberAnalysis } from '../data/analytics';
-import type { ReferenceData } from '../data/reference';
+import {assembleReferenceData,type ReferenceData} from '../data/reference';
+import {readGeometry} from '../data/geometry';
+import {restoreDashboard} from './dashboard-codec';
 import type { LibraryEntry } from '../library';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { attachPrepared, type PreparedRace } from './prepared';
 import { AnalysisStore, type CachePolicy, type CacheStatus } from './store';
 import type { AnalysisGateReport, AnalysisGateReportSummary, SimulationJob, SimulationJobDetails, InferencePlanRevalidation } from '../simulation/contracts';
@@ -18,6 +20,7 @@ interface Authorization extends InferencePlanRevalidation {cacheKey:string;artif
 
 /** No mechanics or derived cache access until a fresh service-owned gate passes. */
 export class AnalysisClient {
+  private serviceOwned=false;
   private backgroundQueue:BackgroundQueue|null=null;
   private foregroundBusy=false;
   private playbackPaused=false;
@@ -56,11 +59,12 @@ export class AnalysisClient {
       if(!this.foregroundBusy)this.callbacks.state(running?{busy:true,background:true,done,total,message:`Analyzing recent races · ${done} / ${total}`}:{...this.foregroundState,done,total});
     });
   }
+  useService(enabled:boolean){this.serviceOwned=enabled;this.updateBackground();}
   async configure(reference:ReferenceData){this.reference=reference;this.updateBackground();}
   setLibrary(library:LibraryEntry[],_assignments:Record<string,number>){this.backgroundQueue?.setLibrary(library);}
   setPaused(value:boolean){this.playbackPaused=value;this.backgroundQueue?.pause(value||this.foregroundBusy);}
   interacting(){this.backgroundQueue?.touch();}
-  private updateBackground(){if(this.cachePolicy)this.backgroundQueue?.configure({...this.cachePolicy,background:this.cachePolicy.background&&!!this.reference&&!!this.callbacks.token?.()},this.cacheBytes);}
+  private updateBackground(){if(this.cachePolicy)this.backgroundQueue?.configure({...this.cachePolicy,background:!this.serviceOwned&&this.cachePolicy.background&&!!this.reference&&!!this.callbacks.token?.()},this.cacheBytes);}
   private cache(status:CacheStatus){this.cachePolicy=status.policy;this.cacheBytes=status.bytes;this.callbacks.cache(status);this.updateBackground();}
   private state(message:string,busy=false){
     this.foregroundBusy=busy;this.foregroundState={busy,background:false,done:0,total:0,message};
@@ -72,6 +76,7 @@ export class AnalysisClient {
   async open(entry:LibraryEntry,_override?:number){
     this.backgroundQueue?.pause(true);this.activeEntry=entry;this.stop();const generation=this.generation,alive=()=>!this.disposed&&generation===this.generation;
     this.callbacks.gate?.(null,entry.id);this.callbacks.recorded?.(entry.id);this.state(this.prepared.has(entry.id)?'Loading saved analysis':'Analyzing race',true);
+    if(this.serviceOwned&&entry.remoteId&&this.callbacks.token?.()){await this.openService(entry,generation);return;}
     let storedHash=entry.sha256;
     try{
       let race=entry.race;
@@ -169,6 +174,58 @@ export class AnalysisClient {
       };
       if(alive()&&this.backgroundQueue)this.lease=setTimeout(check,2000);
     }catch(error){if(alive()){this.stop();this.callbacks.recorded?.(entry.id);this.callbacks.gate?.(null,entry.id);this.state('Recorded replay ready');this.callbacks.error(String(error));}}
+  }
+  private async openService(entry:LibraryEntry,generation:number){
+    const alive=()=>!this.disposed&&generation===this.generation;
+    const endpoint=`analysis/races/${encodeURIComponent(entry.remoteId!)}`,token=this.callbacks.token!()!;
+    type Saved={phase:string;key:string;entrySha256:string;revision:string;hasAnalysis:boolean;report:AnalysisGateReportSummary};
+    const authorize=()=>api<Saved>(endpoint,{expectedEntrySha256:entry.sha256,revision:__ANALYSIS_REVISION__},token);
+    try{
+      let saved=await authorize(),delay=60;
+      while(alive()&&saved.phase!=='complete'){
+        await new Promise(resolve=>setTimeout(resolve,delay));delay=Math.min(350,delay*1.5);
+        if(!alive())return;saved=await authorize();
+      }
+      if(!alive())return;
+      this.callbacks.gate?.(saved.report,entry.id);
+      const prior=this.prepared.get(entry.id);
+      if(saved.hasAnalysis){
+        const warm=prior?.authorization===saved.key&&prior.hash===saved.entrySha256?prior:null;
+        const restored=warm?{value:warm.value,reference:warm.reference,recorded:warm.recorded}:await new Promise<{value:PreparedRace;reference:ReferenceData;recorded:Race}>((resolve,reject)=>{
+          const worker=this.worker=new Worker(new URL('./dashboard-worker.ts',import.meta.url),{type:'module'});
+          worker.onmessage=event=>{worker.terminate();if(event.data.type!=='complete'){reject(new Error(event.data.error));return;}try{const saved=JSON.parse(new TextDecoder().decode(event.data.bytes)),data=saved.referenceData;resolve({value:restoreDashboard(saved),recorded:saved.recorded,reference:assembleReferenceData(data.metadata,data.courses,data.source,data.skillIds,readGeometry(data.geometry))});}catch(error){reject(error);}};
+          worker.onerror=()=>{worker.terminate();reject(new Error('Saved dashboard could not be loaded.'));};
+          worker.postMessage({url:`/api/${endpoint}?key=${saved.key}`});
+        });
+        if(!alive())return;
+        if(restored.reference)this.callbacks.reference?.(restored.reference);
+        this.callbacks.parsed(restored.recorded,entry.id);attachPrepared(restored.value);this.callbacks.ready(restored.value,entry.id);
+        this.remember(entry.id,saved.entrySha256,saved.key,restored.recorded,restored.value,restored.reference);
+        this.state('Ready');
+      }else{
+        const recorded=prior?.hash===saved.entrySha256?prior.recorded:parseRaceJson((await api<{data:unknown}>(`races/${encodeURIComponent(entry.remoteId!)}`)).data)[0];
+        if(!alive())return;this.callbacks.parsed(recorded,entry.id);this.state('Recorded data ready');
+      }
+      const key=saved.key;
+      const check=async()=>{
+        try{
+          const current=await authorize();
+          if(!alive())return;
+          if(current.key!==key){this.prepared.delete(entry.id);void this.open(entry);return;}
+        }catch(error){
+          if(!alive())return;
+          if(error instanceof ApiError&&error.status===409){this.prepared.delete(entry.id);void this.open({...entry,sha256:undefined});return;}
+          // A transport failure does not retract the last valid result or invent
+          // an unknown game version. Retry against the same stable identity.
+        }
+        if(alive())this.lease=setTimeout(check,15000);
+      };
+      if(alive())this.lease=setTimeout(check,15000);
+    }catch(error){
+      if(!alive())return;
+      try{const stored=await api<{data:unknown}>(`races/${encodeURIComponent(entry.remoteId!)}`);if(alive())this.callbacks.parsed(parseRaceJson(stored.data)[0],entry.id);}catch{}
+      if(alive()){this.callbacks.recorded?.(entry.id);this.state('Recorded data ready');this.callbacks.error(String(error));}
+    }
   }
   async policy(policy:CachePolicy){this.cache(await this.store.change({action:'policy',policy}));}
   async purge(){this.backgroundQueue?.reset();this.stop();this.prepared.clear();this.cache(await this.store.change({action:'purge'}));this.state('Cache cleared');}

@@ -26,7 +26,7 @@ const cache = new WeakMap<RaceAnalysis, Map<number, { engine: ReturnType<typeof 
 /** Lazy all-runner result data: one shared-engine excluded path per mode kind,
  * never one trajectory per episode and never an eager analyzeRace recursion. */
 export function modeImpactsFor(race: Race, reference: ReferenceData | null, analysis: RaceAnalysis, runnerId: string, courseId?: number | null): StatusModeImpact[] {
-  if(analysis.source==='simulation')return preparedFor(analysis)?.runners[runnerId]?.modes??[];
+  if((analysis.source==='simulation'||analysis.source==='recorded'))return preparedFor(analysis)?.runners[runnerId]?.modes??[];
   const ready=preparedFor(analysis)?.runners[runnerId];if(ready&&(courseId==null||courseId===race.courseId))return ready.modes;
   const id = courseId ?? race.courseId ?? -1;
   let courses = cache.get(analysis); if (!courses) cache.set(analysis, courses = new Map());

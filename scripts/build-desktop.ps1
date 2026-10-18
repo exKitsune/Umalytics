@@ -55,6 +55,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator worker build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Simulator bundle verification failed.' }
 & $python desktop/generate_icon.py
 if ($LASTEXITCODE -ne 0) { throw 'Desktop icon generation failed.' }
+$analysisRuntime = Join-Path $workspace '.cache/analysis-runtime'
+New-Item -ItemType Directory -Path $analysisRuntime -Force | Out-Null
+$nodeBinary = (Get-Command node.exe -ErrorAction Stop).Source
+$nodeVersion = (& $nodeBinary --version).Trim()
+if ($nodeVersion -notmatch '^v22\.\d+\.\d+$') { throw 'Service analysis requires Node 22.' }
+Copy-Item -LiteralPath $nodeBinary -Destination (Join-Path $analysisRuntime 'node.exe') -Force
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/nodejs/node/$nodeVersion/LICENSE" -OutFile (Join-Path $analysisRuntime 'LICENSE')
 & $python desktop/generate_licenses.py
 if ($LASTEXITCODE -ne 0) { throw 'Dependency license collection failed.' }
 if (-not $SkipService) {
