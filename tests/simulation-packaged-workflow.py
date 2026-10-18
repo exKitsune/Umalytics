@@ -21,7 +21,7 @@ args=parser.parse_args()
 executable=args.executable.resolve()
 opener=build_opener(ProxyHandler({}))
 result={'schemaVersion':1,'executableSha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
-        'developerToolchainsOnPath':False,'productionAuthorization':'recorded_only'}
+        'developerToolchainsOnPath':False,'productionAuthorization':'inference_plan'}
 with tempfile.TemporaryDirectory(prefix='umalytics-frozen-analysis-') as temporary:
     root=Path(temporary)
     env={key:value for key,value in os.environ.items() if key not in ('PYTHONHOME','PYTHONPATH','NODE_PATH','CARGO_HOME','RUSTUP_HOME')}
@@ -78,10 +78,23 @@ with tempfile.TemporaryDirectory(prefix='umalytics-frozen-analysis-') as tempora
             job=request('simulation/races/synthetic~0?jobId='+job['jobId'])
             if job['phase']=='complete':break
             time.sleep(.05)
-        assert job['report']['mode']=='recorded_only' and job['report']['inferencePlan'] is None
+        assert job['report']['mode']=='inference_plan', job['report'].get('error')
+        plan=job['report']['inferencePlan']
+        assert plan['provisional'] and plan['provisionalPolicy']['kind']=='replay-analysis'
+        assert not job['report']['permissions']['simulatedRecordedCapabilities']
+        assert not job['report']['permissions']['unversionedInference']
+        assert any(n['code']=='PROVISIONAL_REPLAY_INFERENCE' for n in job['report']['notices'])
+        authorized=request('simulation/races/synthetic~0/inference',{'jobId':job['jobId']})
+        assert authorized['authorized'] and authorized['plan']==plan
+        assert authorized['executionPerformed'] is False
+        assert len(authorized['cacheKey'])==64 and len(authorized['uiRevision'])==64
+        for url_field,hash_field in [('artifactUrl','artifactSha256'),('dataUrl','dataSha256')]:
+            with opener.open(url+authorized[url_field]) as response:
+                assert hashlib.sha256(response.read()).hexdigest()==plan['engine']['identity'][hash_field]
         assert not (data/'cache/globalsim').exists()
         assert not (data/'cache/simulation-work').exists()
-        result.update(installed=status['installed'],recordedOnlyGatePassed=True,inferenceArtifactPinsPassed=True)
+        result.update(installed=status['installed'],provisionalReplayGatePassed=True,
+                      versionedInferenceAuthorizationPassed=True,inferenceArtifactPinsPassed=True)
         if args.capture:
             # Copy the real capture into disposable storage. Production trial
             # policy must work in a frozen install with no source/toolchain.
