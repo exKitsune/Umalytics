@@ -7,6 +7,7 @@ import {activationMotionKey,createRaceMotionEngine,type ReplayMotionEngine,type 
 import {motionIndex as m,type DecisionTrace} from './trace';
 import {motionLosses} from '../data/traffic-loss';
 import {referenceDeceleration} from '../data/mechanics-model';
+import {powerSummary} from './power';
 import {effectValue} from '../data/effect-value';
 
 const exact=(v:number):MotionBand=>({min:v,mid:v,max:v});
@@ -18,13 +19,18 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
   const cache=new Map<string,RunnerMotion>();
   const course=reference.courses[race.courseId??-1]??null;
   const rows=new Map(race.runners.map(r=>[r.id,trace.motion.filter(v=>v[m.horse]===r.index)]));
+  // Motion is traced before the field-overlap pass; replay frames are after it.
+  // Compare each move with its actual starting lane, not the previous trace's
+  // lane (an overlap displacement must not masquerade as a voluntary move).
+  const beforeFrame=new Map(race.frames.slice(1).map((frame,i)=>[frame.time,race.frames[i]]));
+  const powerReleases=new Map(race.runners.map(r=>[r.id,powerSummary(trace.events.filter(e=>e.horseIndex===r.index),undefined,r.finishTimeRaw??race.duration).releases]));
   const basePhysics=new Map<string,ReturnType<typeof formulas.physics>>();
   const physics=(id:string,t:number)=>{const key=`${id}/${t}`;let value=basePhysics.get(key);if(!value){value=formulas.physics(id,t);basePhysics.set(key,value);}return value;};
   function build(options:RaceMotionOptions={}){
     const runners:Record<string,RunnerMotion>={};
     const excluded=new Set([...(options.excludeActivationKeys??[]),...(options.excludeActivationKey?[options.excludeActivationKey]:[])]);
     for(const runner of race.runners.filter(r=>!options.runnerId||r.id===options.runnerId)){
-      const key=JSON.stringify([runner.id,[...excluded].sort(),options.excludeEffectTypes,options.excludeStatusKey]);
+      const key=JSON.stringify([runner.id,[...excluded].sort(),options.excludeEffectTypes,options.excludeStatusKey,options.excludePowerRelease]);
       const cached=cache.get(key);if(cached){runners[runner.id]=cached;continue;}
       const detail=analysis.runners[runner.id],ticks=rows.get(runner.id)!,stop=runner.finishTimeRaw??race.duration;
       const effects=race.runners.flatMap(source=>analysis.runners[source.id].skillActivations.flatMap(a=>
@@ -32,13 +38,15 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
           key:activationMotionKey(source.id,a),type:e.type,start:e.appliedStart??a.start,end:e.appliedEnd??a.effectiveEnd??a.start,
           value:effectValue(source,a.referenceSkillId??a.skillId,e),
         }))));
+      const releases=powerReleases.get(runner.id)!;
       const selected=effects.filter(e=>excluded.has(e.key)&&(!options.excludeEffectTypes||options.excludeEffectTypes.includes(e.type)));
+      const laneEffects=effects.filter(e=>e.type===28);
       // HP, lane position and other decisions are held fixed in this comparison.
       // Only stat effects need the formula difference; a speed + heal skill is
       // still a direct removal of its known speed modifier.
       const complicated=selected.some(e=>[1,2,3,4,5].includes(e.type));
-      const altered=selected.length>0||!!options.excludeStatusKey;
-      const samples:MotionSample[]=[];let self=3,freeSelf=3,previousRaw=3,distance=0,timeLoss=0;
+      const altered=selected.length>0||!!options.excludeStatusKey||!!options.excludePowerRelease;
+      const samples:MotionSample[]=[];let self=3,freeSelf=3,previousRaw=3,distance=0,timeLoss=0,laneUnknown=false;
       for(let index=0;index<ticks.length;index++){
         const r=ticks[index],time=r[m.time];if(time>=stop)break;
         const dt=Math.min(r[m.dt],stop-time),active=selected.filter(e=>time>=e.start&&time<e.end);
@@ -60,6 +68,34 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
           if(r[m.hp]<=0){const healthy=formulas.physics(runner.id,time,{},true);
             if(full.target&&healthy.target)healthyTarget=r[m.target]+healthy.target.mid-full.target.mid;
             if(healthy.accel)healthyAccel=healthy.accel.mid;
+          }
+        }
+        const activeLane=laneEffects.filter(e=>time>=e.start&&time<e.end);
+        if(r[m.hp]>0&&activeLane.some(e=>selected.includes(e))&&!activeLane.some(e=>!selected.includes(e))){
+          // The engine grants one shared bonus, regardless of how many lane
+          // skills overlap, and reads the previous tick's movement latch.
+          const previous=ticks[index-1],before=previous?beforeFrame.get(previous[m.time]):null;
+          const startLane=before?.runners.find(s=>s.runnerId===runner.id)?.lane;
+          if(previous&&(startLane==null||Math.abs(previous[m.time]-before!.time-previous[m.dt])>1e-4)){
+            reasons.push('Skill lane-movement starting position unavailable.');
+          }else if(previous&&Math.fround(previous[m.lane])!==Math.fround(startLane!)){
+            const initialPower=detail.statBreakdown.stats.power.final;
+            const addedPower=effects.filter(e=>e.type===3&&e.start>0&&time>=e.start&&time<e.end);
+            if(initialPower===null||addedPower.some(e=>e.value===null))reasons.push('Skill lane-movement Power unavailable.');
+            else if(r[m.target]>=30)reasons.push('Skill lane-movement bonus is obscured by the target-speed ceiling.');
+            else {
+              const power=Math.min(2000,Math.max(1,initialPower+addedPower.reduce((n,e)=>n+e.value!,0)));
+              const bonus=Math.fround(Math.sqrt(Math.fround(Math.fround(power)*Math.fround(.0002))));
+              target=Math.max(0,target-bonus);
+            }
+          }
+        }
+        if(reasons.some(reason=>reason.startsWith('Skill lane-movement')))laneUnknown=true;
+        else if(laneUnknown)reasons.push('Skill lane-movement comparison has incomplete earlier inputs.');
+        if(options.excludePowerRelease){
+          for(const release of releases.filter(p=>time>=p.start&&time<p.end)){
+            if(release.acceleration===null)reasons.push('Skill power-release acceleration unavailable.');
+            else acceleration-=release.acceleration;
           }
         }
         const minimum=r[m.minimum],cap=r[m.cap],dashLimit=.85*(20-((race.distance??2000)-2000)/1000);
@@ -110,5 +146,19 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
     }
     return {runners,detail:note};
   }
-  return {build,physics:formulas.physics,speedPotential:formulas.speedPotential};
+  function speedPotential(runnerId:string,keys:readonly string[]){
+    const potential=formulas.speedPotential(runnerId,keys);if(!potential)return null;
+    const lane=analysis.runners[runnerId].skillActivations.filter(a=>keys.includes(activationMotionKey(runnerId,a))&&a.effects.some(e=>e.type===28&&(e.targetType??1)===1));
+    if(!lane.length)return potential;
+    const full=build({runnerId}).runners[runnerId],without=build({runnerId,excludeActivationKeys:keys,excludeEffectTypes:[28]}).runners[runnerId];
+    for(let i=0;i<full.samples.length-1;i++){
+      const sample=full.samples[i],other=without.samples[i];
+      if(!lane.some(a=>sample.time>=a.start&&sample.time<(a.effectiveEnd??a.start)))continue;
+      if(other.reasons.some(r=>r.startsWith('Skill lane-movement'))||!sample.targetActive||!other.targetActive)return null;
+      const area=Math.max(0,sample.targetActive.mid-other.targetActive.mid)*(full.samples[i+1].time-sample.time);
+      for(const channel of ['min','mid','max'] as const)potential[channel]+=area;
+    }
+    return potential;
+  }
+  return {build,physics:formulas.physics,speedPotential};
 }

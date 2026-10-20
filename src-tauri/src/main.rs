@@ -250,7 +250,8 @@ fn main() {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(URL.parse()?))
                 .on_navigation(|url| url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
                 .on_new_window(|url, _features| {
-                    if url.as_str() == "https://umalator.app/umalator-global/" || url.as_str() == "http://127.0.0.1:4317/api/licenses" {
+                    if url.as_str() == "https://umalator.app/umalator-global/" || url.as_str() == "http://127.0.0.1:4317/api/licenses"
+                        || (url.scheme() == "https" && url.host_str() == Some("gametora.com") && (url.path().starts_with("/\u{0075}mamusume/supports/") || url.path().starts_with("/\u{0075}mamusume/characters/"))) {
                         open_browser(url.as_str());
                     }
                     tauri::webview::NewWindowResponse::Deny
@@ -321,17 +322,21 @@ fn main() {
                                 handle.exit(0);
                                 break;
                             }
-                            if let Some(tray) = handle.tray_by_id("umatrace") {
+                            {
                                 let state = if status["proxy"]["collectionEnabled"] == false { "Collection paused" }
                                     else if status["certificate"]["trusted"] != true { "Certificate needed" }
                                     else if status["proxy"]["gameConnected"] == true { "Game connected" }
-                                    else if status["proxy"]["listening"] == true { "Collection ready" }
+                                    else if status["proxy"]["listening"] == true || status["proxy"]["state"] == "running" { "Waiting for game" }
+                                    else if status["proxy"]["state"] == "starting" { "Starting collector" }
                                     else { "Collection stopped" };
-                                let _ = tray.set_tooltip(Some(format!("Umalytics — {state}")));
+                                let title = format!("Umalytics — {state}");
+                                if let Some(tray) = handle.tray_by_id("umatrace") { let _ = tray.set_tooltip(Some(&title)); }
+                                if let Some(window) = handle.get_webview_window("main") { let _ = window.set_title(&title); }
                             }
                         }
                         None => {
                             unavailable += 1;
+                            if let Some(window) = handle.get_webview_window("main") { let _ = window.set_title("Umalytics — Reconnecting to collector"); }
                             if unavailable >= 4 && !(ServiceEndpoint { port: 4317 }).listening() { handle.exit(0); break; }
                         }
                     }

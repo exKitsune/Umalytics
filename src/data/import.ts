@@ -3,6 +3,7 @@ import {raceTimestamp} from './race-time';
 import { decode } from '@msgpack/msgpack';
 import { base64Bytes, MAX_FILE_BYTES, MAX_FRAMES, MAX_RUNNERS, MAX_SAMPLES, parseScenario } from './binary';
 import { courseDistance, finishDistance, instanceCourse, instanceConditions } from './course-detection';
+import { careerForHorse, parseCareer } from './career';
 import { extractSanitizedRaw, copyOriginalRace } from './raw-export';
 import { attachTeamStatTotals } from './race-teams';
 import { runnerBySlot, type Frame, type Race, type RaceCategory, type RaceEvent, type Runner, type RunnerAptitudes, type RunnerSample, type RunnerSkill, type RunnerStats } from './types';
@@ -171,6 +172,7 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
   const members = isAct ? array(actHorses) : array(pick(obj, 'race_horse_data_array', 'raceHorseDataArray', 'race_horse_data', 'raceHorseData'));
   const warnings = [...binary.warnings];
   const byIndex = new Map<number, RecordValue>();
+  const careerByIndex = new Map<number, ReturnType<typeof parseCareer>>();
   let missingOrder = false;
   for (const value of members) {
     const member = record(value);
@@ -180,6 +182,7 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
     if (frameOrder === null || !Number.isInteger(frameOrder) || frameOrder < 1 || frameOrder > binary.runnerCount) { missingOrder = true; continue; }
     if (byIndex.has(frameOrder - 1)) throw new Error(`Duplicate runner frame_order ${frameOrder}; telemetry cannot be matched safely.`);
     byIndex.set(frameOrder - 1, meta);
+    careerByIndex.set(frameOrder - 1, careerForHorse(meta,obj,member));
   }
   if (missingOrder) warnings.push('Some runner metadata lacked a valid frame_order and was not assigned to telemetry.');
   if (byIndex.size < binary.runnerCount) warnings.push('Some runner names/metadata are unavailable; numbered placeholders identify their simulation slots.');
@@ -189,6 +192,7 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
   }
   const runners: Runner[] = attachTeamStatTotals(Array.from({ length: binary.runnerCount }, (_, runnerIndex) => {
     const meta = byIndex.get(runnerIndex) ?? {};
+    const career = careerByIndex.get(runnerIndex);
     const result = binary.results[runnerIndex];
     const charaId = number(pick(meta, 'chara_id', 'charaId'));
     return {
@@ -208,7 +212,8 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
       isNpc: npcClass(meta),
       ...(teams.has(meta) ? { teamGroup: teams.get(meta)! } : {}),
       mood: number(meta.motivation), raceWinCount: number(meta.single_mode_win_count), fanCount: number(meta.fan_count),
-      starCount: number(meta.rarity), rankScore: number(meta.rank_score),
+      starCount: number(meta.rarity) ?? career?.stars, rankScore: number(meta.rank_score) ?? career?.score,
+      ...(career ? {career} : {}),
     };
   }));
   const frames: Frame[] = binary.frames.map(frame => ({ time: frame.time, runners: frame.samples.map((sample, runnerIndex) => ({ runnerId: runners[runnerIndex].id, ...sample })) }));
@@ -272,10 +277,15 @@ function parseNormalized(obj: RecordValue, index: number): Race {
     const finishOrder = number(runner.finishOrder);
     const finishTime = number(runner.finishTime);
     const finishTimeRaw = number(runner.finishTimeRaw);
+    const frameOrder=number(runner.gate)??runnerIndex+1;
+    const horses=array(pick(obj,'raceHorse','<RaceHorse>k__BackingField'));
+    const member=horses.map(record).find(h=>number(pick(record(pick(h,'responseHorseData','_responseHorseData')),'frame_order','frameOrder'))===frameOrder);
+    const career=runner.career!==undefined?parseCareer(runner.career):member?careerForHorse(record(pick(member,'responseHorseData','_responseHorseData')),obj,member):undefined;
     return {
       id: string(runner.id) ?? `runner-${runnerIndex + 1}`, index: runnerIndex,
       gate: number(runner.gate), name: string(runner.name) ?? `Runner ${runnerIndex + 1}`,
       charaId: number(runner.charaId), cardId: number(runner.cardId), trainer: string(runner.trainer),
+      ...(career ? {career} : {}),
       ...(runner.trainerId !== undefined ? { trainerId: trainerIdentity(runner.trainerId) } : {}),
       strategy: string(runner.strategy),
       finishOrder: finishOrder !== null && Number.isInteger(finishOrder) && finishOrder > 0 && finishOrder <= rawRunners.length ? finishOrder : null,
@@ -291,6 +301,7 @@ function parseNormalized(obj: RecordValue, index: number): Race {
       ...(runner.isNpc !== undefined ? { isNpc: typeof runner.isNpc === 'boolean' ? runner.isNpc : null } : {}),
       ...(normalizedTeams.has(runner) ? { teamGroup: normalizedTeams.get(runner)! } : {}),
       ...Object.fromEntries(['strategyCode', 'mood', 'raceWinCount', 'fanCount', 'starCount', 'rankScore', 'gutsOrder', 'wisdomOrder', 'defeatFlags'].filter(key => runner[key] !== undefined).map(key => [key, number(runner[key])])),
+      ...(career?.score!=null&&runner.rankScore==null?{rankScore:career.score}:{}),
     };
   }));
   const ids = new Set(runners.map(r => r.id));

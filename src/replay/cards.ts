@@ -2,12 +2,21 @@ import { trafficActive, trafficAt, trafficColor } from '../simulation/traffic';
 import type { ReplayCard, ReplayOptions, ReplayScene } from './model';
 import type { RunnerSample } from '../data/types';
 import { combinedStatusIntervals, statusLabel } from '../data/status-presentation';
-import { skillName, runnerName } from '../data/reference';
+import { skillName, runnerName, getSkillReference, type SkillReference } from '../data/reference';
 import { statusColor, statusDescription } from '../data/analysis-copy';
 import { iconSource, skillIconKey } from '../data/game-icons';
 import { placeReplayCards } from './layout';
 
 export const CARD_DWELL=2.5;
+const hiddenReplayStatuses=new Set(['downhill-section','rushed-boost','force-in','conserve-power']);
+type Effects=SkillReference['branches'][number]['effects'];
+/** Keep mixed effects and unresolved skills; hide only known self-only vision. */
+function selfVisionOnly(options:ReplayOptions,id:number,effects?:Effects):boolean{
+  const onlyVision=(values:Effects)=>values.length>0&&values.every(e=>e.type===8&&(e.targetType??1)===1);
+  if(effects?.length)return onlyVision(effects);
+  const branches=getSkillReference(options.reference,id)?.branches;
+  return !!branches?.length&&branches.every(branch=>onlyVision(branch.effects));
+}
 type CardInput=Omit<ReplayCard,'displayEnd'|'progress'|'alpha'>&{observedUntil?:number};
 function card(value:CardInput,time:number):ReplayCard|null {
   // Dwell is presentation only: the countdown is always the resolved effect end.
@@ -23,12 +32,13 @@ export function replayCards(options:ReplayOptions,runnerId:string,time:number,sa
   const runner=options.analysis?.runners[runnerId];
   if(runner){
     for(const status of combinedStatusIntervals(runner.intervals,{includeModels:true})){
-      if(['downhill-section','rushed-boost'].includes(status.kind)||status.traffic&&!trafficActive(status,time))continue; // Grade is terrain; boosted rushing stays within Rushed.
+      if(hiddenReplayStatuses.has(status.kind)||status.traffic&&!trafficActive(status,time))continue;
       const end=status.end;
       add({id:`status:${status.kind}:${status.start}`,kind:'status',label:statusLabel(status.kind),iconKey:'',color:status.traffic?trafficColor(trafficAt(status,time)):statusColor(status.kind),start:status.start,end,observedUntil:status.observedUntil,
         visualOnly:end===null&&time>=(status.observedUntil??status.start),detail:`${status.evidence==='estimated'?'Modeled status. ':''}${status.detail}${end===null?' End unknown; 2.5s display dwell only.':''}`});
     }
     for(const skill of runner.skillActivations){
+      if(selfVisionOnly(options,skill.referenceSkillId??skill.skillId,skill.effects))continue;
       const end=skill.effectiveEnd??skill.end;
       add({id:`skill:${skill.skillId}:${skill.start}`,kind:'skill',label:skillName(options.reference,skill.referenceSkillId??skill.skillId),
         iconKey:skillIconKey(options.reference,skill.referenceSkillId??skill.skillId),color:'#79ca0b',start:skill.start,end,
@@ -36,8 +46,8 @@ export function replayCards(options:ReplayOptions,runnerId:string,time:number,sa
     }
   }else{
     for(const interval of options.intervals?.(runnerId)??[]){
-      if(interval.kind==='downhill-section')continue;
       const isSkill=interval.skillId!=null;
+      if(isSkill?selfVisionOnly(options,interval.skillId!):hiddenReplayStatuses.has(interval.kind.replace(/-model$/,'')))continue;
       add({id:`interval:${interval.kind}:${interval.start}`,kind:isSkill?'skill':'status',label:isSkill?interval.label:statusLabel(interval.kind),
         iconKey:isSkill?skillIconKey(options.reference,interval.skillId!):'',color:statusColor(interval.kind),start:interval.start,end:interval.end,
         visualOnly:interval.end===null,detail:`${interval.evidence}. ${interval.detail??''}${interval.end===null?' 2.5s display dwell only.':''}`});
@@ -46,7 +56,7 @@ export function replayCards(options:ReplayOptions,runnerId:string,time:number,sa
       if(sample.temptationMode!=null&&sample.temptationMode>0)add({id:'observed:rushed',kind:'status',label:'RUSH',iconKey:'',color:statusColor('rushed'),start:0,end:null,observedUntil:time+.001,visualOnly:false,detail:'Recorded current rushed state.'});
       if(sample.hp===0)add({id:'observed:hp-empty',kind:'status',label:'Exhausted',iconKey:'',color:statusColor('hp-empty'),start:0,end:null,observedUntil:time+.001,visualOnly:false,detail:'Recorded HP is zero.'});
       if(sample.blockFrontRunnerIndex!=null&&sample.blockFrontRunnerIndex>=0)add({id:'observed:block',kind:'status',label:'Blocked',iconKey:'',color:statusColor('front-block'),start:0,end:null,observedUntil:time+.001,visualOnly:false,detail:'Recorded current front block.'});
-      for(const event of options.race.events)if(event.runnerId===runnerId&&(event.type===3||event.type==='3'))add({id:`event:${event.skillId}:${event.time}`,kind:'skill',label:event.skillId===null?event.label:skillName(options.reference,event.skillId),iconKey:event.skillId===null?'':skillIconKey(options.reference,event.skillId),color:'#79ca0b',start:event.time,end:null,visualOnly:true,detail:'Recorded activation; 2.5s display dwell only.'});
+      for(const event of options.race.events)if(event.runnerId===runnerId&&(event.type===3||event.type==='3')&&(event.skillId===null||!selfVisionOnly(options,event.skillId)))add({id:`event:${event.skillId}:${event.time}`,kind:'skill',label:event.skillId===null?event.label:skillName(options.reference,event.skillId),iconKey:event.skillId===null?'':skillIconKey(options.reference,event.skillId),color:'#79ca0b',start:event.time,end:null,visualOnly:true,detail:'Recorded activation; 2.5s display dwell only.'});
     }
   }
   if(options.overlays?.debuffs)for(const activation of options.debuffActivations??options.analysis?.debuffs??[]){

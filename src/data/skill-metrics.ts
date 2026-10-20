@@ -16,6 +16,12 @@ export interface SkillMetric {
   label:string; value:number|string|null; unit:string; detail:string;
   evidence:'recorded'|'reference'|'sampled'|'simulated'|'unknown'; reason?:string;
 }
+/** Preserve each applied event, but do not repeat its amount as a reference estimate. */
+export function mergeSkillMetrics(actual:SkillMetric[],derived:SkillMetric[]):SkillMetric[]{
+  const key=(label:string)=>{const base=label.split(' · ')[0];return ({'Vision modifier':'Vision distance','Lane speed modifier':'Lane speed'} as Record<string,string>)[base]??base;};
+  const labels=new Set(actual.map(m=>key(m.label)));
+  return [...actual,...derived.filter(m=>!labels.has(key(m.label)))];
+}
 type Effect=SkillReference['branches'][number]['effects'][number];
 interface Applied {id:number;effects:Effect[];start:number;end:number|null;passive:boolean;activation?:SkillActivation;inferred:boolean}
 const cache=new WeakMap<RaceAnalysis,Map<string,SkillMetric[]>>();

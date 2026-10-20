@@ -1,0 +1,15 @@
+<script lang="ts">
+import type {CareerSupport} from '../data/career';import {careerReference,supportLevel} from '../data/career-display';
+export let card:CareerSupport;let failed=false,previous=0;
+$: if(previous!==card.id){previous=card.id;failed=false;}
+$: meta=careerReference.supports[card.id];$: name=meta?.name??`Support ${card.id}`;
+$: type=meta?.type===2?'Friend':meta?.type===3?'Group':({101:'Speed',102:'Power',103:'Guts',105:'Stamina',106:'Wit'} as Record<number,string>)[meta?.command]??'Support';
+$: icon=({Speed:0,Stamina:1,Power:2,Guts:3,Wit:4,Friend:5,Group:6} as Record<string,number>)[type];
+$: slug=name.replace(/^\[[^\]]*\]\s*/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+</script>
+<a class="support-card" class:borrowed-card={card.borrowed===true||card.position===6} href={`https://gametora.com/\u0075mamusume/supports/${card.id}-${slug}`} target="_blank" rel="noopener noreferrer" title={`${name} · ${type} · ${card.limitBreak??'?'} limit breaks · Open GameTora`}>
+  <div class="art">{#if !failed}<img src={`./career/support-${card.id}.png`} alt={name} loading="lazy" onerror={()=>failed=true}/>{:else}<span class="missing-art">{name}</span>{/if}<span class="support-type" aria-label={type}>{#if icon!==undefined}<img src={`./career/support-type-${icon}.png`} alt={type}/>{:else}{type}{/if}</span></div>
+  <div class="support-level"><span class="diamonds" aria-label={`${card.limitBreak??'Unknown'} of 4 limit breaks`}>{#each [1,2,3,4] as n}<i class:filled={card.limitBreak!==null&&n<=card.limitBreak} aria-hidden="true"></i>{/each}</span><strong>Lv {supportLevel(card)??'—'}</strong></div>
+  {#if card.borrowed===true||card.position===6}<span class="borrowed">Borrowed</span>{/if}<span class="support-name">{name}</span>
+</a>
+<style>.support-card{min-width:0;text-decoration:none;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:var(--panel-raised);transition:border-color .15s}.support-card:hover{border-color:var(--accent)}.art{position:relative;aspect-ratio:1;overflow:hidden;background:var(--bg)}img{width:100%;height:100%;display:block;object-fit:cover}.support-type{position:absolute;right:3px;top:3px;width:30px;height:30px}.support-type img{object-fit:contain}.support-card.borrowed-card{border:2px solid #f263a8}.support-card.borrowed-card .support-level{background:#f263a812}.support-level{display:flex;align-items:center;justify-content:space-between;padding:7px 6px;gap:3px}.support-level strong{font-size:var(--font-12);color:var(--text)}.diamonds{display:flex;gap:4px;padding:2px}.diamonds i{display:block;flex:none;width:11px;height:15px;border-radius:0;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);border:1px solid #91a5ac;transform:none;background:#6c7476}.diamonds .filled{background:linear-gradient(135deg,#c1ffff,#2bb9e5);border-color:#a7ecf5}.support-name{font-size:var(--font-9);color:var(--muted);line-height:1.4;padding:0 7px 8px}.borrowed{font-size:var(--font-10);text-align:center;background:#e9529c;color:white;padding:3px}.missing-art{display:block;padding:16px;color:var(--muted);font-size:var(--font-12)}</style>

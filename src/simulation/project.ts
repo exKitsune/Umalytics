@@ -111,7 +111,7 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
     const add=(label:string,value:number|string,unit:string,detail:string)=>items.push({label,value,unit,detail,evidence:'simulated'});
     for(const check of wit)add('Wit check',check.data.checked?(check.data.passed?'Passed':'Failed'):'Not required','',`Actual engine check at ${check.time.toFixed(3)} s.`);
     for(const e of own.filter(e=>e.kind==='effect-applied')){
-      const type=Number(e.data.type),names:Record<number,[string,string]>={1:['Speed stat',''],2:['Stamina stat',''],3:['Power stat',''],4:['Guts stat',''],5:['Wit stat',''],9:['HP effect',''],14:['Gate delay multiplier','×'],21:['Current speed','m/s'],22:['Current speed','m/s'],27:['Target speed','m/s'],28:['Lane speed','m/s'],31:['Acceleration','m/s²']};
+      const type=Number(e.data.type),names:Record<number,[string,string]>={1:['Speed stat',''],2:['Stamina stat',''],3:['Power stat',''],4:['Guts stat',''],5:['Wit stat',''],8:['Vision distance','m'],9:['HP effect',''],14:['Gate delay multiplier','×'],21:['Current speed','m/s'],22:['Current speed','m/s'],27:['Target speed','m/s'],28:['Lane speed','m/s'],31:['Acceleration','m/s²']};
       const [label,unit]=names[type]??[`Effect ${type}`,''];
       add(label,Number(e.data.modifier),unit,`Applied engine modifier at ${e.time.toFixed(3)} s. Duration: ${Number(e.data.duration).toFixed(3)} s. HP modifiers are fractions of maximum HP, not HP points.`);
     }

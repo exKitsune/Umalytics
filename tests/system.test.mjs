@@ -731,4 +731,9 @@ test('fixed replay calculations feed the dashboard without a simulator rerun',as
   assert.match(result.stdout,/Fixed replay math.*passed/);
 });
 
+test('career captures retain safe metadata, reference facts and prerequisite SP costs',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/career-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
+  assert.match(result.stdout,/Career projection.*passed/);
+});
+
 });

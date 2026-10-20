@@ -1,0 +1,10 @@
+<script lang="ts">
+import type {CareerFactor,CareerRecord} from '../data/career';import {factorGroups,type DisplayFactor} from '../data/career-display';
+export let factors:CareerFactor[]|null=null;export let skills:CareerRecord['skills']=null;export let combined:DisplayFactor[]|null=null;
+let rows:DisplayFactor[]=[];
+$: rows=combined??factorGroups(factors,skills);
+const types=[{id:1,name:'Stats',color:'#58baff'},{id:2,name:'Aptitudes',color:'#f27fb2'},{id:3,name:'Unique skills',color:'#81d286'},{id:4,name:'White sparks',color:'#c6ced0'},{id:5,name:'Race sparks',color:'#c6ced0'},{id:6,name:'Scenario sparks',color:'#b89bef'},{id:0,name:'Other sparks',color:'#c6ced0'}];
+</script>
+<div class="factors">{#each types as type}{@const group=rows.filter(r=>r.type===type.id||type.id===0&&![1,2,3,4,5,6].includes(r.type))}{#if group.length}<div class="factor-group" style={`--factor:${type.color}`}><h4>{type.name}</h4><div>{#each group as factor}<span class="factor"><b>{factor.stars??'—'} ★</b>{factor.name}{#if factor.parentStars}<small class="parent-stars" title={`${factor.parentStars} stars from the parent`}>{factor.parentStars} ★</small>{/if}</span>{/each}</div></div>{/if}{/each}
+{#if !rows.length}<p class="unavailable">{factors===null&&combined===null?'Sparks not recorded.':'No sparks recorded.'}</p>{/if}</div>
+<style>.factors{display:grid;gap:13px}.factor-group{border-left:3px solid var(--factor);padding-left:12px}.factor-group h4{font-size:var(--font-9);color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin:0 0 6px}.factor-group>div{display:flex;gap:6px;flex-wrap:wrap}.factor{display:inline-flex;align-items:center;gap:7px;font-size:var(--font-12);border:1px solid transparent;border-radius:5px;padding:5px 7px;background:var(--bg);line-height:1.4}.factor b{white-space:nowrap;color:var(--factor);font-weight:650}.parent-stars{color:#e7b75b;font-size:var(--font-10);white-space:nowrap}.unavailable{font-size:var(--font-12);color:var(--muted);margin:0}</style>

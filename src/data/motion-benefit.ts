@@ -3,12 +3,18 @@ import type { MotionBand, RunnerMotion } from './race-motion';
 const channels=['min','mid','max'] as const;
 const zero=():MotionBand=>({min:0,mid:0,max:0});
 const envelope=(v:MotionBand):MotionBand=>({min:Math.min(v.min,v.mid,v.max),mid:v.mid,max:Math.max(v.min,v.mid,v.max)});
+export interface LaneMovementGain {
+  distance:MotionBand|null;time:MotionBand|null;
+  otherDistance:MotionBand|null;otherTime:MotionBand|null;
+  otherLabel:'Acceleration'|'Speed effects'|'Other effects'|null;
+}
 export interface MotionBenefit {
   distance:MotionBand|null;time:MotionBand|null;
   activeDistance:MotionBand|null;carryoverDistance:MotionBand|null;carryoverTime:MotionBand|null;
   speedPotentialDistance:MotionBand|null;
   blockedDistance:MotionBand|null;duration:number;assessedDuration:number;coverage:number;
   carryoverComplete:boolean;carryoverEfficiency:number|null;reasons:string[];
+  laneMovement?:LaneMovementGain;
 }
 
 /** Paired paths keep the same recorded race context. Only the chosen effects

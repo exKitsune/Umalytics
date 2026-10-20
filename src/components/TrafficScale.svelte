@@ -1,9 +1,5 @@
-<script lang="ts">
-  const label='Slowdown: white 0.001, yellow 0.25, amber 0.4, red 0.6 m/s or more.';
-</script>
-<span class="traffic-scale" aria-label={label}>
-  <span class="ramp"></span><span class="ticks"><span>0.001</span><span>0.25</span><span>0.4</span><span>≥0.6 m/s</span></span>
-</span>
+<script lang="ts">const label='Slowdown in m/s: white 0.001, yellow 0.25, amber 0.4, red 0.6 or more.';</script>
+<span class="traffic-scale" aria-label={label}><span class="scale-body"><span class="ramp"></span><span class="ticks"><span>0.001</span><span>0.25</span><span>0.4</span><span>≥0.6</span></span></span><small>m/s</small></span>
 <style>
-  .traffic-scale{display:inline-flex;flex-direction:column;gap:5px;width:190px;max-width:100%;vertical-align:middle;flex:none}.ramp{height:6px;border-radius:9px;background:linear-gradient(90deg,#fff,#ffec4a 41.57%,#ffa825 66.61%,#f04444);box-shadow:0 0 0 1px color-mix(in srgb,var(--border) 50%,transparent)}.ticks{position:relative;height:9px;font-size:var(--font-9);font-variant-numeric:tabular-nums;color:var(--muted);line-height:1}.ticks span{position:absolute;transform:translateX(-50%)}.ticks span:first-child{left:0;transform:none}.ticks span:nth-child(2){left:41.57%}.ticks span:nth-child(3){left:66.61%}.ticks span:last-child{right:0;transform:none}
+.traffic-scale{display:inline-flex;align-items:center;gap:8px;width:226px;max-width:100%;flex:none;vertical-align:middle}.scale-body{flex:1;min-width:170px;display:flex;flex-direction:column;gap:6px}.ramp{height:6px;border-radius:9px;background:linear-gradient(90deg,#fff,#ffec4a 41.57%,#ffa825 66.61%,#f04444);box-shadow:0 0 0 1px var(--border)}.ticks{position:relative;display:block;height:10px;font-size:var(--font-9);font-variant-numeric:tabular-nums;color:var(--muted);line-height:1;white-space:nowrap}.ticks>span{position:absolute;top:0}.ticks>span:nth-child(1){left:0}.ticks>span:nth-child(2){left:41.57%;transform:translateX(-50%)}.ticks>span:nth-child(3){left:66.61%;transform:translateX(-50%)}.ticks>span:last-child{right:0}small{font-size:var(--font-9);color:var(--muted)}
 </style>

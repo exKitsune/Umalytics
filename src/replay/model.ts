@@ -199,15 +199,6 @@ function buildReplayScene(options:ReplayOptions,time:number,width:number,height:
   const courseMarkers=replayCourseMarkers(course,options.race.distance??course?.distance??0,options.courseMarkers).filter(m=>m.distance>=from&&m.distance<=to).map(m=>{const point=rawCoursePoint(course,m.distance);return {...m,...transform(point),angle:point.angle-angle};});
   const vision:ReplayScene['vision']=[],visionSources=new Map<string,string>();
   if(options.overlays?.vision)visionSources.set(options.selected,'');
-  if(options.overlays?.debuffs&&options.analysis)for(const [runnerId,runner]of Object.entries(options.analysis.runners))for(const skill of runner.skillActivations){
-    if(!skill.effects.some(effect=>effect.type===8&&(effect.targetType??1)===1))continue;
-    const definition=options.reference?.metadata.skills[skill.referenceSkillId??skill.skillId];
-    const tags=definition?.tagIds??(definition?.tagId!=null?[definition.tagId]:[]);
-    // A green is on for the race. It changes vision distance; it does not draw a cone.
-    if(skill.timingKind==='passive'||tags.some(tag=>tag>=601&&tag<=615))continue;
-    const end=skill.effectiveEnd??skill.end;
-    if(time>=skill.start&&time<Math.max(skill.start+CARD_DWELL,end??skill.start))visionSources.set(runnerId,skillName(options.reference,skill.referenceSkillId??skill.skillId));
-  }
   const debuffs:ReplayScene['debuffs']=[];
   const activations=options.debuffActivations??options.analysis?.debuffs??[];
   if(options.overlays?.debuffs)for(const activation of activations){

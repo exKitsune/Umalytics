@@ -1,0 +1,111 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {parseRaceJson} from '../src/data/import';
+import {parseCareer,careerForHorse} from '../src/data/career';
+import {toPortableRace,toShareableRace} from '../src/data/share';
+import {rating,supportLevel,baseAffinity,careerReference,factorGroups,familyFactors,careerDate,g1Wins,g1WinGroups,raceAffinity,parentAffinity,grandparentAffinity,ancestorScenario,statRank} from '../src/data/career-display';
+import {collectorStatus} from '../src/collector-status';
+import {defaultSettings,type Health} from '../src/api';
+import {mergeSkillMetrics,type SkillMetric} from '../src/data/skill-metrics';
+import {skillCost,totalSkillCost} from '../src/data/skill-cost';
+
+const captured={trained_chara_id:71,owner_viewer_id:111222333444,card_id:100101,rank_score:12868,rank:14,rarity:3,talent_level:5,scenario_id:2,
+  speed:1200,stamina:908,power:695,guts:545,wiz:497,proper_ground_turf:7,proper_distance_mile:8,nickname_id:97,
+  skill_array:[{skill_id:200011,level:1}],support_card_list:[{position:1,support_card_id:30028,exp:37785,limit_break_count:1}],
+  race_result_list:[{program_id:1,turn:40,result_rank:1,result_time:1000000}],factor_info_array:[{factor_id:100101,level:3}],
+  succession_chara_array:[{position_id:10,card_id:100201,owner_viewer_id:222333444555,factor_info_array:[{factor_id:100101,level:2}]}],
+  authentication_token:'not-career-data',private_envelope:{should:'never export'}};
+const career=parseCareer(captured)!;
+assert.equal(career.score,12868);assert.equal(career.stats.power,695);assert.equal(career.aptitudes.mile,8);assert.equal(career.epithetId,97);
+assert.equal(career.legacies[0].trainerId,'222333444555');assert.equal(career.legacies[0].skills,null,'Missing skill list is not an empty list');
+assert.equal(career.legacies[0].stats.speed,null);assert.equal(career.supports![0].borrowed,null,'Slot is not evidence of borrowing');
+assert.equal(supportLevel(career.supports![0]),35);assert.equal(supportLevel({...career.supports![0],exp:118185}),50);
+assert.equal(parseCareer({...captured,owner_viewer_id:0,viewer_id:999})!.trainerId,'999');
+assert.equal(JSON.stringify(career).includes('not-career-data'),false);
+assert.deepEqual(parseCareer(career),career,'Normalized career round trip');
+const horse={trained_chara_id:71,owner_viewer_id:111222333444};
+assert.equal(careerForHorse(horse,{trained_chara_array:[{...captured,owner_viewer_id:333},captured]})!.score,12868);
+assert.equal(careerForHorse(horse,{trained_chara_array:[captured,{...captured}]}),undefined,'Ambiguous identity must not pick one');
+assert.equal(careerForHorse({card_id:100101},{trained_chara_array:[captured]}),undefined,'Card alone does not identify a trained career');
+assert.equal(careerForHorse({...horse,trainer_name:'Test trainer',trained_chara_data:captured},{})!.trainerName,'Test trainer');
+assert.equal(rating(12099)?.label,'A');assert.equal(rating(12100)?.label,'A+');assert.equal(rating(19600)?.label,'UG');assert.equal(rating(28800)?.label,'UE');
+assert.equal(rating(null,14)?.label,'A+');assert.equal(rating(null,null),null);
+assert.equal(skillCost(200012).cost,90);assert.equal(skillCost(200011).cost,200);assert.equal(skillCost(200013).cost,0);
+assert.equal(skillCost(100011).cost,0,'Native unique is not purchased');
+assert.deepEqual(totalSkillCost([{id:200011,level:1},{id:200012,level:1},{id:200011,level:1},{id:987654321,level:1}]),{total:200,unknown:1});
+assert.equal(careerReference.programs[1].name,'February Stakes');assert.equal(careerReference.programs[36].name,'Manyo Stakes');assert.equal(careerReference.programs[1068].name,'Junior Make Debut');assert.ok(Object.values(careerReference.programs).every(r=>!/^Race \d+$/.test(r.name)));assert.equal(careerReference.scenarios[2],'Unity Cup');
+const ids=Object.keys(careerReference.relations).map(Number).slice(0,3);
+assert.equal(baseAffinity(ids[0],ids[1]),baseAffinity(ids[1],ids[0]));assert.ok(baseAffinity(...ids)!<=baseAffinity(ids[0],ids[1])!);
+assert.equal(baseAffinity(ids[0],ids[0]),0);assert.equal(baseAffinity(ids[0],999999),null);
+const knownFactor=Number(Object.keys(careerReference.factors)[0]);
+const zeroLevel=parseCareer({...captured,factor_info_array:[{factor_id:knownFactor,level:0}]})!;
+assert.equal(zeroLevel.factors![0].stars,null,'Capture level zero is not a zero-star spark');
+assert.equal(factorGroups(zeroLevel.factors,null)[0].stars,careerReference.factors[knownFactor].stars);
+const factor=Object.entries(careerReference.factors).find(([,f])=>f.skillIds.length)!;
+assert.equal(factorGroups([{id:Number(factor[0]),stars:3}],null)[0].owned,false);
+assert.equal(factorGroups([{id:Number(factor[0]),stars:3}],[{id:factor[1].skillIds[0],level:1}])[0].owned,true);
+const fixture=JSON.parse(readFileSync('tests/fixtures/race.json','utf8'));fixture.runners[0].career=career;fixture.runners[0].rankScore=null;
+const parsed=parseRaceJson(fixture)[0];assert.deepEqual(parsed.runners[0].career,career);assert.equal(parsed.runners[0].rankScore,12868);
+const portable=toPortableRace(parsed);assert.deepEqual(parseRaceJson(portable)[0].runners[0].career,career);
+assert.equal('career' in toShareableRace(parsed).runners[0],false,'Anonymous sharing must not leak career owner IDs');
+console.log('Career projection, source identity, rating, public catalog, support levels, SP and portable data passed');
+
+const speedFactors=Object.entries(careerReference.factors).filter(([,f])=>f.group===careerReference.factors[knownFactor].group);
+const spark=(stars:number)=>({id:Number(speedFactors.find(([,f])=>f.stars===stars)![0]),stars:null});
+const parent={...career,cardId:100201,factors:[spark(3)],saddles:[1,12,16,18,18,70]};
+const gp={...career,cardId:100301,factors:[spark(2)],saddles:[12,16]};
+const gp2={...career,cardId:100401,factors:[spark(1)],saddles:[12]};
+assert.deepEqual([...g1Wins(parent)].sort((a,b)=>a-b),[12,16,18],'Only distinct individual G1 records count');
+assert.deepEqual(g1WinGroups(parent).map(g=>[g.label,g.races.map(r=>r.id)]),[['Classics & fillies',[18,12,16]]]);
+const allWins={...parent,saddles:Object.keys(careerReference.g1Wins).map(Number)};
+const grouped=g1WinGroups(allWins);
+assert.deepEqual(grouped.map(g=>g.label),['Junior','Classics & fillies','Mile','Sprint','Spring','Autumn','Dirt']);
+assert.equal(grouped.flatMap(g=>g.races).length,g1Wins(allWins).size,'Every recorded G1 variant has exactly one category');
+assert.equal(new Set(grouped.flatMap(g=>g.races.map(r=>r.id))).size,g1Wins(allWins).size);
+assert.ok(grouped.find(g=>g.label==='Spring')!.races.some(r=>r.id===147),'Alternate Takarazuka record stays in Spring');
+assert.ok(grouped.find(g=>g.label==='Dirt')!.races.some(r=>r.id===164),'Alternate JBC venue stays in Dirt');
+assert.deepEqual(g1WinGroups({...parent,saddles:[]}),[],'Do not fill boxes with unwon races');
+assert.equal(raceAffinity(parent,gp),6);assert.equal(raceAffinity({...parent,saddles:null},gp),null);
+const joined=familyFactors([parent,gp,gp2],parent);
+assert.equal(joined.length,1);assert.equal(joined[0].stars,6);assert.equal(joined[0].parentStars,3);
+assert.equal(familyFactors([parent,gp,gp2],parent,gp)[0].stars,2);
+assert.equal(familyFactors([parent,gp,gp2],parent,parent)[0].parentStars,0);
+const fromGp=familyFactors([parent,{...gp,factors:[{id:3000101,stars:1}]}],parent);
+assert.equal(fromGp.find(f=>f.id===3000101)?.parentStars,0);
+assert.equal(parentAffinity(parent,[gp,gp2]).race,9,'Only the two parent–grandparent pairs contribute race bonuses');
+assert.equal(grandparentAffinity(parent,gp).base,baseAffinity(1002,1003));
+const familyBase=baseAffinity(1002,1003)!+baseAffinity(1002,1004)!;
+assert.deepEqual(parentAffinity(parent,[gp,gp2]),{base:familyBase,race:9,total:familyBase+9});
+assert.equal(parentAffinity(parent,[gp]).total,null,'Missing ancestor must not appear as complete affinity');
+assert.equal(grandparentAffinity(parent,{...gp,cardId:null}).total,null);
+assert.equal(parentAffinity(parent,[gp,{...gp2,saddles:null}]).total,null,'Missing win records are not zero wins');
+assert.equal(ancestorScenario({...parent,scenarioId:null,factors:[]}),null,'Unknown scenario is hidden');
+assert.equal(ancestorScenario({...parent,scenarioId:2}),'Unity Cup');
+for(const win of Object.values(careerReference.g1Wins).filter(w=>w.races.length===1)){
+  const art=careerReference.g1Artwork[win.races[0]];
+  assert.ok(art,`G1 race ${win.races[0]} has an artwork lookup`);
+  assert.ok(readFileSync(`public/career/race-${art}.png`).length>0,`G1 artwork ${art} is bundled`);
+}
+assert.equal(careerDate(34,1),'Classic Year Late May');
+assert.equal(careerDate(68,2),'Senior Year Late Oct');
+assert.equal(careerDate(74,1),'Late Jan Finale');
+assert.equal(careerDate(74,null),'Date unavailable');
+assert.equal(statRank(50)?.label,'G');assert.equal(statRank(51)?.label,'G+');
+assert.equal(statRank(1149)?.label,'SS');assert.equal(statRank(1150)?.label,'SS+');
+assert.equal(statRank(1200)?.label,'SS+');assert.equal(statRank(1201)?.label,'UG');
+assert.equal(statRank(1210)?.label,'UG1');assert.equal(statRank(2000)?.label,'US9');
+assert.equal(parseCareer({...captured,support_card_list:[{position:6,support_card_id:30028}]})?.supports?.[0].borrowed,true);
+const health:Health={ok:true,mode:'desktop',analysisService:true,proxy:{state:'stopped',port:0}};
+const paused={...defaultSettings(),collectionEnabled:false};
+assert.equal(collectorStatus(health,true,false,paused,null),'Collection paused');
+assert.equal(collectorStatus(health,true,true,paused,null),'Reconnecting to collector');
+assert.equal(collectorStatus(health,true,false,paused,null),'Collection paused');
+assert.equal(collectorStatus(null,true,false,paused,null),'Connecting to collector');
+assert.equal(collectorStatus(null,false,true,paused,null),'Local viewer');
+console.log('Family spark aggregation, parent–grandparent affinity, G1 artwork, calendar, stat ranks and collector status passed');
+const metric=(label:string,value:number,evidence:SkillMetric['evidence']):SkillMetric=>({label,value,unit:'',detail:'',evidence});
+const merged=mergeSkillMetrics([metric('Speed stat',40,'simulated'),metric('Vision distance',4,'simulated')],
+  [metric('Speed stat · 1',60,'reference'),metric('Vision modifier',4,'reference'),metric('Late target coefficient',.02,'reference')]);
+assert.deepEqual(merged.map(m=>m.label),['Speed stat','Vision distance','Late target coefficient']);
+assert.equal(merged[0].value,40,'Applied value wins over a reference estimate');
+assert.equal(mergeSkillMetrics([metric('Speed stat',40,'simulated'),metric('Speed stat',40,'simulated')],[]).length,2,'Separate applied events are retained');

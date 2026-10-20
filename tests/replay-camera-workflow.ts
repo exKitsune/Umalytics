@@ -8,7 +8,7 @@ import { DEFAULT_REPLAY_WINDOW, cameraAngle, replayCourseMarkers, type ReplayOpt
 import { drawReplay } from '../src/replay/draw';
 import { portraitUrl } from '../src/data/portraits';
 import { iconSource } from '../src/data/game-icons';
-import { replayCardHelp } from '../src/replay/cards';
+import { replayCardHelp, replayCards } from '../src/replay/cards';
 import { runnerColors } from '../src/library';
 import type { Race } from '../src/data/types';
 import { analyzeRace } from '../src/data/analytics';
@@ -48,7 +48,7 @@ for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
   // Course geometry is swept for every course; representative courses also run
   // card layout here. The full crowded playback scenarios below exercise cards
   // at every animation frame rather than repeating120s of label history119times.
-  const options:ReplayOptions={race:value,course,reference,selected:value.runners[0].id,follow:'selected',window:140,labels:[10101,10506,10606].includes(course.id),elevation:true,courseMarkers:enabled,intervals:()=>[{kind:'skill',label:'Synthetic corner effect',start:0,end:120,evidence:'recorded',skillId:201431}]};
+  const options:ReplayOptions={race:value,course,reference,selected:value.runners[0].id,follow:'selected',window:140,labels:[10101,10506,10606].includes(course.id),elevation:true,courseMarkers:enabled,intervals:()=>[{kind:'skill',label:'Synthetic corner effect',start:0,end:120,evidence:'recorded',skillId:200362}]};
   const render=(distance:number)=>{texts.length=0;arcs.length=0;fills.length=0;strokes=[];strokeCaps=[];const scene=drawReplay(context,options,distance/course.distance*120,1280,500);renderedFrames++;
     assert.equal(scene.camera.angle,cameraAngle(course,scene.distance));assert.equal(scene.camera.scale,1180/options.window);
     assert.ok(strokes.length>=3);assert.deepEqual(strokes[0],scene.route.map(p=>[p.x,p.y]));
@@ -116,15 +116,18 @@ const outfitMap=await json(join(root,'src/data/outfit-portraits.json'));assert.e
 for(const filename of Object.values(outfitMap) as string[]){const bytes=await readFile(join(root,'public/portraits',filename));assert.equal(bytes.subarray(1,4).toString(),'PNG');}
 const sourceId=race.runners[0].id,targetId=race.runners[1].id,candidateId='synthetic-cone-candidate';
 const candidate={...race.runners[1],id:candidateId,index:2,gate:3,name:'Synthetic cone candidate',skills:[]};
-const visionRace:Race={...race,runners:[{...race.runners[0],strategy:'Late Surger',strategyCode:3,skills:[{id:201541,level:1},{id:201431,level:1},{id:201441,level:1}]},race.runners[1],candidate],
+const visionRace:Race={...race,runners:[{...race.runners[0],strategy:'Late Surger',strategyCode:3,skills:[{id:201541,level:1},{id:201431,level:1},{id:201441,level:1},{id:200362,level:1}]},race.runners[1],candidate],
   frames:race.frames.map(frame=>({...frame,runners:[...frame.runners,{...frame.runners[0],runnerId:candidateId,distance:frame.runners[0].distance===null?null:frame.runners[0].distance+10}]})),
   events:[{time:60,type:3,runnerId:sourceId,skillId:201431,label:'Synthetic vision proc',params:[0,201431,30000,0,0]},
-    {time:60,type:3,runnerId:sourceId,skillId:201441,label:'Synthetic gaze proc',params:[0,201441,0,0,2]}]};
+    {time:60,type:3,runnerId:sourceId,skillId:201441,label:'Synthetic gaze proc',params:[0,201441,0,0,2]},
+    {time:60,type:3,runnerId:sourceId,skillId:200362,label:'Synthetic speed proc',params:[0,200362,30000,0,0]}]};
 const realOptions:ReplayOptions={race:visionRace,course:reference.courses[race.courseId!],reference,selected:sourceId,window:DEFAULT_REPLAY_WINDOW,follow:'selected',labels:true,elevation:true,overlays:{vision:false,debuffs:true},analysis:analyzeRace(visionRace,reference)};
 assert.equal(realOptions.analysis!.debuffs[0].targetRunnerIds[0],targetId);
 arcs.length=0;const modded=drawReplay(context,realOptions,61,1280,500);assert.equal(modded.vision.length,1);assert.ok(modded.vision[0].label.includes('45m'));
 assert.ok(modded.vision[0].candidateRunnerIds.includes(candidateId));assert.ok(!modded.vision[0].candidateRunnerIds.includes(targetId));
 assert.deepEqual(modded.debuffs[0].targets.map(t=>t.runnerId),[targetId]);
+assert.ok(!modded.markers.find(m=>m.runner.id===sourceId)!.cards.some(c=>c.id.startsWith('skill:201431:')),'Self-only vision skill popup is hidden');
+assert.equal(drawReplay(context,{...realOptions,debuffActivations:[]},61,1280,500).vision.length,0,'Self-only vision does not draw an automatic cone');
 const markedCandidate=modded.markers.find(m=>m.runner.id===candidateId)!,markedTarget=modded.markers.find(m=>m.runner.id===targetId)!;
 assert.ok(arcs.some(([x,y,r])=>x===markedCandidate.x&&y===markedCandidate.y&&r===27));assert.ok(arcs.some(([x,y,r])=>x===markedTarget.x&&y===markedTarget.y&&r===29));
 realOptions.overlays!.vision=true;const expired=drawReplay(context,realOptions,80,1280,500);assert.ok(expired.vision[0].label.includes('30m'));assert.deepEqual(expired.debuffs,[]);
@@ -138,6 +141,10 @@ const cardAnalysis=realOptions.analysis!;
 cardAnalysis.runners[sourceId].intervals.push(
   {kind:'downhill-section',label:'Grade',start:59,end:90,evidence:'derived',detail:'Terrain only.'},
   {kind:'downhill-mode-model',label:'DH',start:59,end:70,evidence:'estimated',detail:'Synthetic modeled downhill activity.'},
+  {kind:'force-in',label:'Inward',start:59,end:70,evidence:'recorded',detail:'Inward positioning.'},
+  {kind:'conserve-power',label:'Conserve',start:59,end:70,evidence:'recorded',detail:'Accumulating power.'},
+  {kind:'release-conserve-power',label:'Release',start:59,end:70,evidence:'recorded',detail:'Releasing power.'},
+  {kind:'last-spurt',label:'Spurt',start:59,end:70,evidence:'recorded',detail:'Last spurt.'},
   {kind:'pace-up',label:'PU',start:60,end:60.1,evidence:'recorded',detail:'Short recorded status.'});
 texts.length=0;const cardFrame=drawReplay(context,realOptions,61,1280,500);
 assert.equal(texts.filter(t=>t.startsWith('#')).length,cardFrame.cardGroups.length);
@@ -155,7 +162,27 @@ assert.deepEqual(drawReplay(context,realOptions,61,1280,500),cardFrame,'Reset re
 assert.ok(cardFrame.markers.find(m=>m.runner.id===sourceId)!.cards.some(c=>c.label==='Downhill mode'&&c.detail.includes('Modeled')));
 assert.ok(!cardFrame.markers.some(m=>m.labels.some(label=>/GRADE|Proc|Start/.test(label))));
 assert.ok(cardFrame.markers.find(m=>m.runner.id===targetId)!.cards.some(c=>c.kind==='received'&&c.iconKey.startsWith('skill-')));
-const durationCard=cardFrame.markers.find(m=>m.runner.id===sourceId)!.cards.find(c=>c.id.startsWith('skill:201431:'))!;
+const sourceCards=cardFrame.markers.find(m=>m.runner.id===sourceId)!.cards;
+assert.ok(!sourceCards.some(c=>/^status:(force-in|conserve-power):/.test(c.id)));
+assert.ok(sourceCards.some(c=>c.id.startsWith('status:release-conserve-power:')));
+assert.ok(sourceCards.some(c=>c.id.startsWith('status:last-spurt:')));
+assert.ok(cardAnalysis.runners[sourceId].intervals.some(s=>s.kind==='force-in'),'Replay filters leave analysis intact');
+const fallbackCards=replayCards({...realOptions,analysis:null,intervals:()=>[
+  {kind:'force-in-model',label:'Inward',start:59,end:70,evidence:'estimated'},
+  {kind:'conserve-power',label:'Conserve',start:59,end:70,evidence:'recorded'},
+  {kind:'skill',skillId:201431,label:'Vision',start:59,end:70,evidence:'recorded'},
+  {kind:'skill',skillId:99999999,label:'Unknown skill',start:59,end:70,evidence:'recorded'},
+  {kind:'last-spurt',label:'Spurt',start:59,end:70,evidence:'recorded'},
+]},sourceId,61,cardFrame.markers[0].sample);
+assert.deepEqual(fallbackCards.filter(c=>c.kind!=='received').map(c=>c.label),['Unknown skill','Last spurt']);
+const durationCard=sourceCards.find(c=>c.id.startsWith('skill:200362:'))!;
+const speedProc=cardAnalysis.runners[sourceId].skillActivations.find(s=>s.skillId===200362)!;
+const visionProc=cardAnalysis.runners[sourceId].skillActivations.find(s=>s.skillId===201431)!;
+const mixedAnalysis={...cardAnalysis,runners:{...cardAnalysis.runners,[sourceId]:{
+  ...cardAnalysis.runners[sourceId],skillActivations:[{...speedProc,effects:[...speedProc.effects,...visionProc.effects]}],
+}}};
+assert.ok(replayCards({...realOptions,analysis:mixedAnalysis},sourceId,61,cardFrame.markers[0].sample).some(c=>c.id.startsWith('skill:200362:')),'Skills with speed and vision effects remain visible');
+assert.ok(!replayCards({...realOptions,analysis:null,intervals:undefined},sourceId,61,cardFrame.markers[0].sample).some(c=>c.id.startsWith('event:201431:')),'Recorded-only replay also hides known self-only vision');
 assert.ok(Math.abs(durationCard.progress!-2/3)<1e-7);assert.equal(durationCard.visualOnly,false);
 assert.ok(!cardFrame.markers.find(m=>m.runner.id===sourceId)!.cards.some(c=>c.label==='PU'));
 assert.ok(iconSource(durationCard.iconKey)?.startsWith('data:image/png;base64,'));
@@ -192,7 +219,7 @@ for(const width of [760,1280,1920])for(const scenario of ['crossing','heights','
       distance:200+20*time+(i-(runners.length-1)/2)*2+(i%2?1:-1)*(time-6)*2}))};})};
   const reserve={x:width-222,y:38,width:210,height:100};
   const layoutOptions:ReplayOptions={race:layoutRace,course:reference.courses[10506],reference,selected:runners[0].id,follow:'selected',window:140,labels:true,elevation:true,cardObstacles:[reserve],
-    intervals:id=>Array.from({length:scenario==='heights'?6:scenario==='crowded'?5:2},(_,i)=>({kind:'skill',label:`Layout effect ${i+1}`,skillId:201431,start:scenario==='heights'?i*.63:0,end:12,evidence:'recorded'}))};
+    intervals:id=>Array.from({length:scenario==='heights'?6:scenario==='crowded'?5:2},(_,i)=>({kind:'skill',label:`Layout effect ${i+1}`,skillId:200362,start:scenario==='heights'?i*.63:0,end:12,evidence:'recorded'}))};
   if(scenario==='crowded')for(const zoom of [150,200,300,600]){
     const wideOptions={...layoutOptions,window:zoom};let maxOverlap=0,maxOverlapRatio=0,maxStep=0,last:ReturnType<typeof drawReplay>|null=null;
     for(let frame=60;frame<150;frame++){

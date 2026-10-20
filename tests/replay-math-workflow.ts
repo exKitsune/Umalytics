@@ -56,6 +56,80 @@ const noGain=measureMotionBenefit(blocked.build().runners.r0,blocked.build({excl
 assert.equal(noGain.distance!.mid,0,'Final cap removes the entire direct-speed gain');
 assert.ok(Math.abs(noGain.blockedDistance!.mid-2)<1e-8);
 
+// Lane skills grant one shared target bonus while the prior tick moved.
+// An overlap correction alone must not earn that bonus.
+const laneReport=structuredClone(report),laneRace=structuredClone(race),laneTrace=laneReport.simulation.modeled.decisionTrace,laneReference=structuredClone(reference);
+laneReference.metadata.skills[id].branches[0].effects[0].type=28;
+laneTrace.events=[event('initial-stats',0,{speed:800,stamina:800,power:800,guts:800,wisdom:800},''),
+  event('skill-activated',.5,{}),event('effect-evaluated',.5,{type:28,ability:0,modifier:.1,duration:1.5}),
+  event('effect-applied',.5,{type:28,ability:0,modifier:.1,duration:1.5}),event('effect-ended',2,{})];
+let laneSpeed=20;
+laneTrace.motion.forEach((r:number[],i:number)=>{
+  const target=20+(i>=6&&i<=15?.4:0);
+  laneSpeed=laneSpeed<target?Math.min(target,laneSpeed+.2):Math.max(target,laneSpeed-.08);
+  r[m.lane]=Math.max(0,Math.min(10,i-4))*.01;r[m.target]=target;
+  r[m.unclamped]=r[m.selfSpeed]=r[m.skillSpeed]=r[m.speed]=laneSpeed;
+});
+laneReport.simulation.modeled.frames.forEach((f:any,i:number)=>f.horses[0].lane=laneTrace.motion[Math.min(i,39)][m.lane]);
+const laneValue=projectSimulation(laneRace,laneReport,laneReference)!;
+const laneActivation=laneValue.analysis.runners.r0.skillActivations[0],laneKey=activationMotionKey('r0',laneActivation);
+const laneEngine=createTraceMotionEngine(laneValue.race,reference,laneValue.analysis,laneTrace);
+const laneWithout=laneEngine.build({excludeActivationKey:laneKey}).runners.r0;
+assert.ok(laneWithout.samples.every(s=>Math.abs(s.constrained!.mid-20)<1e-6),'Remove the forward target bonus, including its deceleration tail');
+const laneGain=measureMotionBenefit(laneEngine.build().runners.r0,laneWithout,[{start:.5,end:2}]);
+assert.ok(Math.abs(laneGain.distance!.mid-.46)<1e-6,'Lane movement gains 0.46m in the fixed trajectory');
+assert.ok(laneGain.time!.mid<0);
+await enrichSimulation(laneValue,laneTrace,laneReference);
+assert.ok(Math.abs(laneValue.runners.r0.impacts[id]!.distance!.mid-.46)<1e-6,'Lane-only skill gains reach the dashboard');
+assert.deepEqual(laneValue.runners.r0.impacts[id]!.effects,[],'No effectiveness percentage for lane movement');
+assert.ok(Math.abs(laneValue.runners.r0.totals.benefit!.distance!.mid-.46)<1e-6,'Combined movement includes lane skills');
+assert.equal(laneValue.runners.r0.impacts[id]!.carryoverEfficiency,null,'No invented lane carryover efficiency');
+const laneSplit=laneValue.runners.r0.impacts[id]!.laneMovement!;
+assert.ok(Math.abs(laneSplit.distance!.mid-.46)<1e-6);
+assert.equal(laneSplit.otherDistance!.mid,0);assert.equal(laneSplit.otherLabel,null);
+assert.deepEqual(laneValue.runners.r0.totals.benefit!.laneMovement,laneSplit,'Joint totals retain the lane breakdown');
+const mixedLaneReport=structuredClone(laneReport),mixedLaneReference=structuredClone(laneReference),mixedLaneTrace=mixedLaneReport.simulation.modeled.decisionTrace;
+mixedLaneReference.metadata.skills[id].branches[0].effects.push({type:31,rawValue:10000,valueUsage:1,levelUsage:0,targetType:1});
+mixedLaneTrace.events=[event('initial-stats',0,{speed:800,stamina:800,power:800,guts:800,wisdom:800},''),event('skill-activated',.5,{}),
+  event('effect-evaluated',.5,{type:28,ability:0,modifier:.1,duration:1.5}),event('effect-applied',.5,{type:28,ability:0,modifier:.1,duration:1.5}),
+  event('effect-evaluated',.5,{type:31,ability:1,modifier:1,duration:1.5}),event('effect-applied',.5,{type:31,ability:1,modifier:1,duration:1.5}),event('effect-ended',2,{})];
+let mixedLaneSpeed=21;
+mixedLaneTrace.motion.forEach((r:number[],i:number)=>{
+  const target=22+(i>=6&&i<=15?.4:0),accel=.5+(i>=5&&i<20?1:0);
+  mixedLaneSpeed=mixedLaneSpeed<target?Math.min(target,mixedLaneSpeed+accel*.1):Math.max(target,mixedLaneSpeed-.08);
+  r[m.target]=target;r[m.acceleration]=accel;r[m.unclamped]=r[m.selfSpeed]=r[m.skillSpeed]=r[m.speed]=mixedLaneSpeed;
+});
+mixedLaneReport.simulation.modeled.frames.forEach((f:any,i:number)=>f.horses[0].speed=mixedLaneTrace.motion[Math.min(i,39)][m.speed]);
+const mixedLaneValue=projectSimulation(laneRace,mixedLaneReport,mixedLaneReference)!;
+await enrichSimulation(mixedLaneValue,mixedLaneTrace,mixedLaneReference);
+const mixedLaneImpact=mixedLaneValue.runners.r0.impacts[id]!,split=mixedLaneImpact.laneMovement!;
+assert.equal(split.otherLabel,'Acceleration');
+assert.ok(split.distance!.mid>0&&split.otherDistance!.mid>0,'Mixed skills have distinct lane and acceleration gains');
+for(const c of ['min','mid','max'] as const){
+  assert.ok(Math.abs(split.distance![c]+split.otherDistance![c]-mixedLaneImpact.distance![c])<1e-10,'Components add to total distance without counting interactions twice');
+  assert.ok(Math.abs(split.time![c]+split.otherTime![c]-mixedLaneImpact.time![c])<1e-10,'Time components use the same reference speed and add to total time');
+}
+const restoredLane=projectSimulation(laneRace,mixedLaneReport,mixedLaneReference)!;
+assert.equal(restoreDerived(restoredLane,'lane-split',packDerived(mixedLaneValue,'lane-split')),true);
+assert.deepEqual(restoredLane.runners.r0.impacts[id]!.laneMovement,split,'Saved analysis retains the gain breakdown');
+const twoLaneAnalysis=structuredClone(laneValue.analysis);
+twoLaneAnalysis.runners.r0.skillActivations.push({...laneActivation,skillId:id+1});
+const twoLane=createTraceMotionEngine(laneValue.race,reference,twoLaneAnalysis,laneTrace);
+assert.deepEqual(twoLane.build({excludeActivationKey:laneKey}).runners.r0.samples.map(s=>s.constrained),twoLane.build().runners.r0.samples.map(s=>s.constrained),'Another lane skill preserves the single shared bonus');
+assert.ok(Math.abs(measureMotionBenefit(twoLane.build().runners.r0,twoLane.build({excludeActivationKeys:[laneKey,activationMotionKey('r0',{...laneActivation,skillId:id+1})]}).runners.r0,[{start:.5,end:2}]).distance!.mid-.46)<1e-6,'Removing both lane skills removes the bonus once');
+const stationaryLane=structuredClone(laneTrace);
+stationaryLane.motion.forEach((r:number[])=>{r[m.lane]=0;r[m.target]=r[m.unclamped]=r[m.selfSpeed]=r[m.skillSpeed]=r[m.speed]=20;});
+const stationaryRace=structuredClone(laneValue.race);stationaryRace.frames.forEach(f=>f.runners[0].lane=0);
+const stationaryEngine=createTraceMotionEngine(stationaryRace,reference,laneValue.analysis,stationaryLane);
+assert.equal(measureMotionBenefit(stationaryEngine.build().runners.r0,stationaryEngine.build({excludeActivationKey:laneKey}).runners.r0,[{start:.5,end:2}]).distance!.mid,0,'Stationary lane skills do not gain forward speed');
+const overlapTrace=structuredClone(stationaryLane),overlapRace=structuredClone(stationaryRace);
+overlapTrace.motion.forEach((r:number[],i:number)=>r[m.lane]=i*.01);
+overlapRace.frames.forEach((f,i)=>f.runners[0].lane=(i+1)*.01);
+const overlapEngine=createTraceMotionEngine(overlapRace,reference,laneValue.analysis,overlapTrace);
+assert.equal(measureMotionBenefit(overlapEngine.build().runners.r0,overlapEngine.build({excludeActivationKey:laneKey}).runners.r0,[{start:.5,end:2}]).distance!.mid,0,'Post-motion collision separation is not a lane skill move');
+const incompleteLane=createTraceMotionEngine({...laneValue.race,frames:[]},reference,laneValue.analysis,laneTrace);
+assert.equal(measureMotionBenefit(incompleteLane.build().runners.r0,incompleteLane.build({excludeActivationKey:laneKey}).runners.r0,[{start:.5,end:2}]).distance,null,'Missing starting lanes cannot be silently treated as a measured zero');
+
 // Both skills alone fill the cap. Individual marginal removals are zero, but
 // jointly removing them loses 2 m: the total must be its own comparison.
 const pairedAnalysis=structuredClone(analysis),pairedTrace=structuredClone(trace);
@@ -94,6 +168,31 @@ const safe=projectSimulation(race,report,reference)!;
 assert.equal(restoreDerived(safe,'authorized-synthetic-key',gzip(JSON.stringify(malicious))),true);
 assert.equal(safe.analysis.runners.r0.skillActivations.length,1);assert.equal(safe.analysis.runners.r0.statBreakdown.stats.speed.final,800);
 assert.equal(safe.runners.r0.spurt.decisions[0].rolls!.length,2);assert.ok(safe.runners.r0.motion.samples.length>0);
+
+// Removing the traced power-release acceleration retains its speed carryover.
+// The field, RNG and activation schedule stay fixed; no simulator call is made.
+const powerReport=structuredClone(report),powerRace=structuredClone(race);
+powerRace.runners[0].skills=[];
+const powerTrace=powerReport.simulation.modeled.decisionTrace;
+powerTrace.events=[event('skill-activated',1,{},'asitame'),event('effect-applied',1,{type:31,modifier:1,duration:1},'asitame'),event('effect-ended',2,{},'asitame')];
+let powerSpeed=20;
+powerTrace.motion.forEach((r:number[])=>{const active=r[m.time]>=1&&r[m.time]<2;powerSpeed+=.1*(.5+Number(active));
+  r[m.acceleration]=.5+Number(active);r[m.target]=24;r[m.unclamped]=r[m.selfSpeed]=r[m.skillSpeed]=r[m.speed]=powerSpeed;});
+const powerValue=projectSimulation(powerRace,powerReport,reference)!;
+const powerEngine=createTraceMotionEngine(powerValue.race,reference,powerValue.analysis,powerTrace);
+const powerWithout=powerEngine.build({runnerId:'r0',excludePowerRelease:true}).runners.r0;
+const powerGain=measureMotionBenefit(powerEngine.build().runners.r0,powerWithout,[{start:1,end:2}],null);
+assert.ok(Math.abs(powerGain.distance!.mid-2.55)<1e-8,'One-second release saves 0.55m during release plus 2m of carryover before finish');
+assert.ok(powerGain.time!.mid<0);assert.ok(powerWithout.samples.every(s=>Math.abs(s.constrained!.mid-(20+Math.min(4,s.time+.1)*.5))<1e-8));
+await enrichSimulation(powerValue,powerTrace,reference);
+assert.ok(Math.abs(powerValue.runners.r0.powerBenefit!.distance!.mid-2.55)<1e-8,'Dashboard uses the same fixed-velocity comparison');
+const restoredPower=projectSimulation(powerRace,powerReport,reference)!;
+assert.equal(restoreDerived(restoredPower,'power-key',packDerived(powerValue,'power-key')),true);
+assert.deepEqual(restoredPower.runners.r0.powerBenefit,powerValue.runners.r0.powerBenefit,'Saved analysis retains power gain');
+const cappedPower=structuredClone(powerTrace);
+cappedPower.motion.forEach((r:number[])=>{r[m.unclamped]=20.1;r[m.selfSpeed]=r[m.skillSpeed]=r[m.speed]=20;r[m.cap]=20;r[m.blocker]=1;});
+const powerBlocked=createTraceMotionEngine(powerValue.race,reference,powerValue.analysis,cappedPower);
+assert.equal(measureMotionBenefit(powerBlocked.build().runners.r0,powerBlocked.build({excludePowerRelease:true}).runners.r0,[{start:1,end:2}],null).distance!.mid,0,'Traffic cap can consume the release acceleration entirely');
 
 // A selected target is not a delivered effect. Only a recipient effect-applied
 // event inside the native immediate-delivery sequence qualifies.

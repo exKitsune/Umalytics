@@ -50,7 +50,7 @@ export interface RunnerMotion {
   paceStarts: { time: number; kind: string; detail: string }[]; detail: string;
 }
 export interface RaceMotion { runners: Record<string, RunnerMotion>; detail: string }
-export interface RaceMotionOptions { runnerId?: string; excludeActivationKey?: string | null;excludeActivationKeys?:readonly string[];excludeEffectTypes?:readonly number[];excludeStatusKey?:string|null;applyInferredModes?:boolean }
+export interface RaceMotionOptions { excludePowerRelease?:boolean; runnerId?: string; excludeActivationKey?: string | null;excludeActivationKeys?:readonly string[];excludeEffectTypes?:readonly number[];excludeStatusKey?:string|null;applyInferredModes?:boolean }
 export const activationMotionKey = (sourceId: string, activation: Pick<SkillActivation, 'skillId' | 'start'>) => `${sourceId}:${activation.skillId}:${activation.start}`;
 export const statusMotionKey=(runnerId:string,interval:Pick<StatusInterval,'kind'|'start'>)=>`${runnerId}:${interval.kind}:${interval.start}`;
 const styleSpeed: Record<number, number[]> = { 1: [1,.98,.962],2: [.978,.991,.975],3: [.938,.998,.994],4: [.931,1,1],5: [1.063,.962,.95] };

@@ -28,7 +28,7 @@
 </script>
 {#if impact&&(expanded||hasData||useMotion)}
   <div class="skill-impact" class:expanded>
-    {#if lane}<p class="unavailable">Lane movement is shown below. Forward gain depends on the path it opened.</p>{:else if useMotion&&motion}<MotionSkillImpactView value={motion} {expanded}/>{:else if components.length}<div class="effect-components">{#each components as effect (effect.kind)}<EffectUtilization {effect} {expanded}/>{/each}</div>
+    {#if useMotion&&motion}<MotionSkillImpactView value={motion} {expanded}/>{:else if lane}<p class="unavailable">Forward gain needs matched lane-movement data.</p>{:else if components.length}<div class="effect-components">{#each components as effect (effect.kind)}<EffectUtilization {effect} {expanded}/>{/each}</div>
     {:else if percent!==null}<div class="utilization">
       <div class="meter-heading"><span>{meterLabel}{partialRate!==null?' · partial':''}</span><strong>{percent}% effective</strong></div>
       <div class="meter" role="meter" aria-label={partialRate!==null?`${meterLabel} in assessed portion`:meterLabel} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}><i style:width={`${percent}%`}></i></div>

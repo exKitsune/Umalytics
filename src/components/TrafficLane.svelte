@@ -27,6 +27,7 @@
   }
 </script>
 <g class="traffic-lane">
+  <rect class="traffic-track" x={left} y={y} width={right-left} height="16" rx="3" fill="var(--text)" fill-opacity="0.055" pointer-events="none" aria-hidden="true"/>
   {#each cells as cell}<rect class="traffic-tick" x={cell.start} y={y} width={cell.end-cell.start} height="16" fill={cell.color} pointer-events="none"/>{/each}
   <rect class="traffic-hit-area" x={left} y={y} width={right-left} height="18" fill="transparent" role="slider" tabindex="0" aria-label="Traffic lane" aria-valuemin="0" aria-valuemax={finish} aria-valuenow={hover??time} aria-valuetext={`${status} · ${slowdown}`} onpointermove={move} onpointerleave={()=>hover=null} onpointerdown={event=>{event.stopPropagation();move(event);if(hover!==null)onSeek(hover);}} onfocus={()=>hover=time} onblur={()=>hover=null} onkeydown={key}/>
   {#if hover!==null&&cursor!==null}

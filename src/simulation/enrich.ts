@@ -8,7 +8,7 @@ import {populateStatusImpacts,statusImpactTotals} from '../data/status-impact';
 import {populateSkillImpacts,contributionTotals} from '../data/skill-impact';
 import {modeImpactsFor} from '../data/status-mode-impact';
 import {motionSkillImpact,activationImpact} from '../data/motion-skill-impact';
-import {metricsForSkill} from '../data/skill-metrics';
+import {metricsForSkill,mergeSkillMetrics} from '../data/skill-metrics';
 import {skillTotals,movementUse} from '../data/skill-totals';
 import {atTime} from '../data/effect-sampling';
 import {registerReplayMotion,activationMotionKey} from '../data/race-motion';
@@ -73,6 +73,11 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
   for(const runner of race.runners){
     await checkpoint();const detail=calculation.runners[runner.id],ready=value.runners[runner.id],display=analysis.runners[runner.id];
     const motion=engine.build({runnerId:runner.id}).runners[runner.id];
+    const releases=ready.power?.releases.filter(r=>r.end>r.start)??[];
+    if(releases.length){
+      const without=engine.build({runnerId:runner.id,excludePowerRelease:true}).runners[runner.id];
+      ready.powerBenefit=measureMotionBenefit(motion,without,releases,null);
+    }
     const modes=modeImpactsFor(race,reference,calculation,runner.id);
     for(const mode of modes){const summary=detail.statusImpacts.find(i=>i.kind===mode.kind);
       if(summary){summary.modeledExtraDistance=mode.reachableExtraDistance;summary.modeledExtraTime=mode.reachableExtraTime;summary.modeledExtraHp=mode.reachableExtraHp;
@@ -98,7 +103,8 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
             timeDeltaMin:impact.carryoverTime?.min??null,timeDeltaMax:impact.carryoverTime?.max??null,detail:impact.detail};
         }
       }
-      metrics[row.skillId]=[...(ready.metrics[row.skillId]??[]).filter(m=>m.label!=='Movement / finish-time gain'),...metricsForSkill(race,reference,calculation,runner.id,row.skillId)];
+      const actual=(ready.metrics[row.skillId]??[]).filter(m=>m.label!=='Movement / finish-time gain');
+      metrics[row.skillId]=mergeSkillMetrics(actual,metricsForSkill(race,reference,calculation,runner.id,row.skillId));
     }
     for(const incoming of detail.receivedDebuffImpacts){
       const a=calculation.runners[incoming.sourceRunnerId].skillActivations.find(a=>a.skillId===incoming.skillId&&a.start===incoming.start);

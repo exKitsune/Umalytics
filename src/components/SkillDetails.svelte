@@ -8,6 +8,7 @@
   import type { RaceAnalysis } from '../data/analytics';
   import { skillImpactSummary } from '../data/skill-impact';
   import SkillImpact from './SkillImpact.svelte';
+  import RecoveryTiming from './RecoveryTiming.svelte';
   import { motionSkillImpact } from '../data/motion-skill-impact';
   import { metricsForSkill } from '../data/skill-metrics';
   import SkillMetrics from './SkillMetrics.svelte';
@@ -26,6 +27,7 @@
   $: skill=getSkillReference(reference,skillId);
   $: levelLabel=runner?uniqueLevelLabel(reference,runner,skillId):null;
   $: componentMetrics=runner?metricsForSkill(race,reference,analysis,runner.id,skillId):[];
+  $: pureRecovery=!!skill&&skill.branches.every(b=>b.effects.length>0&&b.effects.every(e=>e.type===9));
   $: impact=runner?skillImpactSummary(analysis.runners[runner.id],skillId):null;
   $: row=runner?analysis.runners[runner.id]?.skillRows.find(r=>r.skillId===skillId):null;
   $: usedBranches=new Set(row?.activations.map(a=>a.effectBranch).filter(b=>b!==null)??[]);
@@ -40,8 +42,8 @@
     {#if skill?.description}<p class="description">{skill.description}</p>{/if}
     {#if row?.activations.length}<div class="activation-links">{#each row.activations as a}<button onclick={()=>onSeek(a.start)}>▶ {a.start.toFixed(2)} s{#if a.timingKind==='instant'}<small>Instant</small>{:else if a.effectiveDuration!=null}<small>{a.effectiveDuration.toFixed(2)} s</small>{/if}</button>{/each}</div>
     {:else if row}<p class="outcome" class:active={row.effectiveActive}>{row.effectiveActive?'✓':'×'} {nonProcLabel(row,reference)}</p>{/if}
-    {#if impact&&row?.effectiveActive&&(!componentMetrics.length||skill?.branches.some(b=>b.effects.some(e=>[9,21,22,27,31].includes(e.type))))}<section><h3>Effectiveness <small class="calculated">Calculated</small></h3><SkillImpact {impact} expanded motion={runner?motionSkillImpact(race,reference,analysis,runner.id,skillId):null}/></section>{/if}
-    {#if runner}<SkillMetrics expanded metrics={componentMetrics}/>{/if}
+    {#if impact&&row?.effectiveActive&&(!componentMetrics.length||skill?.branches.some(b=>b.effects.some(e=>[9,21,22,27,28,31].includes(e.type))))}<section><h3>{pureRecovery?'Recovery timing':skill?.branches.some(b=>b.effects.some(e=>e.type===28))?'Movement gain':'Effectiveness'}{#if !pureRecovery}<small class="calculated">Calculated</small>{/if}</h3>{#if pureRecovery}{#each row.activations as activation}<RecoveryTiming recovery={analysis.runners[runner!.id]?.skillImpacts.find(i=>i.skillId===skillId&&i.start===activation.start)?.recovery??impact.recovery} starts={[activation.start]}/>{/each}{:else}<SkillImpact {impact} expanded motion={runner?motionSkillImpact(race,reference,analysis,runner.id,skillId):null}/>{/if}</section>{/if}
+    {#if runner&&!pureRecovery}<SkillMetrics expanded activated={row?.effectiveActive??false} metrics={componentMetrics}/>{/if}
     {#if row?.simulation&&!row.effectiveActive}<p class="muted">{row.nonProcReason}</p>{/if}
     {#if row?.simulation}<SimulationChecks checks={row.simulation.checks} {onSeek}/>{/if}
     {#if skill}
@@ -51,8 +53,9 @@
         {@const activation=row?.activations.find(a=>a.effectBranch===index||skill.branches.length===1)}
         {@const levelNote=analysis.source!=='simulation'&&runner?levelBuffExplanation(reference,runner,skillId,branch.effects):null}
         {@const branched=skill.branches.length>1}
-        <section class="skill-effects"><h3>{branches.length>1?`Variant ${i+1}`:analysis.source==='simulation'?'Effect definitions':'Effects'}</h3>
-          <ul>{#each branch.effects as effect}{@const kind=velocityKind(effect.type)}<li>{#if kind}<SpeedTerm {kind} up={effect.rawValue>=0} text={effectText(effect,runner,skillId)}/>{:else}{effectText(effect,runner,skillId)}{/if}{#if teamScaleNote(runner,effect)}<small class="scale-note">{teamScaleNote(runner,effect)}</small>{/if}</li>{/each}</ul>
+        {@const effects=branch.effects.filter(e=>!([1,2,3,4,5,8].includes(e.type)&&componentMetrics.some(m=>m.value!==null&&(m.label==='Vision modifier'?'Vision distance':m.label.split(' · ')[0])===({1:'Speed stat',2:'Stamina stat',3:'Power stat',4:'Guts stat',5:'Wit stat',8:'Vision distance'} as Record<number,string>)[e.type])))}
+        <section class="skill-effects">{#if effects.length}<h3>{branches.length>1?`Variant ${i+1}`:analysis.source==='simulation'?'Effect definitions':'Effects'}</h3>
+          <ul>{#each effects as effect}{@const kind=velocityKind(effect.type)}<li>{#if kind}<SpeedTerm {kind} up={effect.rawValue>=0} text={effectText(effect,runner,skillId)}/>{:else}{effectText(effect,runner,skillId)}{/if}{#if teamScaleNote(runner,effect)}<small class="scale-note">{teamScaleNote(runner,effect)}</small>{/if}</li>{/each}</ul>{/if}
           {#if levelNote}<p class="level-note">{levelNote.detail}</p>{/if}
           <div class="duration"><span>Duration</span><strong>{activation?.timingKind==='instant'?'Instant':activation?.effectiveDuration!=null?`${Number(activation.effectiveDuration.toFixed(3))} s`:durationText(branch,race.distance)}</strong></div>
           {#if !branched||i===branches.length-1}

@@ -60,6 +60,7 @@ export interface Runner {
   fanCount?: number | null;
   starCount?: number | null;
   rankScore?: number | null;
+  career?: import('./career').CareerRecord;
   gutsOrder?: number | null;
   wisdomOrder?: number | null;
   defeatFlags?: number | null;

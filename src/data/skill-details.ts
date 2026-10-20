@@ -16,7 +16,7 @@ export function effectText(effect: SkillReference['branches'][number]['effects']
   const value=resolved??effect.rawValue/10000;
   const signed=value>0?`+${Number(value.toFixed(5))}`:String(Number(value.toFixed(5)));
   const amount=[10,42].includes(effect.type)?String(Number(value.toFixed(5))):effect.type===9?`${Number((value*100).toFixed(3))}%`:signed;
-  const unit=[21,22,27,28].includes(effect.type)?' m/s':effect.type===31?' m/s²':effect.type===14?' s':effect.type===10||effect.type===42?'×':'';
+  const unit=[21,22,27,28].includes(effect.type)?' m/s':effect.type===8?' m':effect.type===31?' m/s²':effect.type===14?' s':effect.type===10||effect.type===42?'×':'';
   const label=effect.type===9&&value<0?'HP cost':names[effect.type]??`Effect ${effect.type}`;
   if(resolved!==null&&effect.levelUsage===1)return `${label} ${amount}${unit}`;
   if(effect.valueUsage>=3&&effect.valueUsage<=7)return `${label} · scales with racing-team ${teamStatNames[effect.valueUsage]}`;
@@ -76,7 +76,7 @@ function baseAmount(effect: SkillReference['branches'][number]['effects'][number
   const value = effect.rawValue / 10000;
   if (effect.type === 9) return `${Number((value * 100).toFixed(3))}%`;
   const signed = value > 0 ? `+${Number(value.toFixed(5))}` : String(Number(value.toFixed(5)));
-  const unit = [21, 22, 27, 28].includes(effect.type) ? ' m/s' : effect.type === 31 ? ' m/s²' : effect.type === 14 ? ' s' : effect.type === 10 || effect.type === 42 ? '×' : '';
+  const unit = [21, 22, 27, 28].includes(effect.type) ? ' m/s' : effect.type === 8 ? ' m' : effect.type === 31 ? ' m/s²' : effect.type === 14 ? ' s' : effect.type === 10 || effect.type === 42 ? '×' : '';
   return `${signed}${unit}`;
 }
 function joinWords(words: string[]): string {

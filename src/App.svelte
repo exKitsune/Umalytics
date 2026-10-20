@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import {collectorStatus} from './collector-status';
   import {formatRaceTime} from './data/race-time';
   import { importRace, parseRaceJson, sampleAt } from './data';
   import type { Race, RaceCategory } from './data/types';
@@ -70,11 +71,14 @@
   let time = 0;
   let playing = false;
   let playbackSpeed = 1;
+  let sidebarCollapsed=localStorage.getItem('umalytics.library-collapsed')==='true';
+  function toggleLibrary(){sidebarCollapsed=!sidebarCollapsed;localStorage.setItem('umalytics.library-collapsed',String(sidebarCollapsed));}
   let search = '';
   let filter = 'all';
   let theme = browserSettings.theme;
   let fontScale = browserSettings.fontScale;
   let health: Health|null = null;
+  let healthReconnecting=false;
   let settings = defaultSettings();
   let certificate: CertificateStatus|null = null;
   let settingsOpen = false;
@@ -124,11 +128,11 @@
     if(old.courseId===caption.courseId&&old.distance===caption.distance&&old.courseInference===caption.courseInference&&old.courseIdentity?.source===caption.courseIdentity?.source)return;
     library=library.map(e=>e.id===id?{...e,...caption}:e);
   });
-  $: collecting = health?.proxy?.state==='running' && settings.collectionEnabled && certificate?.trusted;
-  $: gameConnected=health?.proxy?.gameConnected===true;
+  $: collecting = !healthReconnecting && health?.proxy?.state==='running' && settings.collectionEnabled && certificate?.trusted;
+  $: gameConnected=!healthReconnecting&&health?.proxy?.gameConnected===true;
   $: setupSettled=totalRemote>0||library.some(e=>!e.synthetic&&(!!e.remoteId||e.id.startsWith('capture-')));
   $: setupAttention=desktopSession&&!setupSettled;
-  $: collectorLabel = !health || health.mode!=='desktop' ? 'Local viewer' : !settings.collectionEnabled ? 'Collection paused' : !certificate?.trusted ? 'Certificate needed' : gameConnected ? 'Game connected' : health.proxy?.state==='running' ? 'Ready · waiting for game' : health.proxy?.state==='starting' ? 'Starting collector' : 'Collector offline';
+  $: collectorLabel=collectorStatus(health,desktopSession,healthReconnecting,settings,certificate);
   function modalFocus(node:HTMLElement) {
     previousFocus=document.activeElement as HTMLElement;node.focus();
     const handler=(e:KeyboardEvent)=>{if(e.key==='Escape'){closeSettings();return;}if(e.key!=='Tab')return;const elements=Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),[tabindex="0"]'));const first=elements[0],last=elements.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===node)){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}};
@@ -265,11 +269,11 @@
   async function loadHistory(){historyLoading=true;try{while(nextOffset!==null&&!disposed){const offset=nextOffset;if(!await loadPage(offset))return;await new Promise(resolve=>setTimeout(resolve,30));}historyLoaded=true;}catch(e){error=`History could not be loaded: ${e}`;}finally{historyLoading=false;}}
   let healthPolling=false;
   async function prepareDesktopStorage(){if(storageReady||migrationRunning||importing||!health?.csrfToken||Date.now()-migrationAttemptAt<5000)return;migrationRunning=true;migrationAttemptAt=Date.now();try{const preferences=await migrateBrowserStorage(health.csrfToken);theme=preferences.theme;fontScale=normalizeFontScale(preferences.fontScale);raceTags=preferences.raceTags??{};library=library.filter(entry=>!entry.id.startsWith('local-')||entry.remoteId);storageReady=true;migrationError='';}catch{migrationError='Your browser library is still being moved to Umalytics. Originals are saved; retrying shortly.';}finally{migrationRunning=false;}}
-  async function pollHealth(){if(!['localhost','127.0.0.1'].includes(location.hostname)||healthPolling)return;healthPolling=true;try{health=await api<Health>('health');certificate=health.certificate??null;if(health.mode==='desktop'&&desktopSession)await prepareDesktopStorage();}catch{health=null;}finally{healthPolling=false;}}
+  async function pollHealth(){if(!['localhost','127.0.0.1'].includes(location.hostname)||healthPolling)return;healthPolling=true;try{health=await api<Health>('health');healthReconnecting=false;certificate=health.certificate??null;if(health.mode==='desktop'&&desktopSession)await prepareDesktopStorage();}catch{healthReconnecting=true;}finally{healthPolling=false;}}
   async function poll() {
     if(!['localhost','127.0.0.1'].includes(location.hostname))return;
     if(polling)return;polling=true;
-    try {await pollHealth();if(health?.mode==='desktop'){settings=await api<CollectionSettings>('settings');if(storageReady)await loadPage();}}catch{health=null;}finally{polling=false;}
+    try {await pollHealth();if(!healthReconnecting&&health?.mode==='desktop'){settings=await api<CollectionSettings>('settings');if(storageReady)await loadPage();}}catch{/* A library/settings failure does not invalidate collector health. */}finally{polling=false;}
   }
   async function updateSettings(patch:Partial<CollectionSettings>) {if(!health?.csrfToken)return;busy=true;try{const result=await api<CollectionSettings>('settings',patch,health.csrfToken);settings=result;tell('Collection settings saved.');await poll();}catch(e){error=String(e)}finally{busy=false}}
   async function refreshCertificate() {try{certificate=await api<CertificateStatus>('certificate');tell(certificate.trusted?'Certificate is trusted for your Windows user.':'Certificate is not trusted.');}catch(e){error=String(e)}}
@@ -289,30 +293,35 @@
 </script>
 <svelte:window onkeydown={keydown} onpointerdown={dismissPopups} onpointermove={e=>{if(e.buttons)analysisClient.interacting();}} onwheel={()=>analysisClient.interacting()} ondragenter={onDragEnter} ondragover={onDragOver} ondragleave={onDragLeave} ondrop={onDrop}/>
 <input class="file-input" bind:this={input} type="file" accept=".json,.jsonl,.msgpack,.mpk,.har" multiple onchange={e=>importFiles(e.currentTarget.files)}/>
-<div class="app-shell">
+<svelte:head><title>Umalytics — {collectorLabel}</title></svelte:head>
+<div class="app-shell" class:library-collapsed={sidebarCollapsed}>
   {#if dropActive}<div class="drop-overlay" aria-hidden="true"><strong>Drop race JSON</strong><span>It will be imported into this library</span></div>{/if}
   <aside class="sidebar">
-    <div class="brand"><span class="brand-mark">u<span>↗</span></span><div>Umalytics<small>RACE WORKSPACE</small></div></div>
-    <button class="primary import-button" onclick={()=>input.click()} disabled={importing||!!removingId}>＋ Import race JSON</button>
+    <div class="sidebar-brand"><div class="brand"><span class="brand-mark">u<span>↗</span></span>{#if !sidebarCollapsed}<div>Umalytics<small>RACE WORKSPACE</small></div>{/if}</div><button class="library-collapse" aria-label={sidebarCollapsed?'Expand race library':'Collapse race library'} title={sidebarCollapsed?'Expand race library':'Collapse race library'} aria-expanded={!sidebarCollapsed} onclick={toggleLibrary}>{sidebarCollapsed?'›':'‹'}</button></div>
+    <button class="primary import-button" onclick={()=>input.click()} disabled={importing||!!removingId} aria-label="Import race JSON" title="Import race JSON">＋{#if !sidebarCollapsed} Import race JSON{/if}</button>
+    {#if !sidebarCollapsed}
     <p class="import-hint">or drop a race JSON anywhere in this window</p>
     <div class="library-heading"><span>RACE LIBRARY</span><span>{visible.length} / {Math.max(library.length,totalRemote)}</span></div>
     <input class="search" type="search" placeholder="Search races…" aria-label="Search races" bind:value={search}/>
     <div class="filter-chips"><button class:active={filter==='all'} onclick={()=>filter='all'}>All</button>{#each libraryFacets as c}<button class:active={filter===c.id} title={c.label} onclick={()=>filter=c.id}><i style={`background:${c.color}`}></i>{c.short}</button>{/each}</div>
     <details class="library-filters"><summary>Date &amp; tags{dateFrom||dateTo||tagFilter?' · filtered':''}</summary><label>From<input type="date" aria-label="Race date from" bind:value={dateFrom} max={dateTo||undefined}/></label><label>To<input type="date" aria-label="Race date to" bind:value={dateTo} min={dateFrom||undefined}/></label><label>Tag<select aria-label="Filter by tag" bind:value={tagFilter}><option value="">All tags</option>{#each allTags as tag}<option value={tag}>{tag}</option>{/each}</select></label><button onclick={()=>{dateFrom='';dateTo='';tagFilter='';}}>Clear filters</button></details>
+    {/if}
     <div class="race-list">
-      {#each visible as entry (entry.id)}
+      {#each (sidebarCollapsed?library:visible) as entry (entry.id)}
         {@const category=facetInfo(captureFacet(entry))}
         {@const inference=captionInference(entry.race??entry,reference)}
         {@const manuallySelected=(entry.race?.courseIdentity??entry.courseIdentity)?.source==='manual'}
         {@const entryInferred=!manuallySelected&&((entry.race?.courseIdentity??entry.courseIdentity)?.source==='skill-conditions'||!!inference?.trackId||!!inference?.courseId)}
-        <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span title="Race time in your local timezone">{date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title="Course identified from equipped skills.">Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.savedReplay||entry.race?.savedReplay}<small>Saved Replay</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" disabled={importing||!!removingId} onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" disabled={importing||!!removingId} aria-label={`Remove ${courseCaption(entry.race??entry,reference)}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>
+        {#if sidebarCollapsed}<button class="race-mini" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} aria-label={`${courseCaption(entry.race??entry,reference)} · ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} title={`${courseCaption(entry.race??entry,reference)}
+${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><svg viewBox="0 0 32 20" aria-hidden="true"><rect x="2" y="3" width="28" height="14" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M22 2v16" stroke="currentColor" stroke-dasharray="2 2"/></svg><small>{entry.synthetic?'Demo':category.id==='room'?'Room':category.short}</small></button>{:else}
+        <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span title="Race time in your local timezone">{date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title="Course identified from equipped skills.">Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" disabled={importing||!!removingId} onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" disabled={importing||!!removingId} aria-label={`Remove ${courseCaption(entry.race??entry,reference)}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>{/if}
       {/each}
-      {#if !visible.length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
+      {#if !(sidebarCollapsed ? library : visible).length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
       {#if historyLoading}<small role="status">Loading history…</small>{:else if nextOffset!==null}<button class="load-more" onclick={loadHistory}>Load older races</button>{/if}
     </div>
-    <div class="sidebar-bottom"><label class="check"><input type="checkbox" bind:checked={following}/> Follow new races</label>
+    <div class="sidebar-bottom">{#if !sidebarCollapsed}<label class="check"><input type="checkbox" bind:checked={following}/> Follow new races</label>
       {#if health?.update?.availableVersion}<SidebarUpdate status={health.update} disabled={!health.csrfToken||busy} onInstall={installAvailableUpdate}/>{/if}
-      <button onclick={openSettings}><span>⚙</span> Settings</button>
+      {/if}<button onclick={openSettings} aria-label="Settings" title="Settings"><span>⚙</span>{#if !sidebarCollapsed} Settings{/if}</button>
     </div>
   </aside>
   <main>
@@ -325,7 +334,7 @@
       <div class="workspace">
         {#if analysis?.source==='recorded'}<p class="muted">Recorded data · unavailable analysis fields are left blank.</p>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
-        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/>{#if analysisRace.racedAt || analysisRace.savedReplay}<p class="race-run">{analysisRace.racedAt ? date(analysisRace.racedAt) : ''}{#if analysisRace.savedReplay}{analysisRace.racedAt ? ' · Saved Replay' : 'Saved Replay'}{/if}</p>{/if}</div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>
+        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/><div class="race-datetimes">{#if analysisRace.racedAt??analysisRace.capturedAt}<span>Recorded at <time>{date(analysisRace.racedAt??analysisRace.capturedAt??'')}</time></span>{/if}{#if library.find(e=>e.id===activeId)?.receivedAt}<span>Saved at <time>{date(library.find(e=>e.id===activeId)?.receivedAt??'')}</time></span>{/if}</div></div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>
         <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={selectRunner}/>
         <div class="primary-replay">
           <CurveReplay race={analysisRace} {course} {reference} {selected} {time} {analysis} {fontScale} onSelect={selectRunner} onSeek={seek}>

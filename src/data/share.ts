@@ -73,6 +73,7 @@ export function toPortableRace(race: Race) {
       ...shared.runners[index],
       trainer: r.trainer,
       trainerId: r.trainerId,
+      career: r.career,
     })),
     ...portableRawFields(race),
   };

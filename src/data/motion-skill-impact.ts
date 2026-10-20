@@ -43,7 +43,8 @@ function targetCredit(self:number,after:number,normal:number,normalAfter:number,
 }
 export function activationImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,a:SkillActivation,courseId?:number|null):MotionSkillImpact|null {
   const effects=a.effects.filter(e=>(e.targetType??1)===1&&[21,22,27,31].includes(e.type));
-  if(!effects.length||a.effectiveEnd===null||a.effectiveEnd<=a.start)return null;
+  const laneGain=race.analysisSource==='simulation'&&a.effects.some(e=>(e.targetType??1)===1&&e.type===28);
+  if((!effects.length&&!laneGain)||a.effectiveEnd===null||a.effectiveEnd<=a.start)return null;
   const withSkill=motionFor(race,reference,analysis,runnerId,courseId,undefined,true),without=motionFor(race,reference,analysis,runnerId,courseId,activationMotionKey(runnerId,a),true);
   const capUse=accelerationUse(race,runnerId,withSkill);
   const stop=withSkill.samples.at(-1)?.time??race.duration,end=Math.min(stop,a.effectiveEnd);
@@ -126,7 +127,7 @@ export function activationImpact(race:Race,reference:ReferenceData|null,analysis
     if(c.assessedDuration===0){c.usefulDuration=null;c.cappedDuration=null;c.blockedDuration=null;}
   }
   return {...benefit,effects:components,reasons:[...new Set([...benefit.reasons,...reasons])],
-    detail:'Gain compares movement with and without this skill in the same replay context. Acceleration’s full head start is direct gain. Carryover is retained speed from speed effects. The two parts are counted once. Time is an equivalent travel saving, not a rerun finish time.'};
+    detail:'Gain compares movement with and without this skill in the same replay context. Acceleration’s full head start is direct gain. Carryover is retained speed from speed effects. The two parts are counted once. Time is an equivalent travel saving, not a rerun finish time.'+(laneGain?' Lane skills include their forward-speed bonus during actual lane changes. The path and other runners stay fixed; escaping a block is not attributed to the skill.':'')};
 }
 export function motionSkillImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,skillId:number,courseId?:number|null):MotionSkillImpact|null {
   if((analysis.source==='simulation'||analysis.source==='recorded'))return preparedFor(analysis)?.runners[runnerId]?.impacts[skillId]??null;

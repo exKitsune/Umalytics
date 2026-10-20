@@ -2,7 +2,7 @@ import {gzip,ungzip} from 'pako';
 import type {PreparedRace} from '../analysis/prepared';
 
 const analysisFields=['cornerPath','statusImpacts','hillImpacts','hillTotals','skillImpacts','receivedDebuffImpacts','receivedDebuffTotals','slowdown'] as const;
-const preparedFields=['modes','totals','impacts'] as const;
+const preparedFields=['modes','totals','impacts','powerBenefit'] as const;
 const motionFields=['trafficLoss','exhaustionLoss','distanceLoss','timeLoss','assessedDistanceLoss','assessedTimeLoss','observedTrafficDeficit','observedTrafficTime','observedTrafficDuration','observedTrafficAssessedDuration','observedTrafficCoverage'] as const;
 const pick=(value:object,keys:readonly string[])=>Object.fromEntries(keys.map(k=>[k,(value as Record<string,unknown>)[k]]));
 
