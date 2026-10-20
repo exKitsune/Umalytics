@@ -250,6 +250,7 @@ def main(harness, cross_drive_root=None, startup_only=False):
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
             helper_process = None
             old_desktop = None
+            cleanup_handle = None
             outputs = []
             try:
                 wait_health(port, '0.2.0')
@@ -275,6 +276,19 @@ def main(harness, cross_drive_root=None, startup_only=False):
                 output=output_path.open('w');outputs.append(output)
                 helper_process = subprocess.Popen([str(helper), '--apply-update', str(transaction), public, str(port)],
                                                   env=env, creationflags=FLAGS, stdout=output, stderr=output)
+                if name == 'locked-completed-backup':
+                    wait_health(port, '0.2.1')
+                    # Allow reads, but deny deletion of the old collector while
+                    # the real helper commits the healthy replacement.
+                    import ctypes
+                    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+                    kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                                  ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+                    kernel.CreateFileW.restype = ctypes.c_void_p
+                    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+                    cleanup_handle = kernel.CreateFileW(str(update / 'backup/runtime/UmalyticsCollector.exe'),
+                                                        0x80000000, 3, None, 3, 0x80, None)
+                    assert cleanup_handle != ctypes.c_void_p(-1).value, ctypes.get_last_error()
                 if recovery:
                     wait_health(port, '0.2.1')
                     assert (update / 'backup/journal.json').exists()
@@ -296,6 +310,47 @@ def main(harness, cross_drive_root=None, startup_only=False):
                 assert sha(exe.read_bytes()) == sha(old_bytes if recovery or not expected else new_bytes)
                 for relative, raw in protected.items():
                     assert (data / relative).read_bytes() == raw, (name, relative)
+                if name == 'locked-completed-backup':
+                    assert (update / 'success.json').exists()
+                    assert (update / 'backup/journal.json').exists(), 'Cleanup must preserve the recovery journal'
+                    assert not (update / 'helper-error.txt').exists(), 'Successful replacement reported as failed'
+                    events = (install / 'events.txt').read_bytes()
+
+                    def invoke(mode):
+                        result = subprocess.run([str(exe), mode, str(data)], env=env, capture_output=True,
+                                                text=True, creationflags=FLAGS, check=True, timeout=10)
+                        return json.loads(result.stdout)
+
+                    for legacy in (False, True):
+                        if legacy:
+                            (update / 'backup/journal.json').unlink()
+                        pending = invoke('--recover-pending')
+                        assert pending['ok'] and pending['recovery'] is False, pending
+                        pending = invoke('--cleanup')
+                        assert not pending['ok'] and 'cleanup is pending' in pending['error'], pending
+                        assert (update / 'success.json').exists() and transaction.exists()
+                        assert (install / 'events.txt').read_bytes() == events, 'Cleanup restarted a healthy application'
+                    kernel.CloseHandle(cleanup_handle)
+                    cleanup_handle = None
+                    # Inventory and receipts must still be checked even when a
+                    # legacy helper has already removed its rollback journal.
+                    unknown = update / 'backup/keep.txt'
+                    unknown.write_text('preserve')
+                    pending = invoke('--cleanup')
+                    assert not pending['ok'] and unknown.read_text() == 'preserve'
+                    assert (update / 'backup/runtime/UmalyticsCollector.exe').exists()
+                    unknown.unlink()
+                    receipt = update / 'success.json'
+                    saved = receipt.read_bytes()
+                    altered = json.loads(saved)
+                    altered['sha256'] = '0' * 64
+                    receipt.write_text(json.dumps(altered))
+                    assert not invoke('--cleanup')['ok']
+                    assert not invoke('--recover-pending')['ok']
+                    assert (update / 'backup/runtime/UmalyticsCollector.exe').exists()
+                    receipt.write_bytes(saved)
+                    assert invoke('--cleanup')['ok']
+                    assert not (update / 'backup').exists()
                 if expected or recovery or name in ('bad-data-rollback', 'bad-runtime-rollback', 'bad-exe-rollback'):
                     assert not (update / 'backup').exists(), name
                     assert health['pyinstallerResetEnvironment'] == '1', (name, 'Restart reused the previous frozen environment')
@@ -326,6 +381,8 @@ def main(harness, cross_drive_root=None, startup_only=False):
                     assert not helper.exists()
                 cases += 1
             finally:
+                if cleanup_handle is not None:
+                    kernel.CloseHandle(cleanup_handle)
                 try:
                     # This fixture-only endpoint also stops intentional busy
                     # refusal cases, without killing a venv redirector parent.
@@ -354,6 +411,7 @@ def main(harness, cross_drive_root=None, startup_only=False):
         scenario('desktop-exited-rollback', {'desktopExit': True}, expected=False)
         if os.name == 'nt':
             scenario('old-desktop-still-running')
+            scenario('locked-completed-backup')
         scenario('bad-signature', expected=False)
         scenario('tampered-executable', alter=lambda m, t, u: (u / 'Umalytics.exe').write_bytes(b'tampered'), expected=False)
         scenario('outside-install', alter=lambda m, t, u: t.update(dataDirectory=str(root)), expected=False)

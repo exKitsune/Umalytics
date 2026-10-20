@@ -335,6 +335,10 @@ class UpdateController:
         # update. Invalidate its receipt under the same lock before reusing any
         # staging names; native cleanup rechecks the receipt inside its lock.
         with staging_lock(folder):
+            # Do not invalidate the completion receipt while native cleanup
+            # still needs it to retire a locked or partially removed backup.
+            if linked(folder / 'backup') or (folder / 'backup').exists():
+                raise ValueError('Temporary update cleanup is still pending. Restart Umalytics and try again.')
             receipt = folder / 'success.json'
             if linked(receipt) or receipt.exists() and not receipt.is_file():
                 raise ValueError('Unexpected update cleanup receipt.')

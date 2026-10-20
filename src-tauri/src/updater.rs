@@ -276,7 +276,41 @@ fn move_retry(from:&Path,to:&Path)->Result<(),String>{
     let deadline=Instant::now()+Duration::from_secs(20);
     loop{if fs::rename(from,to).is_ok(){return Ok(());}if Instant::now()>=deadline{return bad("An application file is still locked. The update could not replace it.");}thread::sleep(Duration::from_millis(200));}
 }
-fn remove_tree(path:&Path)->Result<(),String>{if !path.exists(){return Ok(());}safe_tree(path)?;fs::remove_dir_all(path).map_err(|_|"Could not remove an owned temporary update backup.".into())}
+fn remove_backup(path:&Path)->Result<(),String>{
+    if !path.exists(){return Ok(());}safe_tree(path)?;
+    // Validate the complete inventory before deleting anything. Older helpers
+    // could partially remove a completed backup, including its journal.
+    let mut files=Vec::new();let mut folders=Vec::new();
+    for entry in fs::read_dir(path).map_err(|_|"Could not inspect update backup files.")?{
+        let entry=entry.map_err(|_|"Could not inspect update backup files.")?.path();
+        let name=entry.file_name().and_then(|name|name.to_str()).ok_or("Rollback name is invalid.")?;
+        if matches!(name,"data"|"runtime")&&entry.is_dir(){
+            for file in fs::read_dir(&entry).map_err(|_|"Could not inspect update backup files.")?{
+                let file=file.map_err(|_|"Could not inspect update backup files.")?.path();
+                let relative=format!("{name}/{}",file.file_name().and_then(|name|name.to_str()).ok_or("Rollback name is invalid.")?);
+                if !file.is_file()||!MANAGED.contains(&relative.as_str()){return bad("Unknown rollback files were preserved.");}
+                files.push(file);
+            }folders.push(entry);
+        }else if matches!(name,"Umalytics.exe"|"journal.json")&&entry.is_file(){
+            if name!="journal.json"{files.push(entry);}
+        }else{return bad("Unknown rollback files were preserved.");}
+    }
+    // Windows scanners and retiring frozen collectors can briefly hold old
+    // executables. Preserve the journal until every payload file is gone.
+    let deadline=Instant::now()+Duration::from_secs(1);
+    for file in files{
+        loop{match fs::remove_file(&file){
+            Ok(())=>break,
+            Err(error) if error.kind()==std::io::ErrorKind::NotFound=>break,
+            Err(_) if Instant::now()<deadline=>thread::sleep(Duration::from_millis(100)),
+            Err(error)=>return Err(format!("Temporary update cleanup is pending for {}: {error}",file.file_name().unwrap().to_string_lossy())),
+        }}
+    }
+    for folder in folders{fs::remove_dir(folder).map_err(|_|"Could not remove an empty update backup folder.")?;}
+    let journal=path.join("journal.json");
+    if journal.exists(){fs::remove_file(journal).map_err(|_|"Could not remove the completed update journal.")?;}
+    fs::remove_dir(path).map_err(|_|"Could not remove the empty update backup folder.".into())
+}
 fn prepare_journal(plan:&Plan)->Result<Value,String>{
     let mut files=serde_json::Map::new();
     for name in MANAGED{let path=plan.data.join(name);if path.exists(){regular_path(&path)?;if !path.is_file(){return bad("A managed update file is an unexpected directory.");}files.insert((*name).to_owned(),Value::String(digest(&path)?));}}
@@ -312,7 +346,23 @@ fn restore_exe(plan:&Plan)->Result<(),String>{
     else if digest(&plan.exe)?!=plan.old_hash{return bad("The previous application backup is missing.");}Ok(())
 }
 fn record_success(plan:&Plan,version:&Value,hash:&Value)->Result<(),String>{
-    fs::write(plan.folder.join("success.json"),json!({"schemaVersion":1,"version":version,"sha256":hash}).to_string()).map_err(|_|"The app updated, but temporary update cleanup could not be recorded.".to_owned())
+    use std::io::Write;
+    let temporary=plan.folder.join("success.partial");let target=plan.folder.join("success.json");
+    for path in [&temporary,&target]{if path.exists(){regular_path(path)?;}}
+    let result=(||{
+        let mut output=fs::File::create(&temporary)?;
+        output.write_all(json!({"schemaVersion":1,"version":version,"sha256":hash}).to_string().as_bytes())?;
+        output.sync_all()?;drop(output);fs::rename(&temporary,&target)
+    })();
+    result.map_err(|_|"The app updated, but temporary update cleanup could not be recorded.".to_owned())
+}
+fn completed_update(folder:&Path,exe:&Path)->Result<bool,String>{
+    let marker=folder.join("success.json");if !marker.exists(){return Ok(false);}regular_path(&marker)?;
+    let receipt:Value=serde_json::from_slice(&read_small(&marker,1024)?).map_err(|_|"Update cleanup receipt is invalid.")?;
+    if !exact_keys(&receipt,&["schemaVersion","version","sha256"])||receipt["schemaVersion"]!=1
+        ||build(field(&receipt,"version")?).is_none()||!is_hex(field(&receipt,"sha256")?,64)
+        ||digest(exe)?!=field(&receipt,"sha256")?{return bad("Update cleanup receipt does not match the running application.");}
+    Ok(true)
 }
 
 fn run(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
@@ -372,14 +422,17 @@ fn run(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
         if endpoint.health().is_some(){if stop_owned(plan,endpoint).is_err(){return Err(format!("{reason} Rollback is saved in cache/update/backup; close Uma before recovery."));}}
         if let Some(child)=child.as_mut(){let _=child.kill();let _=child.wait();}
         let journal=load_journal(plan)?;restore_files(plan,&journal)?;restore_exe(plan)?;
-        remove_tree(&plan.backup)?;record_success(plan,&Value::String(plan.previous.clone()),&Value::String(plan.old_hash.clone()))?;
+        record_success(plan,&Value::String(plan.previous.clone()),&Value::String(plan.old_hash.clone()))?;
+        let _=remove_backup(&plan.backup);
         let _=launch(&plan.exe,&plan.install);
         return Err(format!("{reason} The previous application and reference data were restored."));
     }
     // A later normal startup may remove the running helper and metadata. The
     // success marker is created only AFTER all release identity checks pass.
     record_success(plan,&plan.manifest["version"],&plan.manifest["sha256"])?;
-    remove_tree(&plan.backup)?;
+    // Once committed, housekeeping cannot turn a verified update into an
+    // apparent failure. Normal startup and the tray retry under the same lock.
+    let _=remove_backup(&plan.backup);
     Ok(())
 }
 
@@ -409,9 +462,13 @@ pub fn recover_pending(data:&Path)->Result<bool,String>{
     let install=own.parent().ok_or("Portable installation is unavailable.")?;
     if !crate::storage_paths::approved_data(data,install){return Ok(false);}
     let folder=data.join("cache/update");let backup=folder.join("backup");
-    if !backup.exists(){return Ok(false);}regular_path(&folder)?;safe_tree(&backup)?;
-    let transaction=folder.join("transaction.json");regular_path(&transaction)?;
+    if !backup.exists(){return Ok(false);}regular_path(&folder)?;
     let lock=match update_lock(&folder){Ok(lock)=>lock,Err(_)=>return Ok(false)};
+    // A verified completed update may have a locked or partially removed
+    // backup. It needs cleanup, never rollback or another desktop restart.
+    if completed_update(&folder,&own)?{return Ok(false);}
+    safe_tree(&backup)?;
+    let transaction=folder.join("transaction.json");regular_path(&transaction)?;
     // Use the presently running trusted app as the recovery helper; never run
     // an arbitrary stale executable merely because it sits beside a journal.
     let helper=folder.join("helper.exe");if helper.exists(){regular_path(&helper)?;}
@@ -428,14 +485,16 @@ pub fn recover_pending(data:&Path)->Result<bool,String>{
 pub fn rollback(transaction:&Path)->Result<(),String>{rollback_verified(transaction,&compiled_key()?,4317)}
 pub(crate) fn rollback_verified(transaction:&Path,key:&[u8;32],port:u16)->Result<(),String>{
     let plan=Plan::load(transaction,key,true)?;let _lock=update_lock(&plan.folder)?;
-    let endpoint=ServiceEndpoint{port};let journal=load_journal(&plan)?;
+    let endpoint=ServiceEndpoint{port};
+    let completed=completed_update(&plan.folder,&plan.exe)?;
+    let journal=if completed{None}else{Some(load_journal(&plan)?)};
     let result=(||{
         wait_app_exit(&plan.exe,Some(&plan.old_hash))?;
         if endpoint.health().is_some(){stop_owned(&plan,&endpoint)?;}
-        let marker=plan.folder.join("success.json");
-        if marker.exists(){regular_path(&marker)?;let receipt:Value=serde_json::from_slice(&read_small(&marker,1024)?).map_err(|_|"Update success receipt is invalid.")?;if receipt["sha256"]==plan.manifest["sha256"]&&digest(&plan.exe)?==field(&plan.manifest,"sha256")?{remove_tree(&plan.backup)?;let _=launch(&plan.exe,&plan.install);return Ok(());}}
-        restore_files(&plan,&journal)?;restore_exe(&plan)?;remove_tree(&plan.backup)?;
+        if completed{let _=remove_backup(&plan.backup);launch(&plan.exe,&plan.install)?;return Ok(());}
+        restore_files(&plan,journal.as_ref().unwrap())?;restore_exe(&plan)?;
         record_success(&plan,&Value::String(plan.previous.clone()),&Value::String(plan.old_hash.clone()))?;
+        let _=remove_backup(&plan.backup);
         launch(&plan.exe,&plan.install)?;Ok(())
     })();
     if let Err(error)=&result{let _=fs::write(plan.folder.join("helper-error.txt"),error);let _=launch(&plan.exe,&plan.install);}result
@@ -448,14 +507,13 @@ pub fn cleanup(data:&Path)->Result<(),String>{
     if !crate::storage_paths::approved_data(data,install){return Ok(());}
     let folder=data.join("cache/update");if !folder.exists(){return Ok(());}regular_path(&folder)?;
     let _lock=match update_lock(&folder){Ok(lock)=>lock,Err(_)=>return Ok(())};
-    let marker=folder.join("success.json");if !marker.exists(){return Ok(());}regular_path(&marker)?;
-    let receipt:Value=serde_json::from_slice(&read_small(&marker,1024)?).map_err(|_|"Update cleanup receipt is invalid.")?;
-    if !exact_keys(&receipt,&["schemaVersion","version","sha256"])||receipt["schemaVersion"]!=1||!is_hex(field(&receipt,"sha256")?,64)||digest(&own)?!=field(&receipt,"sha256")?{return bad("Update cleanup receipt does not match the running application.");}
-    // The helper may still be verifying and removing its backup. Let that
-    // process finish; the following startup safely removes the remaining files.
-    if folder.join("backup").exists(){return Ok(());}
+    if !completed_update(&folder,&own)?{return Ok(());}
+    let marker=folder.join("success.json");
+    // We hold the helper lock and have verified the committed executable.
+    // Retry only the closed backup inventory, retaining the receipt on failure.
+    remove_backup(&folder.join("backup"))?;
     let mut removed=true;
-    for name in ["helper.exe","transaction.json","release-manifest.json","release-manifest.sig","helper-error.txt","Umalytics.exe","Umalytics.exe.partial","recovery-helper.partial","failed.exe","desktop-ready.json","desktop-ready.partial"]{
+    for name in ["helper.exe","transaction.json","release-manifest.json","release-manifest.sig","helper-error.txt","Umalytics.exe","Umalytics.exe.partial","recovery-helper.partial","failed.exe","desktop-ready.json","desktop-ready.partial","success.partial"]{
         let path=folder.join(name);if path.exists(){regular_path(&path)?;if path.is_file(){if fs::remove_file(path).is_err(){removed=false;}}else{return bad("Update cleanup found an unexpected directory.");}}
     }
     if removed{let _=fs::remove_file(marker);}Ok(())

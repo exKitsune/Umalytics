@@ -41,6 +41,9 @@ fn main(){
     if arguments.first().is_some_and(|arg|arg=="--cleanup"){
         let result=updater::cleanup(Path::new(&arguments[1]));println!("{}",serde_json::json!({"ok":result.is_ok(),"error":result.err()}));return;
     }
+    if arguments.first().is_some_and(|arg|arg=="--recover-pending"){
+        let result=updater::recover_pending(Path::new(&arguments[1]));println!("{}",serde_json::json!({"ok":result.is_ok(),"recovery":result.as_ref().ok(),"error":result.err()}));return;
+    }
     // A real executable replacement starts this process. Its embedded trailer
     // identifies the synthetic app version; the process owns a live collector.
     let own=std::env::current_exe().unwrap();let bytes=std::fs::read(own).unwrap();

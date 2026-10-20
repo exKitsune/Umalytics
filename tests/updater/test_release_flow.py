@@ -296,6 +296,18 @@ def main():
                 assert api(url, '/api/update/install', {}, token)[0] == 200
                 wait_status(url, 'error')
                 assert receipt.read_text() == '{"previous":"fixture"}'
+            # A completed backup awaiting cleanup must retain its receipt and
+            # transaction; a new download cannot repurpose these staging names.
+            backup = update_folder / 'backup'
+            backup.mkdir()
+            transaction = update_folder / 'transaction.json'
+            transaction.write_text('preserved pending cleanup')
+            assert api(url, '/api/update/install', {}, token)[0] == 200
+            pending = wait_status(url, 'error')
+            assert 'cleanup is still pending' in pending['error']
+            assert receipt.read_text() == '{"previous":"fixture"}'
+            assert transaction.read_text() == 'preserved pending cleanup'
+            backup.rmdir()
             assert api(url, '/api/update/install', {}, token)[0] == 200
             waiting = wait_status(url, 'waiting-for-game')
             assert not receipt.exists()
