@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Race, Runner } from '../data/types';
   import { getSkillReference, skillName, runnerName, type ReferenceData } from '../data/reference';
-  import { effectText, durationText, nonProcLabel, velocityKind, levelBuffExplanation, uniqueLevelLabel, teamScaleNote } from '../data/skill-details';
+  import { effectText, durationText, activationDurationText, nonProcLabel, velocityKind, levelBuffExplanation, uniqueLevelLabel, teamScaleNote } from '../data/skill-details';
   import SpeedTerm from './SpeedTerm.svelte';
   import GameIcon from './GameIcon.svelte';
   import { skillIconKey } from '../data/game-icons';
@@ -40,7 +40,7 @@
   <div class="skill-dialog-body">
     {#if skill?.dataRegion==='JP'}<p class="muted">JP fallback · Global data unavailable.</p>{/if}
     {#if skill?.description}<p class="description">{skill.description}</p>{/if}
-    {#if row?.activations.length}<div class="activation-links">{#each row.activations as a}<button onclick={()=>onSeek(a.start)}>▶ {a.start.toFixed(2)} s{#if a.timingKind==='instant'}<small>Instant</small>{:else if a.effectiveDuration!=null}<small>{a.effectiveDuration.toFixed(2)} s</small>{/if}</button>{/each}</div>
+    {#if row?.activations.length}<div class="activation-links">{#each row.activations as a}<button onclick={()=>onSeek(a.start)}>▶ {a.start.toFixed(2)} s{#if activationDurationText(a)}<small>{activationDurationText(a)}</small>{/if}</button>{/each}</div>
     {:else if row}<p class="outcome" class:active={row.effectiveActive}>{row.effectiveActive?'✓':'×'} {nonProcLabel(row,reference)}</p>{/if}
     {#if impact&&row?.effectiveActive&&(!componentMetrics.length||skill?.branches.some(b=>b.effects.some(e=>[9,21,22,27,28,31].includes(e.type))))}<section><h3>{pureRecovery?'Recovery timing':skill?.branches.some(b=>b.effects.some(e=>e.type===28))?'Movement gain':'Effectiveness'}{#if !pureRecovery}<small class="calculated">Calculated</small>{/if}</h3>{#if pureRecovery}{#each row.activations as activation}<RecoveryTiming recovery={analysis.runners[runner!.id]?.skillImpacts.find(i=>i.skillId===skillId&&i.start===activation.start)?.recovery??impact.recovery} starts={[activation.start]}/>{/each}{:else}<SkillImpact {impact} expanded motion={runner?motionSkillImpact(race,reference,analysis,runner.id,skillId):null}/>{/if}</section>{/if}
     {#if runner&&!pureRecovery}<SkillMetrics expanded activated={row?.effectiveActive??false} metrics={componentMetrics}/>{/if}
@@ -57,7 +57,7 @@
         <section class="skill-effects">{#if effects.length}<h3>{branches.length>1?`Variant ${i+1}`:analysis.source==='simulation'?'Effect definitions':'Effects'}</h3>
           <ul>{#each effects as effect}{@const kind=velocityKind(effect.type)}<li>{#if kind}<SpeedTerm {kind} up={effect.rawValue>=0} text={effectText(effect,runner,skillId)}/>{:else}{effectText(effect,runner,skillId)}{/if}{#if teamScaleNote(runner,effect)}<small class="scale-note">{teamScaleNote(runner,effect)}</small>{/if}</li>{/each}</ul>{/if}
           {#if levelNote}<p class="level-note">{levelNote.detail}</p>{/if}
-          <div class="duration"><span>Duration</span><strong>{activation?.timingKind==='instant'?'Instant':activation?.effectiveDuration!=null?`${Number(activation.effectiveDuration.toFixed(3))} s`:durationText(branch,race.distance)}</strong></div>
+          <div class="duration"><span>Duration</span><strong>{activationDurationText(activation)??durationText(branch,race.distance)}</strong></div>
           {#if !branched||i===branches.length-1}
             {@const summary=branched?row?.conditionEvaluation?.branches.find(b=>usedBranches.has(b.branchIndex))??evaluated:evaluated}
             <details class="conditions" open><summary>Conditions <span class:met={!!activation||!!usedBranches.size||summary?.state==='met'}>{activation||usedBranches.size||summary?.state==='met'?'Met':summary?.state==='unmet'?'Not met':summary?.inferredState==='met'?'Met in replay model':summary?.eligibilityState==='eligible'?'Eligible window':'Uncertain'}</span></summary>

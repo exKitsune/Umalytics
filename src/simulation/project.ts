@@ -16,6 +16,7 @@ import { trafficIntervals } from './traffic';
 import {powerSummary} from './power';
 import {simulationConditions,simulationRestriction} from './conditions';
 import {explainTraceSpeed} from './speed-explanations';
+import {traceLaneBonus,laneBonusStatuses} from './lane-bonus';
 
 const unavailable='Requires a separate counterfactual simulation; not measured by this execution trace.';
 const exact=(value:number):MotionBand=>({min:value,mid:value,max:value});
@@ -111,9 +112,9 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
     const add=(label:string,value:number|string,unit:string,detail:string)=>items.push({label,value,unit,detail,evidence:'simulated'});
     for(const check of wit)add('Wit check',check.data.checked?(check.data.passed?'Passed':'Failed'):'Not required','',`Actual engine check at ${check.time.toFixed(3)} s.`);
     for(const e of own.filter(e=>e.kind==='effect-applied')){
-      const type=Number(e.data.type),names:Record<number,[string,string]>={1:['Speed stat',''],2:['Stamina stat',''],3:['Power stat',''],4:['Guts stat',''],5:['Wit stat',''],8:['Vision distance','m'],9:['HP effect',''],14:['Gate delay multiplier','×'],21:['Current speed','m/s'],22:['Current speed','m/s'],27:['Target speed','m/s'],28:['Lane speed','m/s'],31:['Acceleration','m/s²']};
+      const type=Number(e.data.type),names:Record<number,[string,string]>={1:['Speed stat',''],2:['Stamina stat',''],3:['Power stat',''],4:['Guts stat',''],5:['Wit stat',''],8:['Vision distance','m'],9:['HP effect','% max HP'],10:['Gate delay multiplier','×'],14:['Gate delay override','s'],21:['Current speed','m/s'],22:['Current speed','m/s'],27:['Target speed','m/s'],28:['Lane speed','m/s'],31:['Acceleration','m/s²']};
       const [label,unit]=names[type]??[`Effect ${type}`,''];
-      add(label,Number(e.data.modifier),unit,`Applied engine modifier at ${e.time.toFixed(3)} s. Duration: ${Number(e.data.duration).toFixed(3)} s. HP modifiers are fractions of maximum HP, not HP points.`);
+      add(label,Number(e.data.modifier)*(type===9?100:1),unit,`Applied engine modifier at ${e.time.toFixed(3)} s.`);
     }
     if(activations.length)items.push({label:'Movement / finish-time gain',value:null,unit:'',detail:unavailable,evidence:'unknown',reason:unavailable});
     metrics[id]=items;
@@ -163,13 +164,14 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
     const events=trace.events.filter(e=>e.horseIndex===runner.index),rows=trace.motion.filter(r=>r[m.horse]===runner.index),stop=runner.finishTimeRaw??race.duration;
     if(!rows.length)throw new Error('Simulator motion is incomplete.');
     const power=powerSummary(events,objects(modeled.conservePowerDiagnostics).find(d=>d.horseIndex===runner.index),stop);
-    const states=[...intervals(rows,stop),...internalIntervals(events,stop),...power.intervals].sort((a,b)=>a.start-b.start),{rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events,rows),activations=skillRows.flatMap(s=>s.activations);
+    const {rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events,rows),activations=skillRows.flatMap(s=>s.activations);
+    const initial=events.find(e=>e.kind==='initial-stats'),laneBonus=traceLaneBonus(race,runner,rows,activations,num(initial?.data.power));
+    const states=[...intervals(rows,stop),...internalIntervals(events,stop),...power.intervals,...laneBonusStatuses(laneBonus,reference)].sort((a,b)=>a.start-b.start);
     const samples=frames.filter(f=>f.time<=stop+.067).map((f,index)=>{const s=f.runners.find(s=>s.runnerId===runner.id)!,before=frames[index-1]?.runners.find(s=>s.runnerId===runner.id),dt=index?f.time-frames[index-1].time:0;
       const hpDelta=before?.hp==null||s.hp===null?null:s.hp-before.hp;
       return {time:f.time,distance:s.distance,speed:s.speed,hp:s.hp,lane:s.lane,leadGap:runnerGap(race,f.runners,runner.id),rank:sampleRanks.get(f)!.get(runner.id)??null,
         acceleration:motionAt(rows,f.time)?.[m.acceleration]??null,hpDelta,hpRate:dt&&hpDelta!==null?hpDelta/dt:null};});
     const first=samples[0],last=samples.at(-1),spurtValue=spurt(events,rows,stop),blocking=blockingSummary(rows.filter(r=>r[m.time]<stop));
-    const initial=events.find(e=>e.kind==='initial-stats');
     const stats=Object.fromEntries(keys.map(key=>[key,{raw:runner.stats?.[key]??null,overcap:null,base:null,moodMultiplier:null,moodGain:null,baseCapGain:null,capGain:null,courseMultiplier:null,courseGain:null,strategyMultiplier:null,strategyGain:null,groundGain:null,careerGain:null,passiveGain:null,final:num(initial?.data[key]),detail:'Final adjusted stat copied from the engine after initial skills. Individual bonus stages are not traced.'}])) as RunnerStatBreakdown['stats'];
     const motionSamples:MotionSample[]=rows.filter(r=>r[m.time]<stop).map(r=>({time:r[m.time],distance:r[m.position],actual:r[m.speed],currentSpeedDelta:r[m.skillSpeed]-r[m.selfSpeed],selfActual:r[m.selfSpeed],targetBase:exact(r[m.base]),targetActive:exact(r[m.target]),healthyTargetActive:null,healthyAccelerationRange:null,hpEmpty:r[m.hp]<=0,
       free:exact(r[m.target]),constrained:exact(r[m.speed]),acceleration:r[m.acceleration],accelerationRange:exact(r[m.acceleration]),blockCap:r[m.blocker]>=0?r[m.cap]:null,
@@ -183,11 +185,11 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
     analysis.runners[runner.id]=detail;
     const modes:PreparedRunner['modes']=[...new Set(states.map(s=>s.kind))].map(kind=>({source:'simulation',kind,intervals:states.filter(s=>s.kind===kind).length,duration:states.filter(s=>s.kind===kind).reduce((n,s)=>n+s.end!-s.start,0),reachableExtraDistance:null,reachableExtraTime:null,reachableExtraHp:null,assessedReachableExtraDistance:null,assessedReachableExtraTime:null,assessedReachableExtraHp:null,assessedDuration:0,coverage:0,carryoverDuration:0,complete:false,reachableRange:null,detail:unavailable}));
     const sections=race.distance?Array.from({length:24},(_,i)=>{const start=race.distance!*i/24,end=race.distance!*(i+1)/24,row=rows.find(r=>r[m.position]>=start&&r[m.position]<end&&!r[m.spurt]);return row?{section:i+1,start,end,modifier:row[m.section],base:row[m.base]}:null;}).filter((s):s is NonNullable<typeof s>=>s!==null):[];
-    prepared.runners[runner.id]={power,sections,motion,inferredMotion:motion,modes,spurt:spurtValue,blocking,speedChanges:explainTraceSpeed(race,runner,reference,rows,events),metrics,impacts:Object.fromEntries(skillRows.map(s=>[s.skillId,null])),
+    prepared.runners[runner.id]={power,sections,motion,inferredMotion:motion,modes,spurt:spurtValue,blocking,speedChanges:explainTraceSpeed(race,runner,reference,rows,events,laneBonus),metrics,impacts:Object.fromEntries(skillRows.map(s=>[s.skillId,null])),
       totals:{skills:skillRows.map(s=>({skillId:s.skillId,motion:null,score:null,coverage:0,active:0,assessed:0})),benefit:null,score:null,coverage:0,active:0,assessed:0}} satisfies PreparedRunner;
     for(const a of activations){
       race.events.push({time:a.start,type:'skill',runnerId:runner.id,skillId:a.skillId,label:'Simulated skill activation',params:[runner.index,a.skillId,a.duration??-1,a.effectBranch??0]});
-      if(a.targetRunnerIds.length)analysis.debuffs.push({sourceRunnerId:runner.id,skillId:a.skillId,start:a.start,end:a.end,targetRunnerIds:a.targetRunnerIds,recipientsKnown:true,effects:a.effects,detail:'Confirmed applied effects in the matched execution.',effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason});
+      if(a.targetRunnerIds.length)analysis.debuffs.push({sourceRunnerId:runner.id,skillId:a.skillId,start:a.start,end:a.end,targetRunnerIds:a.targetRunnerIds,recipientsKnown:true,simulatedRecipients:a.simulatedRecipients,effects:a.effects,detail:'Confirmed applied effects in the matched execution.',effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason});
     }
   }
   race.events.sort((a,b)=>a.time-b.time);

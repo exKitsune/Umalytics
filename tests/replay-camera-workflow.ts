@@ -166,6 +166,12 @@ const sourceCards=cardFrame.markers.find(m=>m.runner.id===sourceId)!.cards;
 assert.ok(!sourceCards.some(c=>/^status:(force-in|conserve-power):/.test(c.id)));
 assert.ok(sourceCards.some(c=>c.id.startsWith('status:release-conserve-power:')));
 assert.ok(sourceCards.some(c=>c.id.startsWith('status:last-spurt:')));
+const spurtCard=sourceCards.find(c=>c.id==='status:last-spurt:59')!;
+assert.equal(spurtCard.end,70,'Replay notification preserves the real status end');
+assert.equal(spurtCard.displayEnd,61.5);assert.equal(spurtCard.progress,null);assert.equal(spurtCard.visualOnly,true);
+assert.equal(replayCardHelp(realOptions,spurtCard),'Started the final spurt.');
+assert.ok(!replayCards(realOptions,sourceId,61.5,cardFrame.markers[0].sample).some(c=>c.id==='status:last-spurt:59'),'Spurt notification disappears after 2.5 seconds');
+assert.equal(cardAnalysis.runners[sourceId].intervals.find(i=>i.kind==='last-spurt'&&i.start===59)!.end,70,'Notification dwell never truncates analysis');
 assert.ok(cardAnalysis.runners[sourceId].intervals.some(s=>s.kind==='force-in'),'Replay filters leave analysis intact');
 const fallbackCards=replayCards({...realOptions,analysis:null,intervals:()=>[
   {kind:'force-in-model',label:'Inward',start:59,end:70,evidence:'estimated'},
@@ -175,6 +181,16 @@ const fallbackCards=replayCards({...realOptions,analysis:null,intervals:()=>[
   {kind:'last-spurt',label:'Spurt',start:59,end:70,evidence:'recorded'},
 ]},sourceId,61,cardFrame.markers[0].sample);
 assert.deepEqual(fallbackCards.filter(c=>c.kind!=='received').map(c=>c.label),['Unknown skill','Last spurt']);
+for(const end of [null,100]){
+  const passiveOptions={...realOptions,analysis:null,intervals:()=>[
+    {kind:'skill',skillId:200012,label:'Right-Handed ○',start:60,end,evidence:'recorded'},
+  ]};
+  const proc=replayCards(passiveOptions,sourceId,61,cardFrame.markers[0].sample).find(c=>c.kind==='skill')!;
+  assert.ok(proc,'Reference passives still show their activation in fallback replay');
+  assert.equal(proc.displayEnd,62.5);assert.equal(proc.progress,null);assert.equal(proc.end,end);
+  assert.equal(replayCardHelp(passiveOptions,proc),'Passive bonus applied.');
+  assert.ok(!replayCards(passiveOptions,sourceId,62.5,cardFrame.markers[0].sample).some(c=>c.kind==='skill'),'Reference passives expire as notifications, with or without a known effect end');
+}
 const durationCard=sourceCards.find(c=>c.id.startsWith('skill:200362:'))!;
 const speedProc=cardAnalysis.runners[sourceId].skillActivations.find(s=>s.skillId===200362)!;
 const visionProc=cardAnalysis.runners[sourceId].skillActivations.find(s=>s.skillId===201431)!;
@@ -202,6 +218,21 @@ const immuneRace={...visionRace,runners:visionRace.runners.map(r=>({...r,teamGro
 const immuneOptions={...realOptions,race:immuneRace,analysis:analyzeRace(immuneRace,reference)};
 const immune=drawReplay(context,immuneOptions,61,1280,500).markers.find(m=>m.runner.id===targetId)!.cards.find(c=>c.kind==='received')!;
 assert.equal(immune.color,'#97a1ba');assert.ok(replayCardHelp(immuneOptions,immune).includes('immune'));assert.ok(!replayCardHelp(immuneOptions,immune).includes('mask'));
+const delivered={...instantOptions.debuffActivations[0],end:90,effectiveEnd:90,effectiveDuration:30,timingKind:'reported' as const,
+  simulatedRecipients:{[targetId]:[{type:8,rawValue:-100000,evaluatedValue:-10,valueUsage:1,levelUsage:0,targetType:2,appliedStart:61,appliedEnd:65}]}};
+const deliveredOptions={...immuneOptions,debuffActivations:[delivered]};
+const deliveredFrame=(time:number)=>drawReplay(context,deliveredOptions,time,1280,500);
+assert.ok(!deliveredFrame(60.5).markers.find(m=>m.runner.id===targetId)!.cards.some(c=>c.kind==='received'),'Recipient popup starts at delivery, not the caster activation');
+const hit=deliveredFrame(62).markers.find(m=>m.runner.id===targetId)!.cards.find(c=>c.kind==='received')!;
+assert.equal(hit.start,61);assert.equal(hit.end,65);assert.equal(hit.progress,.75);
+assert.equal(hit.color,'#e47474','Confirmed delivery overrides an inferred same-team exclusion');
+assert.match(replayCardHelp(deliveredOptions,hit),/Effect applied/);assert.doesNotMatch(replayCardHelp(deliveredOptions,hit),/immune|depends/);
+assert.match(deliveredFrame(62).debuffs[0].label,/1 confirmed recipients/);
+assert.deepEqual(deliveredFrame(65).debuffs,[],'The recipient arrow expires with the delivered effect, not the caster duration');
+assert.ok(!deliveredFrame(65).markers.find(m=>m.runner.id===targetId)!.cards.some(c=>c.kind==='received'));
+delivered.simulatedRecipients={};
+assert.deepEqual(deliveredFrame(62).debuffs,[],'A queued target without a delivered effect is not a confirmed recipient');
+assert.ok(!deliveredFrame(62).markers.find(m=>m.runner.id===targetId)!.cards.some(c=>c.kind==='received'));
 const expected=drawReplay(context,realOptions,61.2,1280,500);
 for(const t of [0,80,61.2,59,62,61.2])drawReplay(context,realOptions,t,1280,500);
 assert.deepEqual(drawReplay(context,realOptions,61.2,1280,500),expected);

@@ -9,6 +9,7 @@ import {motionLosses} from '../data/traffic-loss';
 import {referenceDeceleration} from '../data/mechanics-model';
 import {powerSummary} from './power';
 import {effectValue} from '../data/effect-value';
+import {previousLaneMoves,laneTargetBonus} from './lane-bonus';
 
 const exact=(v:number):MotionBand=>({min:v,mid:v,max:v});
 const note='Local velocity comparison with the matched race’s positions, HP, statuses, targets and activation schedule held fixed. Distance is integrated movement difference; time is equivalent travel time, not a predicted finish-time change.';
@@ -19,10 +20,7 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
   const cache=new Map<string,RunnerMotion>();
   const course=reference.courses[race.courseId??-1]??null;
   const rows=new Map(race.runners.map(r=>[r.id,trace.motion.filter(v=>v[m.horse]===r.index)]));
-  // Motion is traced before the field-overlap pass; replay frames are after it.
-  // Compare each move with its actual starting lane, not the previous trace's
-  // lane (an overlap displacement must not masquerade as a voluntary move).
-  const beforeFrame=new Map(race.frames.slice(1).map((frame,i)=>[frame.time,race.frames[i]]));
+  const laneMoves=new Map(race.runners.map(r=>[r.id,previousLaneMoves(race,r.id,rows.get(r.id)!)]));
   const powerReleases=new Map(race.runners.map(r=>[r.id,powerSummary(trace.events.filter(e=>e.horseIndex===r.index),undefined,r.finishTimeRaw??race.duration).releases]));
   const basePhysics=new Map<string,ReturnType<typeof formulas.physics>>();
   const physics=(id:string,t:number)=>{const key=`${id}/${t}`;let value=basePhysics.get(key);if(!value){value=formulas.physics(id,t);basePhysics.set(key,value);}return value;};
@@ -74,18 +72,16 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
         if(r[m.hp]>0&&activeLane.some(e=>selected.includes(e))&&!activeLane.some(e=>!selected.includes(e))){
           // The engine grants one shared bonus, regardless of how many lane
           // skills overlap, and reads the previous tick's movement latch.
-          const previous=ticks[index-1],before=previous?beforeFrame.get(previous[m.time]):null;
-          const startLane=before?.runners.find(s=>s.runnerId===runner.id)?.lane;
-          if(previous&&(startLane==null||Math.abs(previous[m.time]-before!.time-previous[m.dt])>1e-4)){
+          const moved=laneMoves.get(runner.id)![index];
+          if(moved===null){
             reasons.push('Skill lane-movement starting position unavailable.');
-          }else if(previous&&Math.fround(previous[m.lane])!==Math.fround(startLane!)){
+          }else if(moved){
             const initialPower=detail.statBreakdown.stats.power.final;
             const addedPower=effects.filter(e=>e.type===3&&e.start>0&&time>=e.start&&time<e.end);
             if(initialPower===null||addedPower.some(e=>e.value===null))reasons.push('Skill lane-movement Power unavailable.');
             else if(r[m.target]>=30)reasons.push('Skill lane-movement bonus is obscured by the target-speed ceiling.');
             else {
-              const power=Math.min(2000,Math.max(1,initialPower+addedPower.reduce((n,e)=>n+e.value!,0)));
-              const bonus=Math.fround(Math.sqrt(Math.fround(Math.fround(power)*Math.fround(.0002))));
+              const bonus=laneTargetBonus(initialPower+addedPower.reduce((n,e)=>n+e.value!,0));
               target=Math.max(0,target-bonus);
             }
           }

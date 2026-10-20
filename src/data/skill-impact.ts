@@ -285,7 +285,7 @@ export function populateSkillImpacts(race:Race,reference:ReferenceData|null,cour
   const all=procsFor(race,analysis);analysis.debuffs=[];
   for(const proc of all){const a=proc.activation,own=a.effects.filter(e=>(e.targetType??1)===1),foreign=a.effects.filter(harmful);
     if(own.length)analysis.runners[proc.source.id].skillImpacts.push(evaluateImpact(race,reference,course,analysis,proc,proc.source,own,all));
-    if(foreign.length){analysis.debuffs.push({sourceRunnerId:proc.source.id,skillId:a.skillId,start:a.start,end:a.end,effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason,targetRunnerIds:a.targetRunnerIds,recipientsKnown:proc.recipientsKnown,effects:foreign,detail:a.simulatedRecipients?'Confirmed applied effects in the matched execution.':'Recorded skill activation and target-mask selection. A mask does not measure effect magnitude or prove immunity was absent; unknown recipients are never filled from a cone.'});for(const id of a.targetRunnerIds){const target=race.runners.find(r=>r.id===id);if(target)analysis.runners[id].receivedDebuffImpacts.push(evaluateImpact(race,reference,course,analysis,proc,target,a.simulatedRecipients?.[id]?.filter(harmful)??foreign,all));}}
+    if(foreign.length){analysis.debuffs.push({sourceRunnerId:proc.source.id,skillId:a.skillId,start:a.start,end:a.end,effectiveEnd:a.effectiveEnd,effectiveDuration:a.effectiveDuration,timingKind:a.timingKind,timingReason:a.timingReason,targetRunnerIds:a.targetRunnerIds,recipientsKnown:proc.recipientsKnown,simulatedRecipients:a.simulatedRecipients,effects:foreign,detail:a.simulatedRecipients?'Confirmed applied effects in the matched execution.':'Recorded skill activation and target-mask selection. A mask does not measure effect magnitude or prove immunity was absent; unknown recipients are never filled from a cone.'});for(const id of a.targetRunnerIds){const target=race.runners.find(r=>r.id===id);if(target)analysis.runners[id].receivedDebuffImpacts.push(evaluateImpact(race,reference,course,analysis,proc,target,a.simulatedRecipients?.[id]?.filter(harmful)??foreign,all));}}
   }
   for(const runner of race.runners){const detail=analysis.runners[runner.id];detail.receivedDebuffTotals=contributionTotals(detail.receivedDebuffImpacts,'Recorded-mask incoming debuffs; model conditional on immunity and known effects');
     if(analysis.debuffs.some(d=>d.sourceRunnerId!==runner.id&&!d.recipientsKnown)){for(const key of ['observedDistance','observedHpConsumed','observedHpRecovered','modeledDistanceDelta','modeledTimeDelta','modeledHpDelta'] as const)detail.receivedDebuffTotals[key]=null;detail.receivedDebuffTotals.detail+=' Unreported recipient masks leave incoming totals unresolved.';}
@@ -294,8 +294,19 @@ export function populateSkillImpacts(race:Race,reference:ReferenceData|null,cour
 export function visionDistanceAt(race:Race,runnerId:string,time:number,reference:ReferenceData|null,analysis:RaceAnalysis):{metres:number|null;detail:string} {
   if(analysis.source==='simulation'){
     const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];if(!runner||!detail)return {metres:null,detail:'Runner unavailable.'};
-    const effects=detail.skillActivations.filter(a=>time>=a.start&&(a.timingKind==='passive'||a.effectiveEnd!=null&&time<a.effectiveEnd)).flatMap(a=>a.effects.filter(e=>e.type===8&&(e.targetType??1)===1).map(e=>effectValue(runner,a.skillId,e)));
-    return {metres:effects.every(v=>v!==null)?20+effects.reduce<number>((n,v)=>n+v!,0):null,detail:'Reference 20 m vision plus applied vision modifiers at this time. Geometry is a fixed-position guide.'};
+    const effects:number[]=[];
+    for(const source of race.runners)for(const a of analysis.runners[source.id]?.skillActivations??[]){
+      const delivered=source.id===runnerId?a.effects.filter(e=>(e.targetType??1)===1):a.simulatedRecipients?.[runnerId]??[];
+      for(const e of delivered.filter(e=>e.type===8)){
+        const start=e.appliedStart??a.start,end=e.appliedEnd??a.effectiveEnd;
+        if(time<start||end!==null&&time>=end)continue;
+        if(end===null&&a.timingKind!=='passive')return {metres:null,detail:'Vision effect expiry unavailable.'};
+        const value=effectValue(source,a.referenceSkillId??a.skillId,e);
+        if(value===null)return {metres:null,detail:'Applied vision modifier unavailable.'};
+        effects.push(value);
+      }
+    }
+    return {metres:Math.max(0,20+effects.reduce((n,v)=>n+v,0)),detail:'Reference 20 m vision plus confirmed self and incoming vision modifiers at this time. Geometry is a fixed-position guide.'};
   }
   const runner=race.runners.find(r=>r.id===runnerId),detail=analysis.runners[runnerId];if(!runner||!detail)return {metres:null,detail:'Runner unavailable.'};let metres=20;
   for(const row of detail.skillRows){const def=reference?.metadata.skills[row.skillId];if(!def){if(row.equipped)return {metres:null,detail:'Equipped vision effects unavailable.'};continue;}

@@ -13,7 +13,7 @@
     if(e.kind==='sampled-trigger')return `${d.predicate}: ${Array.isArray(d.windows)?d.windows.map(w=>Array.isArray(w)?`${Number(w[0]).toFixed(1)}–${Number(w[1]).toFixed(1)} m`:String(w)).join(', '):String(d.windows)}`;
     if(e.kind==='cooldown-start')return `${Number(d.baseDuration)*Number(d.distance)/1000} s`;
     if(e.kind==='effect-queued')return 'Recipients selected';
-    if(d.modifier!==undefined)return `${d.modifier} · ${Number(d.duration).toFixed(3)} s`;
+    if(d.modifier!==undefined)return `${d.modifier}${typeof d.duration==='number'&&Number.isFinite(d.duration)?` · ${d.duration<0?'Passive':d.duration===0?'Instant':`${d.duration.toFixed(3)} s`}`:''}`;
     return 'Executed';
   }
 </script>

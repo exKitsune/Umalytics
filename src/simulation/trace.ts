@@ -16,7 +16,7 @@ export const motionIndex = {
   forceIn:31,forceInCoefficient:32,laneTarget:33,spotStruggle:34,duel:35,conservePower:36,
   blockedFrontSeconds:37,blockedSideSeconds:38,blockedAllSeconds:39,nearFrontSeconds:40,nearBehindSeconds:41,overtakeTargetSeconds:42,
 } as const;
-export const paceModes = ['Normal','Speed up','Overtake','Pace up','Pace down','Extra pace up'];
+export const paceModes = ['Normal','Speed up','Overtake','Pace up','Pace down','Pace up EX'];
 /** Simulated execution trace, never original hidden game telemetry. */
 export function decisionTrace(report:AnalysisGateReport|null):DecisionTrace|null {
   const value=report?.simulation?.modeled?.decisionTrace;

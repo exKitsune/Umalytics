@@ -109,5 +109,7 @@ export interface DebuffActivation {
   sourceRunnerId: string; skillId: number; start: number; end: number | null;
   targetRunnerIds: string[]; recipientsKnown: boolean;
   effects: SkillReference['branches'][number]['effects']; detail: string;
+  /** Delivered effects, including each recipient's actual application/expiry. Absent for inference. */
+  simulatedRecipients?:Record<string,SkillReference['branches'][number]['effects']>;
   effectiveEnd:number|null;effectiveDuration:number|null;timingKind:SkillTimingKind;timingReason:string;
 }

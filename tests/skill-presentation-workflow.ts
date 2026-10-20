@@ -1,7 +1,7 @@
 /** Offline helpers for racing-team totals, observed skill branches, and trainer grouping. */
 import assert from 'node:assert/strict';
 import { attachTeamStatTotals, finishPlace, raceTeams, teamColors } from '../src/data/race-teams';
-import { displayedSkillBranches, effectText, skillBranchNodes, usedBranchIndexes } from '../src/data/skill-details';
+import { displayedSkillBranches, effectText, skillBranchNodes, usedBranchIndexes, activationDurationText } from '../src/data/skill-details';
 import { effectValue } from '../src/data/effect-value';
 import type { Runner } from '../src/data/types';
 import type { SkillRow } from '../src/data/analytics';
@@ -51,6 +51,15 @@ assert.deepEqual(usedBranchIndexes(row), [0]);
 assert.equal(displayedSkillBranches(skill, row).length, 1);
 assert.equal(displayedSkillBranches(skill, row)[0].effects[0].rawValue, 4500);
 assert.equal(displayedSkillBranches(skill, null).length, 2);
+const simulatedRow:SkillRow={...row,activations:[{...row.activations[0],activationEvidence:'simulated',effects:[{...skill.branches[0].effects[0],rawValue:5400,evaluatedValue:.54,levelUsage:0}]}]};
+const displayed=displayedSkillBranches(skill,simulatedRow)[0].effects[0];
+assert.equal(effectText(displayed,field[0],row.skillId),'Target speed +0.54 m/s','An evaluated modifier is not scaled again or replaced with the master value');
+assert.equal(effectText(displayed),'Target speed +0.54 m/s','Traced values do not require a reference runner');
+assert.equal(displayedSkillBranches(skill,{...simulatedRow,activations:[{...simulatedRow.activations[0],effects:[]}]} )[0].effects.length,0,'An activation without applied effects must not invent reference bonuses');
+for(const end of [null,130])assert.equal(activationDurationText({...row.activations[0],timingKind:'passive',effectiveDuration:end}),'Passive');
+assert.equal(activationDurationText({...row.activations[0],timingKind:'instant',effectiveDuration:5}),'Instant');
+assert.equal(activationDurationText(row.activations[0]),'12.5 s');
+assert.equal(activationDurationText({...row.activations[0],timingKind:'unknown',effectiveDuration:null}),null);
 const nodes = skillBranchNodes(skill, row);
 assert.equal(nodes[0].taken, true);
 assert.equal(nodes[1].taken, false);

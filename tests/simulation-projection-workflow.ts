@@ -7,10 +7,11 @@ import { motionFor } from '../src/data/motion-analysis';
 import { metricsForSkill } from '../src/data/skill-metrics';
 import { sampleAt } from '../src/data/sample';
 import { hpTimeline, hpSampledBridges } from '../src/data/hp-timeline';
-import { replayCards } from '../src/replay/cards';
+import { replayCards, replayCardHelp, CARD_DWELL } from '../src/replay/cards';
 import { parseRaceJson } from '../src/data/import';
 import { motionIndex as m, TRACE_SCHEMA, type DecisionEvent } from '../src/simulation/trace';
 import type { Race } from '../src/data/types';
+import type { RaceAnalysis } from '../src/data/analytics';
 import { AnalysisClient, type AnalysisState } from '../src/analysis/client';
 import { AnalysisStore } from '../src/analysis/store';
 import { toPortableRace } from '../src/data/share';
@@ -18,11 +19,12 @@ import { trafficIntervals, trafficAt, trafficActive, trafficColor } from '../src
 import {trafficTimeline,trafficSampleAt,trafficCells,trafficDurations} from '../src/simulation/traffic-lane';
 import type {MotionSample} from '../src/data/race-motion';
 import {powerSummary} from '../src/simulation/power';
-import {telemetrySkillEnd} from '../src/data/telemetry-skills';
+import {showTelemetrySkill,telemetrySkillEnd} from '../src/data/telemetry-skills';
 import {telemetryStatusKinds} from '../src/data/status-presentation';
-import {decodeHiddenStatuses,defaultHiddenStatuses} from '../src/data/telemetry-statuses';
-import {statusLegend,statusHelp} from '../src/data/analysis-copy';
+import {decodeHiddenStatuses,defaultHiddenStatuses,groupTelemetryStatuses} from '../src/data/telemetry-statuses';
+import {statusLegend,statusHelp,laterGlobalStatuses} from '../src/data/analysis-copy';
 import {runnerMechanics} from '../src/data/runner-mechanics';
+import {visionDistanceAt,populateSkillImpacts} from '../src/data/skill-impact';
 
 const report=JSON.parse(execFileSync('python',['tests/globalsim/export_contract_fixtures.py'],{encoding:'utf8',windowsHide:true})).trial;
 const runners=[0,1].map(index=>({id:`r${index}`,index,gate:2-index,name:`Runner ${index}`,charaId:null,cardId:null,trainer:null,strategy:null,finishTime:9,finishOrder:2-index,skills:[{id:123,level:1},{id:456,level:1}]}));
@@ -123,6 +125,56 @@ assert.ok(ready.speedChanges.some(c=>c.reasons.some(r=>r.detail?.includes('Self/
 const passive={...detail.skillActivations[0],timingKind:'passive' as const,start:1,effectiveEnd:100,end:100};
 assert.equal(telemetrySkillEnd(passive),4);assert.equal(passive.effectiveEnd,100,'Only the marker is shortened, never the passive mechanics');
 assert.equal(telemetrySkillEnd(detail.skillActivations[0]),1);
+assert.equal(showTelemetrySkill(passive,null),false,'Permanent passives do not clutter telemetry');
+const passiveOptions={race:result.race,analysis:{...result.analysis,runners:{r0:{...detail,skillActivations:[passive]}}},reference:null} as any;
+const passiveAt=(time:number)=>replayCards(passiveOptions,'r0',time,result.race.frames[0].runners[0]).find(c=>c.kind==='skill');
+assert.equal(passiveAt(.9),undefined);
+const passiveCard=passiveAt(1.25)!;
+assert.ok(passiveCard,'Hidden telemetry passives still proc in replay');
+assert.equal(passiveCard.displayEnd,passive.start+CARD_DWELL);
+assert.equal(passiveCard.end,100,'Keep the actual effect expiry');
+assert.equal(passiveCard.progress,null,'A permanent bonus has no countdown');
+assert.equal(passiveCard.visualOnly,true);
+assert.equal(replayCardHelp(passiveOptions,passiveCard),'Passive bonus applied.');
+assert.ok(passiveAt(3.49));assert.equal(passiveAt(3.5),undefined);assert.equal(passiveAt(99),undefined);
+assert.ok(passiveAt(2),'Seeking backward restores the proc');
+assert.equal(passive.effectiveEnd,100,'Replay display never changes passive analysis');
+const visionEffect=(value:number,start:number,end:number,targetType=1)=>({type:8,rawValue:value*10000,evaluatedValue:value,valueUsage:1,levelUsage:0,targetType,appliedStart:start,appliedEnd:end});
+const visionAnalysis:RaceAnalysis={...result.analysis,runners:{...result.analysis.runners,
+  r0:{...detail,skillActivations:[{...passive,start:0,effects:[visionEffect(10,0,100)]},{...detail.skillActivations[0],start:1,end:10,effectiveEnd:10,effects:[visionEffect(5,1,3),{type:27,rawValue:3500,valueUsage:1,levelUsage:0}]}]},
+  r1:{...result.analysis.runners.r1,skillActivations:[{...detail.skillActivations[0],start:1,end:10,effectiveEnd:10,effects:[visionEffect(-15,1,10,2)],simulatedRecipients:{r0:[visionEffect(-15,2,4,2)]}}]},
+}};
+const sameTeam={...result.race,runners:result.race.runners.map(r=>({...r,teamGroup:1}))};
+for(const [time,expected] of [[.5,30],[1.5,35],[2.5,20],[3,15],[4,30],[100,20]])assert.equal(visionDistanceAt(sameTeam,'r0',time,null,visionAnalysis).metres,expected,`Applied vision windows at ${time}s, independently of the caster's other effects and inferred immunity`);
+visionAnalysis.runners.r1.skillActivations[0].simulatedRecipients={};
+assert.equal(visionDistanceAt(sameTeam,'r0',2.5,null,visionAnalysis).metres,35,'No delivered effect means no assumed hit');
+visionAnalysis.runners.r1.skillActivations[0].simulatedRecipients={r0:[visionEffect(-50,2,4,2)]};
+assert.equal(visionDistanceAt(sameTeam,'r0',2.5,null,visionAnalysis).metres,0,'Vision cannot be negative');
+const deliveryReport=structuredClone(report);
+deliveryReport.simulation.modeled.decisionTrace.events.push(
+  event('skill-activated',.5,{},'901'),event('effect-evaluated',.5,{type:8,ability:0,modifier:-10,duration:1},'901'),
+  event('effect-applied',.5,{type:8,ability:0,modifier:-10,duration:1},'901',1),event('effect-queued',.5,{ability:0,targets:[1]},'901'),
+  event('skill-activated',.5,{},'902'),event('effect-evaluated',.5,{type:10,ability:0,modifier:.9,duration:0},'902'),event('effect-applied',.5,{type:10,ability:0,modifier:.9,duration:0},'902'),
+  event('skill-activated',.5,{},'903'),event('effect-evaluated',.5,{type:14,ability:0,modifier:.01,duration:0},'903'),event('effect-applied',.5,{type:14,ability:0,modifier:.01,duration:0},'903'));
+const delivery=projectSimulation(original,deliveryReport,null)!;
+assert.equal(delivery.analysis.debuffs[0].simulatedRecipients?.r1[0].evaluatedValue,-10);
+populateSkillImpacts(delivery.race,null,null,delivery.analysis);
+assert.equal(delivery.analysis.debuffs[0].simulatedRecipients?.r1[0].appliedEnd,1.5,'Mathematical enrichment must retain delivery evidence and timing');
+assert.ok(delivery.runners.r0.metrics[902].some(m=>m.label==='Gate delay multiplier'&&m.value===.9&&m.unit==='×'));
+assert.ok(delivery.runners.r0.metrics[903].some(m=>m.label==='Gate delay override'&&m.value===.01&&m.unit==='s'));
+assert.equal(showTelemetrySkill(detail.skillActivations[0],null),true,'Timed skill activations remain visible');
+for(const type of [10,14]){
+  const effects=[{type,rawValue:9000,valueUsage:1,levelUsage:0}];
+  assert.equal(showTelemetrySkill({...passive,effects},null),true,'Start-delay effects remain visible even with passive timing');
+  assert.equal(showTelemetrySkill({...passive,timingKind:'instant',effects},null),true,'Instant gate skills remain visible');
+}
+const unknown={...passive,timingKind:'unknown' as const,effects:[],effectBranch:null};
+assert.equal(showTelemetrySkill(unknown,null),true,'Missing definitions must not hide unknown skills');
+const passiveReference={metadata:{skills:{[unknown.skillId]:{branches:[{rawDuration:-1,effects:[{type:1,rawValue:400000,valueUsage:1,levelUsage:0}]}]}}}} as any;
+assert.equal(showTelemetrySkill(unknown,passiveReference),false,'Reference passives are hidden when capture timing is unknown');
+passiveReference.metadata.skills[unknown.skillId].branches[0].effects.push({type:10,rawValue:9000,valueUsage:1,levelUsage:0});
+assert.equal(showTelemetrySkill(unknown,passiveReference),true,'Mixed passive/start-delay skills retain their marker');
+assert.equal(laterGlobalStatuses.has('extra-pace-up'),false,'Pace up EX is available in the current Global engine');
 const powerEvents=[event('skill-activated',8,{},'asitame'),event('effect-applied',8,{type:31,modifier:.12,duration:1.7},'asitame'),event('effect-ended',9.73,{},'asitame')];
 const power=powerSummary(powerEvents,{finalStatus:'supported',finalGauge:20,timeline:[{kind:'clockStarted',t:.1},{kind:'gainBlocked',t:2},{kind:'cooldownStarted',t:3,nextGainAt:5.5},{kind:'accumulationCutoff',t:6},{kind:'release',t:8,gauge:20,usedLegacyFallback:false,distance:1300}]},10);
 assert.deepEqual(power.intervals.filter(i=>i.kind==='conserve-power').map(i=>[i.start,i.end]),[[.1,2],[4.5,6]]);
@@ -133,6 +185,13 @@ assert.deepEqual(decodeHiddenStatuses(null),defaultHiddenStatuses());
 assert.deepEqual(decodeHiddenStatuses('broken'),defaultHiddenStatuses());
 assert.deepEqual([...decodeHiddenStatuses('[]')],[],'Explicitly showing all statuses survives reload');
 assert.deepEqual([...decodeHiddenStatuses('["traffic","unknown"]')],['traffic'],'Only recognized hidden statuses are restored');
+const laneBursts=[{start:10,end:10.1},{start:10.2,end:10.3},{start:14,end:14.1}].map(b=>({...b,kind:'lane-bonus',label:'Lane',skillId:200492,evidence:'simulated' as const,detail:'Lane bonus',model:{speedDelta:.49}}));
+const laneOriginal=structuredClone(laneBursts),groups=groupTelemetryStatuses(laneBursts);
+assert.equal(groups.length,2,'Brief on/off flicker uses one chart band; long inactive gaps stay separate');
+assert.deepEqual(groups[0].bursts!.map(b=>[b.start,b.end]),[[10,10.1],[10.2,10.3]],'Every inactive gap remains available to rendering and hover');
+assert.deepEqual(laneBursts,laneOriginal,'Display grouping cannot change the analysis duration');
+assert.equal(groupTelemetryStatuses([laneBursts[0],{...laneBursts[1],skillId:123}]).length,2,'Different skills cannot be merged');
+assert.equal(groupTelemetryStatuses([laneBursts[0],{...laneBursts[1],model:{speedDelta:.5}}]).length,2,'A changed bonus is a separate band');
 assert.ok(replayCards({race:result.race,analysis:result.analysis} as any,'r0',1.5,result.race.frames[1].runners[0]).some(c=>c.label==='Last spurt'),'Telemetry defaults never hide the replay spurt');
 for(const kind of telemetryStatusKinds){if(kind==='traffic')continue;assert.ok(statusLegend.some(i=>i.kind===kind),`Missing legend: ${kind}`);assert.notEqual(statusHelp(kind),'Time spent in this status.');}
 const mechanics=runnerMechanics({...original,distance:2000},{...runners[0],strategyCode:1,aptitudes:{middle:'A',turf:'A'}}, {surface:1} as any,detail.statBreakdown);

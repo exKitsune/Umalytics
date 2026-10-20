@@ -2,7 +2,7 @@
 export function statusDescription(kind:string):string {
   return ({'pace-up':'Closing the gap ahead.','pace-down':'Easing back to the preferred position.',
     'speed-up':'Accelerating to hold the lead.',overtake:'Accelerating to pass the leader.',
-    'extra-pace-up':'An additional pace-up boost.','spot-struggle':'Competing for the early lead.',
+    'extra-pace-up':'Catching up after a normally rearward strategy gets ahead.','spot-struggle':'Competing for the early lead.',
     'downhill-mode':'Faster downhill running with lower HP drain.',dueling:'A finishing duel.',
     rushed:'Faster running with increased HP drain.','front-block':'The runner ahead is obstructing the path.',
     traffic:'Speed lost to nearby runners.','near-slowdown':'Slowed by a nearby runner.',
@@ -32,14 +32,14 @@ export function statusHelp(kind:string):string {
     'conserve-power':'Power above 1200 can build a reserve before the cutoff. The duration counts active accumulation, excluding interruptions and the 1.5 s restart cooldown. Blocking pace modes, rushing and spot struggle interrupt it; rushing and spot struggle can also reduce the gauge.',
     'release-conserve-power':'Stored power is released as an acceleration bonus during the last spurt. The band ends when the actual effect expires.',
     'force-in':'Early-race inward lane positioning with a nearby runner on the inside. The simulator adds its force-in target-speed adjustment (normally +0.05 m/s); this is not itself a block.',
-    'extra-pace-up':'The simulator’s extra pace-up controller state, distinct from ordinary pace up. Its actual multiplier is included in the target speed.',
+    'extra-pace-up':'During position keeping, a Front Runner can enter Pace up EX when a Pace Chaser, Late Surger or End Closer gets ahead. Other strategies can enter it when the pacemaker uses a normally rearward strategy. It doubles the base target speed plus section variation to catch up; actual speed still depends on acceleration and traffic. No Wit check is required.',
     'stamina-limit-break':'A late-race speed bonus from excess stamina when its engine conditions are met. Actual activation and expiry determine the window.',
     'compete-before-spurt':'A recorded pre-spurt competition event. A start marker alone does not establish its duration.',
     'stamina-keep':'A recorded stamina-preservation event before the last spurt. A start marker alone does not establish its duration.',
     'secure-lead':'A recorded lead-securing event. A start marker alone does not establish its duration.',
     'near-slowdown':'Traffic ahead slows her by more than 0.15 m/s. Pace and downhill modes can remain active.',
-    'lane-bonus':'A lane-speed skill is active while her lane is changing. Forward target speed gains sqrt(0.0002×power) for that movement.',
-    'last-spurt':'The runner has started its final spurt.',
+    'lane-bonus':'Lane targets are re-evaluated about 15 times a second. Small sideways steps and brief holds can make this bonus flicker; the replay smooths movement between samples. The band groups nearby steps, while active time and gains exclude pauses.',
+    'last-spurt':'The runner has started its final spurt. The replay shows a brief 2.5-second notification; the telemetry interval retains the full duration.',
     'hp-empty':'HP is empty. The tag starts when the 1.2 m/s² deceleration begins, which can be before the first zero sample.',
     'downhill-section':'A downhill section of the course.',
     uphill:'Target speed drops by grade × 200 / effective power. Higher power reduces the loss; uphill acceleration also uses its lower baseline.',
@@ -56,7 +56,7 @@ export const modelHelp='Estimated benefit.';
 export const statHelp='Stats after mood, course, strategy, ground and skill bonuses.';
 export const statusLegend:{kind:string;short:string;name:string;source:string;formula?:string}[]=[
   {kind:'force-in',short:'Inward',name:'Force in',source:statusHelp('force-in')},
-  {kind:'extra-pace-up',short:'Extra PU',name:'Extra pace up',source:statusHelp('extra-pace-up')},
+  {kind:'extra-pace-up',short:'PU EX',name:'Pace up EX',source:statusHelp('extra-pace-up'),formula:'2 × (base target + section variation)'},
   {kind:'stamina-limit-break',short:'Limit',name:'Stamina limit break',source:statusHelp('stamina-limit-break')},
   {kind:'compete-before-spurt',short:'Compete',name:'Pre-spurt competition',source:statusHelp('compete-before-spurt')},
   {kind:'stamina-keep',short:'Keep',name:'Stamina keep',source:statusHelp('stamina-keep')},
@@ -73,13 +73,13 @@ export const statusLegend:{kind:string;short:string;name:string;source:string;fo
   {kind:'rushed',short:'RUSH',name:'Rushed',source:statusHelp('rushed')},
   {kind:'front-block',short:'Blocked',name:'Blocked',source:'Recorded front-block slot.'},
   {kind:'near-slowdown',short:'Near',name:'Near',source:'Traffic ahead slows her by more than 0.15 m/s below her target, including active modes and skills.'},
-  {kind:'lane-bonus',short:'Lane',name:'Lane bonus',source:'A lane-speed skill is active and her recorded lane is changing.',formula:'√(0.0002×power)'},
+  {kind:'lane-bonus',short:'Lane',name:'Lane bonus',source:statusHelp('lane-bonus'),formula:'√(0.0002×power), Power bounded to 1–2000'},
   {kind:'hp-empty',short:'Exhausted',name:'Exhausted',source:'Recorded HP reaches zero. The tag starts at the 1.2 m/s² deceleration, which can precede the first zero sample.'},
   {kind:'last-spurt',short:'SPURT',name:'Last spurt',source:'Start is the recorded last-spurt distance. End is the finish.'},
   {kind:'uphill',short:'Up',name:'Uphill',source:'Applied on every uphill grade. Higher power reduces the loss.',formula:'−grade×200/power'},
 ];
 export function statusFormula(kind:string){return statusLegend.find(item=>item.kind===kind)?.formula??null;}
-export const laterGlobalStatuses=new Set(['extra-pace-up','compete-before-spurt','stamina-limit-break','stamina-keep','secure-lead']);
+export const laterGlobalStatuses=new Set(['compete-before-spurt','stamina-limit-break','stamina-keep','secure-lead']);
 export function statusColor(kind:string):string {
   return ({'conserve-power':'#a0b6ca','release-conserve-power':'#e07a2f','pace-up':'#5dcc83',
     'pace-down':'#559deb','speed-up':'#c0d849',overtake:'#e9c44e','extra-pace-up':'#8f87ff',

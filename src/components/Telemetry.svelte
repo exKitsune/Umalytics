@@ -3,6 +3,8 @@
   import { trafficLegend } from '../simulation/traffic';
   import {trafficTimeline} from '../simulation/traffic-lane';
   import TrafficLane from './TrafficLane.svelte';
+  import LaneBonusBand from './LaneBonusBand.svelte';
+  import {groupTelemetryStatuses} from '../data/telemetry-statuses';
   import TrafficScale from './TrafficScale.svelte';
   import {readHiddenStatuses,saveHiddenStatuses,defaultHiddenStatuses,readPositionKeepGuides,savePositionKeepGuides} from '../data/telemetry-statuses';
   import TelemetryRunners from './TelemetryRunners.svelte';
@@ -17,7 +19,7 @@
   import { motionFor } from '../data/motion-analysis';
   import { speedGapNote } from '../data/speed-gap';
   import { preparedFor } from '../analysis/prepared';
-  import {telemetrySkillEnd} from '../data/telemetry-skills';
+  import {showTelemetrySkill,telemetrySkillEnd} from '../data/telemetry-skills';
   import { positionKeepGuideTimeline, positionKeepMarkerGuides, positionKeepGuideSpans, type PositionKeepGuide } from '../data/position-keep-guides';
   export let race:Race, course:CourseReference|null, reference:ReferenceData|null, analysis:RaceAnalysis, selected:string, time:number;
   export let sample:RunnerSample|undefined=undefined;
@@ -38,6 +40,7 @@
   $: laterLegend=legendItems.filter(item=>laterGlobalStatuses.has(item.kind));
   $: visibleStatusCount=(showStatuses?legendItems.filter(item=>!hiddenStatuses.has(item.kind)).length:0)+(analysis.source==='simulation'&&!hiddenStatuses.has('traffic')?1:0);
   let hovered:SkillActivation|null=null;
+  type HillBox={start:number;end:number;up:boolean;a:number;b:number;grade:number;time:number|null;help:string};
   let hoveredSlope:{start:number;end:number;up:boolean}|null=null;
   let hoveredStatus:StatusInterval|null=null;
   let hoveredGapGuide:PositionKeepGuide['id']|null=null;
@@ -50,7 +53,8 @@
   $: extent=race.distance??compatibleCourse?.distance??index.extent;
   $: xmax=axis==='time'?Math.max(telemetryEndTime(race,selected),...race.runners.filter(r=>visibleIds.has(r.id)).map(r=>telemetryEndTime(race,r.id))):extent;
   $: laneMax=index.laneMax;
-  $: bounds=metric==='position'?[1,Math.max(2,race.runners.length)]:metric==='lane'?[0,laneMax]:[0,Math.max(20,index.speedBounds[1],showIdeal?Math.max(0,...motion.samples.map(s=>s.free?.max??0)):0)];
+  $: targetSamples=motion.samples.map(s=>({time:s.time,displayTarget:analysis.source==='simulation'?s.targetActive:s.free}));
+  $: bounds=metric==='position'?[1,Math.max(2,race.runners.length)]:metric==='lane'?[0,laneMax]:[0,Math.max(20,index.speedBounds[1],showIdeal?Math.max(0,...targetSamples.map(s=>s.displayTarget?.max??0)):0)];
   $: xTicks=ticks(0,xmax,9); $: yTicks=ticks(bounds[0],bounds[1],6);
   $: x=(v:number)=>left+v/Math.max(1,xmax)*(right-left);
   $: y=(v:number)=>metric==='position'?top+(v-bounds[0])/Math.max(1,bounds[1]-bounds[0])*(bottom-top):bottom-(v-bounds[0])/Math.max(1,bounds[1]-bounds[0])*(bottom-top);
@@ -61,10 +65,15 @@
   $: heightRange=elevation.length?[Math.min(...elevation.map(p=>p.elevation)),Math.max(...elevation.map(p=>p.elevation))]:[0,1];
   $: atDistance=(d:number)=>axis==='distance'?x(d):(()=>{const t=timeAtDistance(race,selected,d);return t===null?null:x(t)})();
   $: atTime=(t:number)=>axis==='time'?x(t):(()=>{const d=distanceAtTime(race,selected,t);return d===null?null:x(d)})();
+  $: hillBoxes=(compatibleCourse?.slopes??[]).flatMap(slope=>{
+    const end=slope.start+slope.length,a=atDistance(slope.start),b=atDistance(Math.min(extent,end));
+    return a===null||b===null||b<=a?[]:[{start:slope.start,end,up:slope.slopePercent>0,a,b,grade:Math.abs(slope.slopePercent),
+      time:timeAtDistance(race,selected,slope.start),help:slopeEffectHelp(slope.slopePercent,detail?.statBreakdown.stats.power.final,selectedName)}];
+  });
   $: raceSections=analysis.source!=='recorded'&&race.distance!==null&&race.distance>0?Array.from({length:24},(_,i)=>({number:i+1,start:race.distance!*i/24,end:race.distance!*(i+1)/24})):[];
   $: elevationPath=elevation.map((p,i)=>{const px=atDistance(p.distance);return px===null?'':`${i?'L':'M'}${px},${elevationBottom-4-(p.elevation-heightRange[0])/Math.max(.1,heightRange[1]-heightRange[0])*(elevationBottom-elevationTop-12)}`}).join(' ');
   $: cursor=atTime(Math.min(time,telemetryEndTime(race,selected)));
-  $: activations=detail?.skillActivations??[];
+  $: activations=(detail?.skillActivations??[]).filter(activation=>showTelemetrySkill(activation,reference));
   $: allIntervals=combinedStatusIntervals(detail?.intervals??[],{includeModels:true});
   $: nearMotion=allIntervals.some(i=>i.kind==='near-slowdown')?motionFor(race,reference,analysis,selected,course?.id,undefined,true):motion;
   $: intervals=substantialNearIntervals(allIntervals,nearMotion.samples);
@@ -98,8 +107,9 @@
   $: hpBridges=hpSampledBridges(race,selected,reference,undefined,{analysis,course:compatibleCourse}).map(bridge=>({path:secondaryPath([{time:bridge.start,hp:bridge.startHp},{time:bridge.end,hp:bridge.endHp}],'hp',hpMax),reason:bridge.reason}));
   $: metricHpBridges=metric==='hp'?paths.map(p=>({runner:p.runner,bridges:hpSampledBridges(race,p.runner.id,reference,undefined,{analysis,course:compatibleCourse}).map(bridge=>({path:secondaryPath([{time:bridge.start,hp:bridge.startHp},{time:bridge.end,hp:bridge.endHp}],'hp',bounds[1],0,p.runner.id),reason:bridge.reason}))})):[];
   $: gapPath=secondaryPath(detail?.samples??[],'leadGap',gapMax,gapMin);
-  $: simulatedPath=timedPlotPath(race,selected,axis,motion.samples.map(s=>({time:s.time,value:s.free?.mid??null})),x,y);
+  $: simulatedPath=timedPlotPath(race,selected,axis,targetSamples.map(s=>({time:s.time,value:s.displayTarget?.mid??null})),x,y);
   $: currentMotion=latestAt(motion.samples,time);
+  $: currentTarget=analysis.source==='simulation'?currentMotion?.targetActive:currentMotion?.free;
   $: speedNote=analysis.source!=='simulation'&&metric==='speed'&&showIdeal?speedGapNote(currentMotion,allIntervals,compatibleCourse,sample?.speed):null;
   $: speedChanges=preparedFor(analysis)?.runners[selected]?.speedChanges??[];
   $: speedChange=speedChanges.find(change=>time>=change.start&&time<change.end);
@@ -156,7 +166,7 @@
   }
   function packStatuses(local:StatusInterval[],field:StatusInterval[],project:(t:number)=>number|null){
     const values=[...local.filter(s=>s.kind!=='dueling'&&s.kind!=='traffic'&&telemetryStatusKinds.has(s.kind)),...field];
-    const boxes=values.flatMap(interval=>{const box=span(interval,project);return box?[{interval,box,label:statusShortLabel(interval.kind),row:0}]:[];}).sort((a,b)=>a.box.x-b.box.x);
+    const boxes=groupTelemetryStatuses(values).flatMap(({interval,bursts})=>{const box=span(interval,project);return box?[{interval,bursts,box,label:statusShortLabel(interval.kind),row:0}]:[];}).sort((a,b)=>a.box.x-b.box.x);
     const ends:number[]=[];
     for(const entry of boxes){const textWidth=entry.label.length*6+6,low=entry.box.x+entry.box.width/2-textWidth/2,high=Math.max(entry.box.x+entry.box.width,low+textWidth);let row=ends.findIndex(end=>end+4<=Math.min(entry.box.x,low));if(row<0)row=ends.length;entry.row=row+1;ends[row]=high;}
     return boxes;
@@ -175,24 +185,23 @@
   function hillLines(){if(!hoveredSlope)return null;const a=atDistance(hoveredSlope.start),b=atDistance(Math.min(extent,hoveredSlope.end));const xs=[a,b].filter((mark):mark is number=>mark!=null);return xs.length?{color:hoveredSlope.up?'#8dcf86':'#3cb48a',xs,y2:elevationBottom}:null;}
   $: spanMarker=hoveredSlope?hillLines():showEvents&&hovered?skillMarker(hovered):showStatuses&&hoveredStatus?statusMarker(hoveredStatus):null;
 </script>
+{#snippet hillLabel(hill:HillBox)}
+  <text x={(hill.a+hill.b)/2} y={elevationTop+13} text-anchor="middle" class="slope-label">{hill.b-hill.a>85?`${hill.up?'Up':'Down'} ${hill.grade}%`:`${hill.up?'↗':'↘'}${hill.grade}%`}</text>
+{/snippet}
 <section class="panel telemetry">
   <div class="panel-heading telemetry-heading"><div><strong>Race telemetry</strong><span class="muted">{metric==='speed'?'Velocity · m/s':metric==='lane'?'Lane':'Race position'}</span></div><div class="toolbar"><div class="segmented">{#each ['speed','lane','position'] as m}<button class:active={metric===m} onclick={()=>metric=m as Metric}>{m==='speed'?'Velocity':m==='lane'?'Lane':'Position'}</button>{/each}</div><select aria-label="Graph horizontal axis" bind:value={axis}><option value="distance">Distance</option><option value="time">Time</option></select><TelemetryRunners runners={race.runners} {selected} {reference} bind:extraRunnerIds/></div></div>
-  <div class="plot-legend"><label style="--line:var(--simulated)" title="Speed the runner is aiming to reach."><input type="checkbox" bind:checked={showIdeal}/> {analysis.source==='simulation'?'Target speed':'Simulated speed'}</label><label style="--line:#ed676b"><input type="checkbox" bind:checked={showHp}/> Selected HP</label><label style="--line:#78acd8"><input type="checkbox" bind:checked={showGap}/> Gap<span class="ahead-key" title="Lead over the runner in second place.">· Ahead</span></label><label title="Show PD/PU and OT/SU distance guides on the left of the speed chart."><input type="checkbox" checked={showPositionGuides} onchange={e=>{showPositionGuides=e.currentTarget.checked;savePositionKeepGuides(showPositionGuides);hoveredGapGuide=null;}}/> Position-keep guides</label><label><input type="checkbox" bind:checked={showStatuses}/> Statuses</label>{#if analysis.source==='simulation'}<label title="Show traffic slowdown in the bottom lane."><input type="checkbox" checked={!hiddenStatuses.has('traffic')} onchange={e=>toggleStatus('traffic',e.currentTarget.checked)}/> Traffic</label>{/if}<label><input type="checkbox" bind:checked={showEvents}/> Skills</label><div class="live-readout" aria-label="Current telemetry"><span>Time <strong>{time.toFixed(2)} <small>s</small></strong></span><span>Distance <strong>{sample?.distance==null?'—':Math.round(sample.distance)} <small>m</small></strong></span><span>Place <strong>{place==null?'—':ordinal(place)}</strong></span>{#if showIdeal&&currentMotion?.free}<span title="Current target speed.">{analysis.source==='simulation'?'Target':'Simulated'} <strong>{currentMotion.free.mid.toFixed(2)} <small>m/s</small></strong></span>{/if}<span>Speed <strong>{sample?.speed==null?'—':sample.speed.toFixed(2)} <small>m/s</small></strong></span>{#if speedNote}<span class="speed-note" class:unexplained={speedNote.unexplained} title={speedNote.label}><strong>{speedNote.label}</strong></span>{/if}{#if currentMotion?.blockingClamps&&currentMotion.constraint.kind==='recorded-block'&&Math.max(currentMotion.blockingClamps.self,currentMotion.blockingClamps.final)>=.005}<span title="Speed removed by traffic at this moment.">Traffic cut <strong>{Math.max(currentMotion.blockingClamps.self,currentMotion.blockingClamps.final).toFixed(2)} <small>m/s</small></strong></span>{/if}<span class="hp-reading">HP <strong>{sample?.hp==null?'—':Math.round(sample.hp)}</strong>{#if hpLeft!=null}<span class="hp-pct">/ {hpLeft.toFixed(0)}%</span>{/if}</span><span class="gap-reading" class:ahead={gap!==null&&gap<0} title="Distance to the leader, or the lead over second place.">Gap <strong>{gap==null?'—':gap.toFixed(1)} <small>m</small></strong></span></div></div>
-  <div class="speed-explanation" class:empty={metric!=='speed'||!speedChange} aria-label="Speed change explanation">{#if metric==='speed'&&speedChange}<strong>{Math.abs(speedChange.to-speedChange.from)<.00001?'Speed steady':speedChange.to>speedChange.from?'Speed rises':'Speed falls'} · {speedChange.start.toFixed(2)}–{speedChange.end.toFixed(2)} s</strong><span title={`${speedChange.from.toFixed(2)} → ${speedChange.to.toFixed(2)} m/s${currentMotion?.targetActive?`; target ${currentMotion.targetActive.mid.toFixed(2)} m/s`:''}${currentMotion?.acceleration!=null?`; acceleration ${currentMotion.acceleration.toFixed(2)} m/s²`:''}`}>{changeReasons.length?changeReasons.map(r=>r.label).join(' · '):'Cause unresolved'}</span><small>{analysis.source==='simulation'?'Movement':'Replay'}</small>{/if}</div>
+  <div class="plot-legend"><label style="--line:var(--simulated)" title="Speed the runner is aiming to reach."><input type="checkbox" bind:checked={showIdeal}/> {analysis.source==='simulation'?'Target speed':'Simulated speed'}</label><label style="--line:#ed676b"><input type="checkbox" bind:checked={showHp}/> Selected HP</label><label style="--line:#78acd8"><input type="checkbox" bind:checked={showGap}/> Gap<span class="ahead-key" title="Lead over the runner in second place.">· Ahead</span></label><label title="Show PD/PU and OT/SU distance guides on the left of the speed chart."><input type="checkbox" checked={showPositionGuides} onchange={e=>{showPositionGuides=e.currentTarget.checked;savePositionKeepGuides(showPositionGuides);hoveredGapGuide=null;}}/> Position-keep guides</label><label><input type="checkbox" bind:checked={showStatuses}/> Statuses</label>{#if analysis.source==='simulation'}<label title="Show traffic slowdown in the bottom lane."><input type="checkbox" checked={!hiddenStatuses.has('traffic')} onchange={e=>toggleStatus('traffic',e.currentTarget.checked)}/> Traffic</label>{/if}<label><input type="checkbox" bind:checked={showEvents}/> Skills</label><div class="live-readout" aria-label="Current telemetry"><span>Time <strong>{time.toFixed(2)} <small>s</small></strong></span><span>Distance <strong>{sample?.distance==null?'—':Math.round(sample.distance)} <small>m</small></strong></span><span>Place <strong>{place==null?'—':ordinal(place)}</strong></span>{#if showIdeal&&currentTarget}<span title="Current target speed.">{analysis.source==='simulation'?'Target':'Simulated'} <strong>{currentTarget.mid.toFixed(2)} <small>m/s</small></strong></span>{/if}<span>Speed <strong>{sample?.speed==null?'—':sample.speed.toFixed(2)} <small>m/s</small></strong></span>{#if speedNote}<span class="speed-note" class:unexplained={speedNote.unexplained} title={speedNote.label}><strong>{speedNote.label}</strong></span>{/if}{#if currentMotion?.blockingClamps&&currentMotion.constraint.kind==='recorded-block'&&Math.max(currentMotion.blockingClamps.self,currentMotion.blockingClamps.final)>=.005}<span title="Speed removed by traffic at this moment.">Traffic cut <strong>{Math.max(currentMotion.blockingClamps.self,currentMotion.blockingClamps.final).toFixed(2)} <small>m/s</small></strong></span>{/if}<span class="hp-reading">HP <strong>{sample?.hp==null?'—':Math.round(sample.hp)}</strong>{#if hpLeft!=null}<span class="hp-pct">/ {hpLeft.toFixed(0)}%</span>{/if}</span><span class="gap-reading" class:ahead={gap!==null&&gap<0} title="Distance to the leader, or the lead over second place.">Gap <strong>{gap==null?'—':gap.toFixed(1)} <small>m</small></strong></span></div></div>
+  <div class="speed-explanation" class:empty={metric!=='speed'||!speedChange} aria-label="Speed change explanation">{#if metric==='speed'&&speedChange}<strong>{Math.abs(speedChange.to-speedChange.from)<.00001?'Speed steady':speedChange.to>speedChange.from?'Speed rises':'Speed falls'} · {speedChange.start.toFixed(2)}–{speedChange.end.toFixed(2)} s</strong><span title={`${changeReasons.map(r=>r.label).join(" · ")} — ${speedChange.from.toFixed(2)} → ${speedChange.to.toFixed(2)} m/s${currentMotion?.targetActive?`; target ${currentMotion.targetActive.mid.toFixed(2)} m/s`:''}${currentMotion?.acceleration!=null?`; acceleration ${currentMotion.acceleration.toFixed(2)} m/s²`:''}`}>{changeReasons.length?changeReasons.map(r=>r.label).join(' · '):'Cause unresolved'}</span><small>{analysis.source==='simulation'?'Movement':'Replay'}</small>{/if}</div>
   <div class="chart-wrap">
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
     <svg class="telemetry-svg" viewBox={`0 0 ${canvasWidth} ${chartHeight}`} style:width={`${canvasWidth/1200*100}%`} style:min-width={`${Math.round(canvasWidth*0.7)}px`} role="group" tabindex="0" aria-label={`${metric} graph with selected HP, leader gap and status overlays. Drag or use arrow keys to seek.`} onpointerdown={down} onpointermove={e=>{hoverSkill(e);if(dragging)seek(e)}} onpointerleave={()=>hovered=null} onpointerup={up} onpointercancel={()=>dragging=false} onlostpointercapture={()=>dragging=false} onkeydown={keySeek}>
       {#each yTicks as tick}<line x1={left} x2={right} y1={y(tick)} y2={y(tick)} class="gridline"/><text x={left-12} y={y(tick)+4} text-anchor="end" class="axis-label">{metric==='position'?Math.round(tick):tick.toFixed(metric==='lane'?2:1)}</text>{/each}
       {#each xTicks as tick}<line x1={x(tick)} x2={x(tick)} y1={top} y2={chartHeight-8} class="gridline faint"/><text x={x(tick)} y={bottom+19} text-anchor="middle" class="axis-label">{Math.round(tick)}{axis==='distance'?'m':'s'}</text>{/each}
       {#if elevationPath.trim()}<path d={`${elevationPath} L${right},${elevationBottom} L${left},${elevationBottom} Z`} fill="var(--accent)" fill-opacity=".18"/>
-        {#each compatibleCourse?.slopes??[] as slope}
-          {@const a=atDistance(slope.start)}{@const end=slope.start+slope.length}{@const b=atDistance(Math.min(extent,end))}
-          {@const help=slopeEffectHelp(slope.slopePercent,detail?.statBreakdown.stats.power.final,selectedName)}
-          {#if a!==null&&b!==null&&b>a}<g class="hill-span" role="group" aria-label={help} onpointerenter={()=>hoveredSlope={start:slope.start,end,up:slope.slopePercent>0}} onpointerleave={()=>hoveredSlope=null} onpointerdown={e=>e.stopPropagation()}>
-            <title>{help} · {slope.start}–{end} m</title><rect x={a} y={elevationTop} width={b-a} height={elevationBottom-elevationTop} fill={slope.slopePercent>0?'#69b779':'#2f9c69'} opacity=".16"/>
-            <text x={(a+b)/2} y={elevationTop+13} text-anchor="middle" class="slope-label">{b-a>85?`${slope.slopePercent>0?'Up':'Down'} ${Math.abs(slope.slopePercent)}%`:`${slope.slopePercent>0?'↗':'↘'}${Math.abs(slope.slopePercent)}%`}</text>
-          </g>{/if}
-        {/each}
+        {#each hillBoxes as hill}<g class="hill-background" pointer-events="none" aria-hidden="true">
+          <rect x={hill.a} y={elevationTop} width={hill.b-hill.a} height={elevationBottom-elevationTop} fill={hill.up?'#69b779':'#2f9c69'} fill-opacity=".16"/>
+          {#if hoveredSlope!==hill}{@render hillLabel(hill)}{/if}
+        </g>{/each}
         <path d={elevationPath} fill="none" stroke="var(--accent)" stroke-opacity=".85" stroke-width="1.8"><title>Relative course elevation.</title></path>
       {/if}
       {#if metric==='speed'&&showIdeal}<g class="simulated-speed"><title>Speed the runner is aiming to reach.</title><path d={simulatedPath} fill="none" stroke="var(--simulated)" stroke-width="1" vector-effect="non-scaling-stroke"/></g>{/if}
@@ -200,7 +209,7 @@
       {#each metricHpBridges.filter(p=>visibleIds.has(p.runner.id)) as p}{#each p.bridges as bridge}<path class="hp-sampled-bridge" d={bridge.path} fill="none" stroke={runnerColors[p.runner.index%runnerColors.length]} stroke-width={p.runner.id===selected?3:1.3} opacity={p.runner.id===selected?0.7:0.2}><title>HP between recorded samples.</title></path>{/each}{/each}
       {#if metric==='speed'}{#if showHp}{#each hpBridges as bridge}<path class="hp-sampled-bridge" d={bridge.path} fill="none" stroke="#ed676b" stroke-width="2.4" stroke-opacity=".7"><title>HP between recorded samples.</title></path>{/each}<path d={hpPath} fill="none" stroke="#ed676b" stroke-width="2.4"/>{/if}{#if showGap}<defs><linearGradient id="telemetry-gap-color" x1="0" y1={top} x2="0" y2={bottom} gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#78acd8"/><stop offset={gapZero} stop-color="#78acd8"/><stop offset={gapZero} stop-color="var(--gap-ahead)"/><stop offset="1" stop-color="var(--gap-ahead)"/></linearGradient></defs><path d={gapPath} fill="none" stroke="url(#telemetry-gap-color)" stroke-width="2" stroke-dasharray="3 3"/>{/if}{/if}
 
-      {#if showStatuses}<defs>{#each statusBoxes as entry,index}<clipPath id={`status-label-${index}`}><rect x={entry.box.start} y={statusY-entry.row*22} width={Math.max(entry.box.end-entry.box.start,3)} height="16"/></clipPath>{/each}</defs>{#each statusBoxes as entry,index}{@const interval=entry.interval}{@const box=entry.box}{@const rowY=statusY-entry.row*22}{@const short=entry.label}{@const spanWidth=Math.max(box.end-box.start,3)}{@const hot=hoveredStatus===interval}{@const paint=color(short==='Dueling'?'DUEL':short)}<g class="status-span" class:hot role="button" tabindex="0" onfocus={()=>hoveredStatus=interval} onblur={()=>hoveredStatus=null} onkeydown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();onSeek(interval.start);}}} aria-label={`${statusLabel(interval.kind)} from ${interval.start.toFixed(2)} to ${(interval.end??interval.start).toFixed(2)} seconds`} onpointerenter={()=>hoveredStatus=interval} onpointerleave={()=>hoveredStatus=null} onpointerdown={e=>e.stopPropagation()} onclick={()=>onSeek(interval.start)}><title>{provenance(interval)}</title><rect x={box.start} y={rowY} width={spanWidth} height="16" rx="2" fill={paint} fill-opacity={hot?0.36:0.16} stroke={paint} stroke-opacity={1} stroke-width={hot?1.75:1} stroke-dasharray={interval.evidence==='estimated'?'4 3':undefined}/><text x={box.start+4} y={rowY+12} class="overlay-label" clip-path={`url(#status-label-${index})`} fill={color(short==='Dueling'?'DUEL':short)}>{short}</text><line x1={box.start} x2={box.start+spanWidth} y1={rowY+16} y2={rowY+16} stroke={paint} stroke-width="1.5"/></g>{/each}{/if}
+      {#if showStatuses}<defs>{#each statusBoxes as entry,index}<clipPath id={`status-label-${index}`}><rect x={entry.box.start} y={statusY-entry.row*22} width={Math.max(entry.box.end-entry.box.start,3)} height="16"/></clipPath>{/each}</defs>{#each statusBoxes as entry,index}{@const interval=entry.interval}{@const box=entry.box}{@const rowY=statusY-entry.row*22}{@const short=entry.label}{@const spanWidth=Math.max(box.end-box.start,3)}{@const hot=hoveredStatus===interval}{@const paint=color(short==='Dueling'?'DUEL':short)}{#if entry.bursts}<LaneBonusBand {interval} bursts={entry.bursts} {left} y={rowY} {paint} project={atTime} unproject={trafficTimeAt} {onSeek} onHover={active=>hoveredStatus=active?interval:null}/>{:else}<g class="status-span" class:hot role="button" tabindex="0" onfocus={()=>hoveredStatus=interval} onblur={()=>hoveredStatus=null} onkeydown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();onSeek(interval.start);}}} aria-label={`${statusLabel(interval.kind)} from ${interval.start.toFixed(2)} to ${(interval.end??interval.start).toFixed(2)} seconds`} onpointerenter={()=>hoveredStatus=interval} onpointerleave={()=>hoveredStatus=null} onpointerdown={e=>e.stopPropagation()} onclick={()=>onSeek(interval.start)}><title>{provenance(interval)}</title><rect x={box.start} y={rowY} width={spanWidth} height="16" rx="2" fill={paint} fill-opacity={hot?0.36:0.16} stroke={paint} stroke-opacity={1} stroke-width={hot?1.75:1} stroke-dasharray={interval.evidence==='estimated'?'4 3':undefined}/><text x={box.start+4} y={rowY+12} class="overlay-label" clip-path={`url(#status-label-${index})`} fill={color(short==='Dueling'?'DUEL':short)}>{short}</text><line x1={box.start} x2={box.start+spanWidth} y1={rowY+16} y2={rowY+16} stroke={paint} stroke-width="1.5"/></g>{/if}{/each}{/if}
       <g class="race-section-markers" aria-label="24 race sections">{#each raceSections as section}{@const a=atDistance(section.start)}{@const b=atDistance(section.end)}{#if a!==null&&b!==null&&b>a}<g data-race-section={section.number}><title>Section {section.number} · {section.start.toFixed(0)}–{section.end.toFixed(0)} m</title><line x1={a} x2={a} y1={bottom-5} y2={bottom}/><text x={(a+b)/2} y={bottom-7} text-anchor="middle">{section.number}</text></g>{/if}{/each}</g>
       {#each trackBands as band}{@const a=atDistance(band.start)}{@const b=atDistance(band.end)}{#if a!==null&&b!==null}<rect x={a} y={trackTop} width={Math.max(0,b-a-1)} height="23" fill={band.kind==='corner'?'#bc915c':'#57998a'} opacity=".55"/>{#if b-a>48}<text x={(a+b)/2} y={trackTop+15} text-anchor="middle" class="band-label">{band.label.replace(/\s+segment/i,'')}</text>{/if}{/if}{/each}
       {#each phaseBands as band}{@const a=atDistance(band.start)}{@const b=atDistance(band.end)}{#if a!==null&&b!==null}<rect x={a} y={phaseTop} width={Math.max(0,b-a-1)} height="23" fill={phaseColor(band.kind)} opacity=".5"/><text x={(a+b)/2} y={phaseTop+15} text-anchor="middle" class="band-label">{band.label}</text>{/if}{/each}
@@ -227,6 +236,17 @@
         <TrafficLane ticks={trafficTicks} {left} {right} y={statusY} finish={trafficFinish} {time} project={atTime} unproject={trafficTimeAt} runnerName={id=>runnerName(reference,race.runners.find(r=>r.id===id)!)} {onSeek}/>
       {/if}
       {#if cursor!==null}<line pointer-events="none" x1={cursor} x2={cursor} y1="8" y2={chartHeight-8} stroke="var(--text)" opacity=".7" stroke-width="1.3"/><circle pointer-events="none" cx={cursor} cy="7" r="4" fill="var(--text)"/>{/if}
+      <!-- Foreground hit areas keep plot lines from intercepting hill clicks. -->
+      {#each hillBoxes as hill}
+        <g class="hill-span" role="button" tabindex={hill.time===null?-1:0} aria-disabled={hill.time===null} aria-label={`Seek to ${hill.up?'uphill':'downhill'} at ${hill.start} m. ${hill.help}`} data-hill-start={hill.start} data-hill-time={hill.time}
+          onpointerenter={()=>hoveredSlope=hill} onpointerleave={()=>hoveredSlope=null} onfocus={()=>hoveredSlope=hill} onblur={()=>hoveredSlope=null}
+          onpointerdown={e=>{e.preventDefault();e.stopPropagation();}} onclick={()=>{if(hill.time!==null)onSeek(hill.time);}}
+          onkeydown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(hill.time!==null)onSeek(hill.time);}else if(e.key==='Escape'){hoveredSlope=null;e.stopPropagation();}}}>
+          <title>{hill.help} · {hill.start}–{hill.end} m</title>
+          <rect class="hill-hit-area" x={hill.a} y={elevationTop} width={hill.b-hill.a} height={elevationBottom-elevationTop} fill="transparent"/>
+          {#if hoveredSlope===hill}<g class="hill-hover" pointer-events="none" aria-hidden="true">{@render hillLabel(hill)}</g>{/if}
+        </g>
+      {/each}
       <!-- SVG paints in DOM order. Keep the expanded card above every plot layer. -->
       {#if showEvents&&hovered}
         {@const entry=packed.find(p=>p.activation===hovered)}
@@ -260,7 +280,8 @@
 <style>
 .traffic-swatch{width:14px;height:10px;border-radius:2px;background:linear-gradient(90deg,#fff34f,#ffb02e,#f04444)}
   .telemetry-svg [tabindex]:focus{outline:none}
-  .speed-explanation{display:flex;gap:12px;align-items:baseline;height:36px;box-sizing:border-box;padding:8px 18px;color:var(--text);font-size:var(--font-11);border-bottom:1px solid var(--border);overflow:hidden}.speed-explanation strong{flex-shrink:0;font-size:var(--font-11);font-weight:550}.speed-explanation>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.speed-explanation small{margin-left:auto;flex-shrink:0;color:var(--muted);font-size:var(--font-10);text-decoration:underline dotted}.speed-explanation.empty{color:transparent}
+  .hill-span:focus-visible .hill-hit-area{stroke:var(--accent);stroke-width:2}
+  .speed-explanation{display:flex;gap:4px 12px;align-items:baseline;flex-wrap:wrap;min-height:36px;box-sizing:border-box;padding:8px 18px;color:var(--text);font-size:var(--font-11);border-bottom:1px solid var(--border)}.speed-explanation strong{flex-shrink:0;font-size:var(--font-11);font-weight:550}.speed-explanation>span{min-width:0;flex:1 1 280px;line-height:1.5;overflow-wrap:anywhere}.speed-explanation small{margin-left:auto;flex-shrink:0;color:var(--muted);font-size:var(--font-10);text-decoration:underline dotted}.speed-explanation.empty{color:transparent}
   .gap-threshold-marker{cursor:help}.gap-threshold-marker text{font-size:var(--font-10);font-weight:700;pointer-events:none}.gap-threshold-marker:focus-visible{outline:none}.gap-threshold-marker:focus-visible rect{stroke-width:2}.gap-threshold-line{pointer-events:none}.gap-threshold-line text{font-size:var(--font-10);paint-order:stroke;stroke:var(--panel);stroke-width:3px}
 .telemetry{--gap-ahead:#e7b65b}:global(:root[data-theme=light]) .telemetry{--gap-ahead:#996000}.ahead-key,.live-readout .gap-reading.ahead strong{color:var(--gap-ahead)}
 .race-section-markers{pointer-events:none}.race-section-markers line{stroke:var(--muted);stroke-opacity:.5}.race-section-markers text{fill:var(--muted);font-size:var(--font-8);paint-order:stroke;stroke:var(--panel);stroke-width:2px}

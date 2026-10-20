@@ -6,6 +6,7 @@ import { skillName, runnerName, getSkillReference, type SkillReference } from '.
 import { statusColor, statusDescription } from '../data/analysis-copy';
 import { iconSource, skillIconKey } from '../data/game-icons';
 import { placeReplayCards } from './layout';
+import { receivedEffectWindow } from './received-effects';
 
 export const CARD_DWELL=2.5;
 const hiddenReplayStatuses=new Set(['downhill-section','rushed-boost','force-in','conserve-power']);
@@ -17,13 +18,19 @@ function selfVisionOnly(options:ReplayOptions,id:number,effects?:Effects):boolea
   const branches=getSkillReference(options.reference,id)?.branches;
   return !!branches?.length&&branches.every(branch=>onlyVision(branch.effects));
 }
+function passiveSkill(options:ReplayOptions,id:number,branchIndex?:number|null):boolean {
+  const branches=getSkillReference(options.reference,id)?.branches.filter((branch,index)=>branchIndex==null||(branch.branchIndex??index)===branchIndex);
+  return !!branches?.length&&branches.every(branch=>branch.rawDuration<0);
+}
 type CardInput=Omit<ReplayCard,'displayEnd'|'progress'|'alpha'>&{observedUntil?:number};
 function card(value:CardInput,time:number):ReplayCard|null {
-  // Dwell is presentation only: the countdown is always the resolved effect end.
-  const displayEnd=value.kind==='status'&&value.end!==null?value.end:Math.max(value.start+CARD_DWELL,value.end??value.observedUntil??value.start);
+  // Notification dwell never truncates the underlying passive or spurt effect.
+  const spurtProc=value.kind==='status'&&value.id.split(':')[1].replace(/-model$/,'')==='last-spurt';
+  const proc=spurtProc||value.passive;
+  const displayEnd=value.passive?value.start+CARD_DWELL:spurtProc?Math.min(value.end??Infinity,value.start+CARD_DWELL):value.kind==='status'&&value.end!==null?value.end:Math.max(value.start+CARD_DWELL,value.end??value.observedUntil??value.start);
   if(time<value.start||time>=displayEnd)return null;
-  const progress=value.end!==null&&value.end>value.start?Math.max(0,Math.min(1,(value.end-time)/(value.end-value.start))):null;
-  return {...value,displayEnd,progress,visualOnly:value.visualOnly||value.end!==null&&time>=value.end,
+  const progress=!proc&&value.end!==null&&value.end>value.start?Math.max(0,Math.min(1,(value.end-time)/(value.end-value.start))):null;
+  return {...value,displayEnd,progress,visualOnly:!!proc||value.visualOnly||value.end!==null&&time>=value.end,
     alpha:Math.min(1,(time-value.start)/.15,(displayEnd-time)/.15)};
 }
 export function replayCards(options:ReplayOptions,runnerId:string,time:number,sample:RunnerSample):ReplayCard[] {
@@ -39,9 +46,9 @@ export function replayCards(options:ReplayOptions,runnerId:string,time:number,sa
     }
     for(const skill of runner.skillActivations){
       if(selfVisionOnly(options,skill.referenceSkillId??skill.skillId,skill.effects))continue;
-      const end=skill.effectiveEnd??skill.end;
+      const end=skill.effectiveEnd??skill.end,passive=skill.timingKind==='passive'||passiveSkill(options,skill.referenceSkillId??skill.skillId,skill.effectBranch);
       add({id:`skill:${skill.skillId}:${skill.start}`,kind:'skill',label:skillName(options.reference,skill.referenceSkillId??skill.skillId),
-        iconKey:skillIconKey(options.reference,skill.referenceSkillId??skill.skillId),color:'#79ca0b',start:skill.start,end,
+        iconKey:skillIconKey(options.reference,skill.referenceSkillId??skill.skillId),color:'#79ca0b',start:skill.start,end,passive,
         visualOnly:end===null||end<=skill.start,detail:`${skill.timingReason??skill.detail}${end===null||end<=skill.start?' 2.5s display dwell only; not an effect duration.':''}`});
     }
   }else{
@@ -49,7 +56,7 @@ export function replayCards(options:ReplayOptions,runnerId:string,time:number,sa
       const isSkill=interval.skillId!=null;
       if(isSkill?selfVisionOnly(options,interval.skillId!):hiddenReplayStatuses.has(interval.kind.replace(/-model$/,'')))continue;
       add({id:`interval:${interval.kind}:${interval.start}`,kind:isSkill?'skill':'status',label:isSkill?interval.label:statusLabel(interval.kind),
-        iconKey:isSkill?skillIconKey(options.reference,interval.skillId!):'',color:statusColor(interval.kind),start:interval.start,end:interval.end,
+        iconKey:isSkill?skillIconKey(options.reference,interval.skillId!):'',color:statusColor(interval.kind),start:interval.start,end:interval.end,passive:isSkill&&passiveSkill(options,interval.skillId!),
         visualOnly:interval.end===null,detail:`${interval.evidence}. ${interval.detail??''}${interval.end===null?' 2.5s display dwell only.':''}`});
     }
     if(!options.intervals){
@@ -61,18 +68,22 @@ export function replayCards(options:ReplayOptions,runnerId:string,time:number,sa
   }
   if(options.overlays?.debuffs)for(const activation of options.debuffActivations??options.analysis?.debuffs??[]){
     if(!activation.recipientsKnown||!activation.targetRunnerIds.includes(runnerId)||activation.sourceRunnerId===runnerId)continue;
-    const end=activation.effectiveEnd??activation.end;
+    const window=receivedEffectWindow(activation,runnerId);if(!window)continue;
+    const {start,end,confirmed,passive}=window;
     const source=options.race.runners.find(r=>r.id===activation.sourceRunnerId),target=options.race.runners.find(r=>r.id===runnerId);
-    const immune=source?.teamGroup!=null&&target?.teamGroup!=null&&source.teamGroup===target.teamGroup;
+    const immune=!confirmed&&source?.teamGroup!=null&&target?.teamGroup!=null&&source.teamGroup===target.teamGroup;
     const impact=runner?.receivedDebuffImpacts.find(i=>i.sourceRunnerId===activation.sourceRunnerId&&i.skillId===activation.skillId&&i.start===activation.start);
-    add({id:`received:${activation.sourceRunnerId}:${activation.skillId}:${activation.start}`,sourceRunnerId:activation.sourceRunnerId,kind:'received',label:skillName(options.reference,activation.skillId),iconKey:skillIconKey(options.reference,activation.skillId),color:immune?'#97a1ba':'#e47474',start:activation.start,end,
-      visualOnly:end===null||end<=activation.start,detail:`${immune?'Same-team selected recipient; immune, not an applied hit. ':''}${impact?.detail??''} Recorded target mask from ${activation.sourceRunnerId}; recipient selection is not proof of final effect (teammates may be immune). ${activation.timingReason??activation.detail}`});
+    add({id:`received:${activation.sourceRunnerId}:${activation.skillId}:${activation.start}`,sourceRunnerId:activation.sourceRunnerId,kind:'received',label:skillName(options.reference,activation.skillId),iconKey:skillIconKey(options.reference,activation.skillId),color:immune?'#97a1ba':'#e47474',start,end,confirmed,passive,
+      visualOnly:end===null||end<=start,detail:confirmed?'Confirmed applied effect.':`${immune?'Same-team selected recipient; immune, not an applied hit. ':''}${impact?.detail??''} Recorded target mask from ${activation.sourceRunnerId}; recipient selection is not proof of final effect (teammates may be immune). ${activation.timingReason??activation.detail}`});
   }
   return result;
 }
 export function replayCardHelp(options:ReplayOptions,value:ReplayCard):string {
+  if(value.passive&&value.kind!=='received')return 'Passive bonus applied.';
+  if(value.kind==='status'&&value.id.split(':')[1].replace(/-model$/,'')==='last-spurt')return 'Started the final spurt.';
   if(value.kind==='received'){
     const source=options.race.runners.find(r=>r.id===value.sourceRunnerId);
+    if(value.confirmed)return `From ${source?runnerName(options.reference,source):'another runner'}. ${value.passive?'Passive effect applied.':value.end===value.start?'Instant effect applied.':'Effect applied.'}`;
     return `From ${source?runnerName(options.reference,source):'another runner'}. Targeted by this skill. ${value.detail.startsWith('Same-team')?'Same team; immune to this debuff.':'Effect depends on immunity.'}`;
   }
   if(value.kind==='status')return `${statusDescription(value.id.split(':')[1])}${value.end!==null?` ${(value.end-value.start).toFixed(2)} s.`:''}`;

@@ -9,12 +9,14 @@ import {packDerived,restoreDerived} from '../src/simulation/derived-cache';
 import {motionIndex as m,TRACE_SCHEMA,type DecisionEvent} from '../src/simulation/trace';
 import {activationMotionKey} from '../src/data/race-motion';
 import {measureMotionBenefit} from '../src/data/motion-benefit';
+import {traceLaneBonus,laneBonusStatuses} from '../src/simulation/lane-bonus';
 import type {Race} from '../src/data/types';
 
 const report=JSON.parse(execFileSync('python',['tests/globalsim/export_contract_fixtures.py'],{encoding:'utf8',windowsHide:true})).trial;
 const reference=await loadReference();
 const id=840001;
 reference.metadata.skills[id]={name:'Synthetic direct speed',rarity:1,activateLot:0,branches:[{branchIndex:0,condition:'always==1',rawDuration:20000,durationUsage:1,effects:[{type:21,rawValue:10000,valueUsage:1,levelUsage:1,targetType:1}]}]} as any;
+reference.metadata.skillNames[id]='Synthetic direct speed';
 const runner={id:'r0',index:0,gate:1,name:'Synthetic runner',charaId:null,cardId:null,trainer:null,strategy:'Pace Chaser',strategyCode:2,finishTime:4,finishTimeRaw:4,finishOrder:1,stats:{speed:800,stamina:800,power:800,guts:800,wisdom:800},skills:[{id,level:1}]};
 const race:Race={id:'test',title:'Synthetic fixed replay',source:'normalized',sourceLabel:'test',distance:2500,duration:4,courseId:10506,runners:[runner],frames:[],events:[],warnings:[],synthetic:true};
 let sequence=0;
@@ -72,6 +74,15 @@ laneTrace.motion.forEach((r:number[],i:number)=>{
 });
 laneReport.simulation.modeled.frames.forEach((f:any,i:number)=>f.horses[0].lane=laneTrace.motion[Math.min(i,39)][m.lane]);
 const laneValue=projectSimulation(laneRace,laneReport,laneReference)!;
+const laneStatuses=laneValue.analysis.runners.r0.intervals.filter(i=>i.kind==='lane-bonus');
+assert.deepEqual(laneStatuses.map(i=>[i.start,i.end]),[[.6,1.6]],'Status follows the previous movement tick, not the whole skill timer');
+assert.ok(Math.abs(laneStatuses[0].model!.speedDelta!-.4)<1e-6);
+const laneReason=(time:number)=>laneValue.runners.r0.speedChanges.find(c=>c.start===time)!.reasons.map(r=>r.label).join(' ');
+assert.match(laneReason(.6),/Synthetic direct speed lane bonus \+0\.400 m\/s/);
+assert.match(laneReason(1.6),/lane bonus ends.*−0\.400 m\/s target/);
+assert.match(laneReason(1.6),/Settling to lower target/);
+assert.doesNotMatch(laneReason(1.6),/acceleration|Accelerating/,'Positive acceleration capacity does not mean the runner is accelerating');
+assert.match(laneReason(1),/lane bonus/,'Steady speed still identifies the active bonus');
 const laneActivation=laneValue.analysis.runners.r0.skillActivations[0],laneKey=activationMotionKey('r0',laneActivation);
 const laneEngine=createTraceMotionEngine(laneValue.race,reference,laneValue.analysis,laneTrace);
 const laneWithout=laneEngine.build({excludeActivationKey:laneKey}).runners.r0;
@@ -80,6 +91,9 @@ const laneGain=measureMotionBenefit(laneEngine.build().runners.r0,laneWithout,[{
 assert.ok(Math.abs(laneGain.distance!.mid-.46)<1e-6,'Lane movement gains 0.46m in the fixed trajectory');
 assert.ok(laneGain.time!.mid<0);
 await enrichSimulation(laneValue,laneTrace,laneReference);
+assert.equal(laneValue.runners.r0.motion.samples.find(s=>s.time===.6)!.targetActive!.mid,20.4);
+assert.notEqual(laneValue.runners.r0.motion.samples.find(s=>s.time===.6)!.free!.mid,20.4,
+  'The unblocked trajectory is not the target speed while still accelerating');
 assert.ok(Math.abs(laneValue.runners.r0.impacts[id]!.distance!.mid-.46)<1e-6,'Lane-only skill gains reach the dashboard');
 assert.deepEqual(laneValue.runners.r0.impacts[id]!.effects,[],'No effectiveness percentage for lane movement');
 assert.ok(Math.abs(laneValue.runners.r0.totals.benefit!.distance!.mid-.46)<1e-6,'Combined movement includes lane skills');
@@ -112,6 +126,8 @@ for(const c of ['min','mid','max'] as const){
 const restoredLane=projectSimulation(laneRace,mixedLaneReport,mixedLaneReference)!;
 assert.equal(restoreDerived(restoredLane,'lane-split',packDerived(mixedLaneValue,'lane-split')),true);
 assert.deepEqual(restoredLane.runners.r0.impacts[id]!.laneMovement,split,'Saved analysis retains the gain breakdown');
+assert.deepEqual(restoredLane.runners.r0.motion.samples.map(s=>s.targetActive),mixedLaneValue.runners.r0.motion.samples.filter(s=>s.time<4).map(s=>s.targetActive),
+  'Target-speed samples remain identical for freshly calculated and restored analysis');
 const twoLaneAnalysis=structuredClone(laneValue.analysis);
 twoLaneAnalysis.runners.r0.skillActivations.push({...laneActivation,skillId:id+1});
 const twoLane=createTraceMotionEngine(laneValue.race,reference,twoLaneAnalysis,laneTrace);
@@ -121,13 +137,16 @@ const stationaryLane=structuredClone(laneTrace);
 stationaryLane.motion.forEach((r:number[])=>{r[m.lane]=0;r[m.target]=r[m.unclamped]=r[m.selfSpeed]=r[m.skillSpeed]=r[m.speed]=20;});
 const stationaryRace=structuredClone(laneValue.race);stationaryRace.frames.forEach(f=>f.runners[0].lane=0);
 const stationaryEngine=createTraceMotionEngine(stationaryRace,reference,laneValue.analysis,stationaryLane);
+assert.deepEqual(laneBonusStatuses(traceLaneBonus(stationaryRace,stationaryRace.runners[0],stationaryLane.motion,[laneActivation],800),reference),[]);
 assert.equal(measureMotionBenefit(stationaryEngine.build().runners.r0,stationaryEngine.build({excludeActivationKey:laneKey}).runners.r0,[{start:.5,end:2}]).distance!.mid,0,'Stationary lane skills do not gain forward speed');
 const overlapTrace=structuredClone(stationaryLane),overlapRace=structuredClone(stationaryRace);
 overlapTrace.motion.forEach((r:number[],i:number)=>r[m.lane]=i*.01);
 overlapRace.frames.forEach((f,i)=>f.runners[0].lane=(i+1)*.01);
 const overlapEngine=createTraceMotionEngine(overlapRace,reference,laneValue.analysis,overlapTrace);
+assert.deepEqual(laneBonusStatuses(traceLaneBonus(overlapRace,overlapRace.runners[0],overlapTrace.motion,[laneActivation],800),reference),[],'Overlap corrections never produce a lane-bonus status');
 assert.equal(measureMotionBenefit(overlapEngine.build().runners.r0,overlapEngine.build({excludeActivationKey:laneKey}).runners.r0,[{start:.5,end:2}]).distance!.mid,0,'Post-motion collision separation is not a lane skill move');
 const incompleteLane=createTraceMotionEngine({...laneValue.race,frames:[]},reference,laneValue.analysis,laneTrace);
+assert.deepEqual(laneBonusStatuses(traceLaneBonus({...laneValue.race,frames:[]},laneValue.race.runners[0],laneTrace.motion,[laneActivation],800),reference),[],'Missing lane starts cannot invent a status');
 assert.equal(measureMotionBenefit(incompleteLane.build().runners.r0,incompleteLane.build({excludeActivationKey:laneKey}).runners.r0,[{start:.5,end:2}]).distance,null,'Missing starting lanes cannot be silently treated as a measured zero');
 
 // Both skills alone fill the cap. Individual marginal removals are zero, but

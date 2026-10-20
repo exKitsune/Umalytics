@@ -1,6 +1,7 @@
 import {simulationRestriction} from '../simulation/conditions';
 import { getSkillReference, type ReferenceData, type SkillReference } from './reference';
 import type { SkillRow } from './analytics';
+import type { SkillTiming } from './skill-timing';
 import type { Runner } from './types';
 import { effectValue, levelCoefficient, ownedSkillLevel, racingTeamStatTotal, teamStatScale } from './effect-value';
 
@@ -12,13 +13,13 @@ export function velocityKind(type:number): VelocityKind | null {
 }
 const teamStatNames:Record<number,string>={3:'Speed',4:'Stamina',5:'Power',6:'Guts',7:'Wit'};
 export function effectText(effect: SkillReference['branches'][number]['effects'][number],runner?:Runner|null,skillId?:number): string {
-  const resolved=runner&&skillId!=null?effectValue(runner,skillId,effect):null;
+  const resolved=effect.evaluatedValue!==undefined&&Number.isFinite(effect.evaluatedValue)?effect.evaluatedValue:runner&&skillId!=null?effectValue(runner,skillId,effect):null;
   const value=resolved??effect.rawValue/10000;
   const signed=value>0?`+${Number(value.toFixed(5))}`:String(Number(value.toFixed(5)));
   const amount=[10,42].includes(effect.type)?String(Number(value.toFixed(5))):effect.type===9?`${Number((value*100).toFixed(3))}%`:signed;
   const unit=[21,22,27,28].includes(effect.type)?' m/s':effect.type===8?' m':effect.type===31?' m/s²':effect.type===14?' s':effect.type===10||effect.type===42?'×':'';
   const label=effect.type===9&&value<0?'HP cost':names[effect.type]??`Effect ${effect.type}`;
-  if(resolved!==null&&effect.levelUsage===1)return `${label} ${amount}${unit}`;
+  if(resolved!==null&&(effect.evaluatedValue!==undefined||effect.levelUsage===1))return `${label} ${amount}${unit}`;
   if(effect.valueUsage>=3&&effect.valueUsage<=7)return `${label} · scales with racing-team ${teamStatNames[effect.valueUsage]}`;
   // Usage 1 is the normal master reference value, not a variable-value flag.
   // Other usage codes need special skill logic; their coefficient is not a
@@ -40,6 +41,8 @@ export function usedBranchIndexes(row?:SkillRow|null):number[] {
   return row?.inferredBranches.length===1?row.inferredBranches:[];
 }
 export function displayedSkillBranches(skill:SkillReference,row?:SkillRow|null):SkillReference['branches'] {
+  const simulated=row?.activations.filter(a=>a.activationEvidence==='simulated');
+  if(simulated?.length)return simulated.map(a=>({...skill.branches.find((b,i)=>(b.branchIndex??i)===a.effectBranch)??skill.branches[0],effects:a.effects}));
   const used=new Set(usedBranchIndexes(row));
   if(!used.size)return skill.branches;
   return skill.branches.filter((branch,index)=>used.has(branch.branchIndex??index));
@@ -132,6 +135,12 @@ export function uniqueLevelLabel(reference: ReferenceData | null, runner: Runner
 export function effectsText(reference:ReferenceData|null,id:number):string {
   const skill=getSkillReference(reference,id);
   return skill?[...new Set(skill.branches.map(b=>b.effects.map(e=>effectText(e)).join(' · ')))].join(' or '):'Effect data unavailable';
+}
+/** Mechanical lifetime, separate from the brief replay notification. */
+export function activationDurationText(activation:SkillTiming|null|undefined):string|null {
+  if(activation?.timingKind==='passive')return 'Passive';
+  if(activation?.timingKind==='instant')return 'Instant';
+  return activation?.effectiveDuration!=null?`${Number(activation.effectiveDuration.toFixed(3))} s`:null;
 }
 export function durationText(branch:SkillReference['branches'][number],distance:number|null):string {
   if(branch.rawDuration<0)return 'Passive';

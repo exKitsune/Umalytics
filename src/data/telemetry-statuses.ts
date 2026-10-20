@@ -1,4 +1,22 @@
 import {telemetryStatusKinds} from './status-presentation';
+import type {StatusInterval} from './analytics';
+
+export interface TelemetryStatusGroup {interval:StatusInterval;bursts?:StatusInterval[]}
+/** Presentation envelopes only. The original intervals and inactive gaps stay exact. */
+export function groupTelemetryStatuses(intervals:StatusInterval[]):TelemetryStatusGroup[]{
+  const result:TelemetryStatusGroup[]=[],lastLane=new Map<string,TelemetryStatusGroup>();
+  for(const interval of [...intervals].sort((a,b)=>a.start-b.start)){
+    if(interval.kind!=='lane-bonus'||interval.end===null){result.push({interval});continue;}
+    const key=JSON.stringify([interval.skillId,interval.evidence,interval.detail,interval.model?.speedDelta]);
+    const prior=lastLane.get(key);
+    if(prior&&interval.start>=prior.interval.end!&&interval.start-prior.interval.end!<=.35){
+      prior.interval.end=interval.end;prior.interval.observedUntil=interval.end;prior.bursts!.push(interval);
+    }else{
+      const group={interval:{...interval},bursts:[interval]};lastLane.set(key,group);result.push(group);
+    }
+  }
+  return result;
+}
 
 const key='umalytics.telemetry-hidden-statuses.v2';
 export const defaultHiddenStatuses=()=>new Set(['last-spurt','force-in','conserve-power']);

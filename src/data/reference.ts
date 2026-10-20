@@ -131,9 +131,9 @@ export function coursePhases(distance: number): CourseBand[] {
 export function courseSegments(course: CourseReference): CourseBand[] {
   return [
     ...course.corners.map((c, i) => ({ start: c.start, end: c.start + c.length,
-      label: i === course.corners.length - 1 ? 'Final corner' : `Corner ${i + 1}`, kind: 'corner' })),
+      label: `Corner ${4 - ((course.corners.length - 1 - i) % 4)}`, kind: 'corner' })),
     ...course.straights.map((s, i) => ({ start: s.start, end: s.end,
-      label: i === course.straights.length - 1 ? 'Final straight' : `Straight ${i + 1}`, kind: 'straight' })),
+      label: `Straight ${i + 1}`, kind: 'straight' })),
   ].sort((a, b) => a.start - b.start);
 }
 /** Relative metres above the starting datum, derived from published grade segments.

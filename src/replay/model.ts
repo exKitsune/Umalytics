@@ -7,6 +7,7 @@ import type { RaceAnalysis } from '../data/analytics';
 import type { DebuffActivation } from '../data/effect-types';
 import { visionDistanceAt } from '../data/skill-impact';
 import { replayCards, layoutReplayCards, CARD_DWELL } from './cards';
+import { receivedEffectWindow } from './received-effects';
 
 export interface ReplayInterval { kind:string; label:string; start:number; end:number|null; evidence:string; skillId?:number|null; detail?:string }
 export const DEFAULT_REPLAY_WINDOW=50;
@@ -37,6 +38,10 @@ export interface ReplayCard {
   id:string;label:string;kind:'skill'|'status'|'received';iconKey:string;color:string;
   start:number;end:number|null;displayEnd:number;progress:number|null;visualOnly:boolean;detail:string;alpha:number;
   sourceRunnerId?:string;
+  /** Permanent skill effect shown as a brief activation notification. */
+  passive?:boolean;
+  /** Actual delivery in the simulator, rather than an inferred target selection. */
+  confirmed?:boolean;
 }
 export interface ReplayScene {
   time:number; distance:number; phase:string; from:number; to:number;
@@ -204,14 +209,19 @@ function buildReplayScene(options:ReplayOptions,time:number,width:number,height:
   if(options.overlays?.debuffs)for(const activation of activations){
     const end=activation.effectiveEnd??activation.end;
     const activationOnly=end===null||end<=activation.start;
-    if(time<activation.start||time>=Math.max(activation.start+CARD_DWELL,end??activation.start))continue;
+    const confirmed=activation.simulatedRecipients!==undefined;
+    const targetIds=activation.targetRunnerIds.filter(id=>{
+      const window=receivedEffectWindow(activation,id);
+      return window&&time>=window.start&&time<(window.passive?window.start+CARD_DWELL:Math.max(window.start+CARD_DWELL,window.end??window.start));
+    });
+    if(confirmed?!targetIds.length:time<activation.start||time>=Math.max(activation.start+CARD_DWELL,end??activation.start))continue;
     const source=markers.find(m=>m.runner.id===activation.sourceRunnerId);if(!source)continue;
     // Explicit gaze-skill families; targetType4 is not generalized to every skill.
     if([201441,201442,201511,201512].includes(activation.skillId))visionSources.set(source.runner.id,skillName(options.reference,activation.skillId));
-    // Only the recorded mask supplies recipients. Geometry does not add any.
-    const targets=activation.recipientsKnown?markers.filter(m=>m.runner.id!==source.runner.id&&activation.targetRunnerIds.includes(m.runner.id)).map(m=>({runnerId:m.runner.id,x:m.x,y:m.y})):[];
+    // Trace deliveries or recorded masks supply recipients; geometry never does.
+    const targets=activation.recipientsKnown?markers.filter(m=>m.runner.id!==source.runner.id&&targetIds.includes(m.runner.id)).map(m=>({runnerId:m.runner.id,x:m.x,y:m.y})):[];
     debuffs.push({source:{x:source.x,y:source.y},sourceRunnerId:source.runner.id,activationOnly,recipientsKnown:activation.recipientsKnown,
-      label:`${skillName(options.reference,activation.skillId)} · ${activation.recipientsKnown?`${activation.targetRunnerIds.length} recorded targets`:'recipients unknown'}`,targets});
+      label:`${skillName(options.reference,activation.skillId)} · ${activation.recipientsKnown?`${targetIds.length} ${confirmed?'confirmed recipients':'recorded targets'}`:'recipients unknown'}`,targets});
   }
   for(const [runnerId,skill]of visionSources){
     const source=markers.find(m=>m.runner.id===runnerId);if(!source||source.sample.distance===null||source.sample.lane===null)continue;
