@@ -118,7 +118,11 @@ const ceiling=Array(43).fill(0);ceiling[m.dt]=.1;ceiling[m.blocker]=-1;ceiling[m
 assert.deepEqual(trafficIntervals([ceiling],.1),[],'Global speed ceiling without a blocker is not traffic loss');
 const trafficAnalysis={...result.analysis,runners:{...result.analysis.runners,r0:{...detail,intervals:traffic}}};
 assert.ok(replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',.25,result.race.frames[0].runners[0]).some(c=>c.label==='Traffic'));
-assert.ok(!replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',.35,result.race.frames[0].runners[0]).some(c=>c.label==='Traffic'));
+const heldTraffic=replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',.35,result.race.frames[0].runners[0]).find(c=>c.label==='Traffic');
+assert.ok(heldTraffic?.visualOnly,'A brief clear gap holds the notification without claiming an active slowdown');
+assert.equal(heldTraffic.end,.3,'Keep the actual tick end during the display hold');
+assert.equal(trafficActive(traffic[0],.35),false,'Display holds do not extend the traffic analysis');
+assert.ok(!replayCards({race:result.race,analysis:trafficAnalysis} as any,'r0',1,result.race.frames[0].runners[0]).some(c=>c.label==='Traffic'),'The notification disappears after the clear delay');
 assert.equal(ready.totals.score,null,'Unavailable counterfactual effectiveness is not zero');
 assert.ok(ready.speedChanges.length>0&&ready.speedChanges.every(c=>c.reasons.length&&c.reasons.every(r=>r.evidence==='simulated'&&r.start<=c.start&&r.end>=c.end)),'Every executed tick has a directly traced explanation, including steady/ordinary acceleration');
 assert.ok(ready.speedChanges.some(c=>c.reasons.some(r=>r.detail?.includes('Self/final cuts 2.0000 / 0.2500'))));

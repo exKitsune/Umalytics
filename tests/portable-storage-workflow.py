@@ -17,6 +17,7 @@ import sys
 import tempfile
 import threading
 import time
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
@@ -326,7 +327,11 @@ def workflows(temporary):
 
 (ROOT / '.cache').mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='portable-storage-', dir=ROOT / '.cache') as workspace:
-    workflows(Path(workspace))
+    # Explorer can finish opening after this disposable installation is deleted.
+    # Native shell behavior is covered by the separate interactive smoke tests.
+    with patch.object(desktop, 'reveal_file', return_value=False) as reveal:
+        workflows(Path(workspace))
+        reveal.assert_called_once_with(Path(workspace) / 'portable/Umalytics-data/json-out/portable-export.json')
 print('Portable storage/service workflows passed: migration, offline notices, import/preferences restart, reference recovery/release upgrade, live collector CA preservation.')
 runpy.run_path(str(ROOT / 'tests/capture-inspection-workflow.py'), run_name='__main__')
 runpy.run_path(str(ROOT / 'tests/service-fixture-lifetime-workflow.py'), run_name='__main__')

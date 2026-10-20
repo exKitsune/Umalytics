@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assembleReferenceData } from '../src/data/reference';
 import { readGeometry } from '../src/data/geometry';
-import { DEFAULT_REPLAY_WINDOW, cameraAngle, replayCourseMarkers, type ReplayOptions } from '../src/replay/model';
+import { DEFAULT_REPLAY_WINDOW, cameraAngle, replayCourseMarkers, replayScene, type ReplayOptions, type ReplayScene } from '../src/replay/model';
 import { drawReplay } from '../src/replay/draw';
 import { portraitUrl } from '../src/data/portraits';
 import { iconSource } from '../src/data/game-icons';
@@ -14,6 +14,7 @@ import type { Race } from '../src/data/types';
 import { analyzeRace } from '../src/data/analytics';
 import { parseRaceJson } from '../src/data/import';
 import { runnerGap } from '../src/view-model';
+import { replayPhaseTimes, REPLAY_PHASE_COLOR } from '../src/replay/phases';
 
 const folder=process.argv[2],root=join(import.meta.dirname,'..');
 const json=async(path:string)=>JSON.parse(await readFile(path,'utf8'));
@@ -26,7 +27,7 @@ assert.equal(runnerGap(race,gapFrame.map(s=>({...s,distance:100})),race.runners[
 assert.equal(runnerGap(race,gapFrame.slice(0,1),race.runners[0].id),null);
 assert.equal(runnerGap(race,gapFrame.map(s=>({...s,distance:race.distance!+10})),race.runners[0].id),0);
 const reference=assembleReferenceData(await json(join(root,'public/data/metadata.json')),await json(join(root,'public/data/courses.json')),await json(join(root,'public/data/reference-source.json')),await json(join(root,'public/data/simulator-skill-ids.json')),readGeometry(await json(join(root,'public/data/course-geometry.json'))));
-const texts:string[]=[],arcs:number[][]=[],fills:{x:number;y:number;width:number;height:number;color:string}[]=[];
+const texts:string[]=[],textColors=new Map<string,string>(),arcs:number[][]=[],fills:{x:number;y:number;width:number;height:number;color:string}[]=[];
 let strokes:number[][][]=[],path:number[][]=[];
 let strokeCaps:string[]=[];
 // The shared live/clip renderer emits real paths and portrait positions into a
@@ -34,12 +35,30 @@ let strokeCaps:string[]=[];
 const context=new Proxy({
   measureText:(text:string)=>({width:text.length*6}),
   createLinearGradient:()=>({addColorStop:()=>{}}),
-  fillText:(text:string)=>texts.push(text),
+  fillText:(text:string)=>{texts.push(text);textColors.set(text,context.fillStyle as string);},
   fillRect:(x:number,y:number,width:number,height:number)=>fills.push({x,y,width,height,color:context.fillStyle as string}),
   beginPath:()=>{path=[];},moveTo:(x:number,y:number)=>path.push([x,y]),lineTo:(x:number,y:number)=>path.push([x,y]),
   stroke:()=>{strokes.push(path.map(p=>[...p]));strokeCaps.push(context.lineCap);},arc:(x:number,y:number,r:number)=>arcs.push([x,y,r]),
 }, {get:(target,key)=>Reflect.get(target,key)??(()=>{})}) as unknown as CanvasRenderingContext2D;
 const enabled={phases:true,sections:true,slopes:true,remaining777:true};
+// Independently measure the shortest distance from each road segment to a
+// card rectangle. This catches edge/corner intersections between route samples.
+function assertOffTrack(scene:ReplayScene){
+  for(const card of scene.cardGroups){
+    const corners=[[card.x,card.y],[card.x+card.width,card.y],[card.x,card.y+card.height],[card.x+card.width,card.y+card.height]];
+    for(let i=1;i<scene.route.length;i++){
+      const a=scene.route[i-1],b=scene.route[i],dx=b.x-a.x,dy=b.y-a.y,length2=dx*dx+dy*dy;
+      let near=Math.min(...[a,b].map(p=>Math.hypot(Math.max(card.x-p.x,0,p.x-card.x-card.width),Math.max(card.y-p.y,0,p.y-card.y-card.height))));
+      for(const [x,y] of corners){const t=length2?Math.max(0,Math.min(1,((x-a.x)*dx+(y-a.y)*dy)/length2)):0;near=Math.min(near,Math.hypot(x-a.x-t*dx,y-a.y-t*dy));}
+      let enter=0,leave=1;
+      for(const [p,q] of [[-dx,a.x-card.x],[dx,card.x+card.width-a.x],[-dy,a.y-card.y],[dy,card.y+card.height-a.y]]){
+        if(p===0){if(q<0){enter=1;leave=0;break;}}else if(p<0)enter=Math.max(enter,q/p);else leave=Math.min(leave,q/p);
+      }
+      if(enter<=leave)near=0;
+      assert.ok(near>=scene.trackWidth/2+4-1e-5,`Card ${card.runnerId} overlaps the track at ${scene.time}s (${near}px)`);
+    }
+  }
+}
 let renderedFrames=0,boundaries=0,gameCourses=0,left=false,right=false;
 for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
   gameCourses++;left||=course.turn===2;right||=course.turn===1;
@@ -50,6 +69,7 @@ for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
   // at every animation frame rather than repeating120s of label history119times.
   const options:ReplayOptions={race:value,course,reference,selected:value.runners[0].id,follow:'selected',window:140,labels:[10101,10506,10606].includes(course.id),elevation:true,courseMarkers:enabled,intervals:()=>[{kind:'skill',label:'Synthetic corner effect',start:0,end:120,evidence:'recorded',skillId:200362}]};
   const render=(distance:number)=>{texts.length=0;arcs.length=0;fills.length=0;strokes=[];strokeCaps=[];const scene=drawReplay(context,options,distance/course.distance*120,1280,500);renderedFrames++;
+    assertOffTrack(scene);
     assert.equal(scene.camera.angle,cameraAngle(course,scene.distance));assert.equal(scene.camera.scale,1180/options.window);
     assert.ok(strokes.length>=3);assert.deepEqual(strokes[0],scene.route.map(p=>[p.x,p.y]));
     assert.equal(strokeCaps[0],'butt');assert.equal(strokeCaps[1],'butt');
@@ -82,8 +102,9 @@ for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
   }
   const signs=replayCourseMarkers(course,course.distance,enabled);
   assert.ok(signs.some(s=>s.label.includes('777m left')&&s.distance===course.distance-777));
-  assert.ok(signs.some(s=>s.label.includes('Middle')&&Math.abs(s.distance-course.distance/6)<.001));
-  for(const d of signs.map(s=>s.distance)){const scene=render(d);assert.ok(scene.courseMarkers.some(s=>Math.abs(s.distance-d)<.001));}
+  assert.ok(signs.some(s=>s.phase&&s.label.includes('Midleg')&&Math.abs(s.distance-course.distance/6)<.001));
+  for(const d of signs.map(s=>s.distance)){const scene=render(d);assert.ok(scene.courseMarkers.some(s=>Math.abs(s.distance-d)<.001));
+    for(const label of texts.filter(t=>/Midleg|Late race/.test(t)&&!t.endsWith(' s')))assert.equal(textColors.get(label),REPLAY_PHASE_COLOR,'Phase signs are orange');}
   options.courseMarkers={phases:false,sections:false,slopes:false,remaining777:false};options.window=400;
   const clean=render(course.distance-777);assert.deepEqual(clean.courseMarkers,[]);assert.ok(clean.distanceTicks.every(t=>t.distance%100===0));assert.ok(!texts.some(t=>t.includes('777m left')));
   options.window=DEFAULT_REPLAY_WINDOW;const closer=render(course.distance/2);
@@ -109,6 +130,14 @@ for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
 }
 assert.ok(gameCourses>=14&&left&&right&&boundaries>20);
 assert.deepEqual(replayCourseMarkers(null,0,enabled),[]);
+const phaseRace:Race={...race,distance:600,duration:60,runners:race.runners.slice(0,2),frames:[0,10,30,60].map((time,i)=>({time,runners:race.runners.slice(0,2).map((runner,j)=>({runnerId:runner.id,distance:(j?[0,50,250,600]:[0,100,400,600])[i],speed:20,hp:1000,lane:0}))}))};
+const phaseMarks=replayPhaseTimes(phaseRace,phaseRace.runners[0].id);
+assert.deepEqual(phaseMarks.map(m=>[m.label,m.time]),[['Midleg',10],['Late race',30]]);
+const slowerMarks=replayPhaseTimes(phaseRace,phaseRace.runners[1].id);
+assert.equal(slowerMarks[0].time,15);assert.ok(Math.abs(slowerMarks[1].time-(30+30*150/350))<1e-8,'Seek markers follow the selected runner’s crossings, not fractions of race time');
+assert.deepEqual(replayPhaseTimes({...phaseRace,distance:null},phaseRace.runners[0].id),[]);
+assert.deepEqual(replayPhaseTimes(phaseRace,'unrecorded-runner'),[]);
+assert.deepEqual(replayPhaseTimes({...phaseRace,frames:phaseRace.frames.slice(2)},phaseRace.runners[0].id).map(m=>m.label),['Late race'],'Missing early crossings are not fabricated');
 assert.equal(portraitUrl({...race.runners[0],cardId:100103,charaId:1001}),'./portraits/trained_chr_icon_1001_100102_02.png');
 assert.equal(portraitUrl({...race.runners[0],cardId:100102,charaId:1001}),'./portraits/trained_chr_icon_1001_100130_02.png');
 assert.equal(portraitUrl({...race.runners[0],cardId:null,charaId:1001}),'./portraits/chr_icon_1001.png');
@@ -146,18 +175,22 @@ cardAnalysis.runners[sourceId].intervals.push(
   {kind:'release-conserve-power',label:'Release',start:59,end:70,evidence:'recorded',detail:'Releasing power.'},
   {kind:'last-spurt',label:'Spurt',start:59,end:70,evidence:'recorded',detail:'Last spurt.'},
   {kind:'pace-up',label:'PU',start:60,end:60.1,evidence:'recorded',detail:'Short recorded status.'});
-texts.length=0;const cardFrame=drawReplay(context,realOptions,61,1280,500);
+// Use the live viewer height: a 500px-high export cannot fit 200% text,
+// multiple effect columns and a 234px road with separate off-track rails.
+texts.length=0;const cardFrame=drawReplay(context,realOptions,61,1280,800);
 assert.equal(texts.filter(t=>t.startsWith('#')).length,cardFrame.cardGroups.length);
 assert.ok(cardFrame.markers.find(m=>m.runner.id===sourceId)!.cards.length>1);
 assert.equal(cardFrame.cardGroups.filter(g=>g.runnerId===sourceId).length,1);
 assert.ok(cardFrame.cardRects.filter(r=>r.runnerId===sourceId).every(r=>r.height>24));
-const baseFont=parseFloat(context.font),largeFrame=drawReplay(context,{...realOptions,fontScale:200},61,1280,500);
-assert.ok(Math.abs(parseFloat(context.font)-baseFont*2)<1e-6,'Replay text follows the percentage setting.');
+const fontSize=()=>Number(context.font.match(/([\d.]+)px/)?.[1]);
+const baseFont=fontSize(),largeFrame=drawReplay(context,{...realOptions,fontScale:200},61,1280,800);
+assert.ok(Math.abs(fontSize()-baseFont*2)<1e-6,'Replay text follows the percentage setting.');
+assert.ok(context.font.startsWith('bold '),'The selected runner header is emphasized.');
 assert.deepEqual(largeFrame.route,cardFrame.route,'Text size must not change the course or camera.');
 assert.deepEqual(largeFrame.cardRects.map(r=>r.card.id),cardFrame.cardRects.map(r=>r.card.id));
 assert.ok(largeFrame.cardRects.every(r=>r.height>cardFrame.cardRects[0].height&&r.width>cardFrame.cardRects[0].width));
-assert.ok(largeFrame.cardRects.every(r=>r.x>=8&&r.x+r.width<=1272&&r.y>=36&&r.y+r.height<=396));
-assert.deepEqual(drawReplay(context,realOptions,61,1280,500),cardFrame,'Reset restores the original label layout.');
+assert.ok(largeFrame.cardRects.every(r=>r.x>=8&&r.x+r.width<=1272&&r.y>=36&&r.y+r.height<=696));
+assert.deepEqual(drawReplay(context,realOptions,61,1280,800),cardFrame,'Reset restores the original label layout.');
 
 assert.ok(cardFrame.markers.find(m=>m.runner.id===sourceId)!.cards.some(c=>c.label==='Downhill mode'&&c.detail.includes('Modeled')));
 assert.ok(!cardFrame.markers.some(m=>m.labels.some(label=>/GRADE|Proc|Start/.test(label))));
@@ -207,7 +240,7 @@ const instant=drawReplay(context,instantOptions,62.4,1280,500).markers.find(m=>m
 assert.equal(instant.progress,null);assert.equal(instant.visualOnly,true);
 assert.ok(!drawReplay(context,instantOptions,62.5,1280,500).markers.find(m=>m.runner.id===targetId)!.cards.some(c=>c.kind==='received'));
 let previous=cardFrame;
-for(let t=61.01;t<62;t+=.01){const current=drawReplay(context,realOptions,t,1280,500);
+for(let t=61.01;t<62;t+=.01){const current=drawReplay(context,realOptions,t,1280,800);
   for(const rect of current.cardRects){const prior=previous.cardRects.find(r=>r.runnerId===rect.runnerId&&r.card.id===rect.card.id);if(prior){assert.equal(rect.side,prior.side);assert.ok(Math.hypot(rect.x-prior.x,rect.y-prior.y)<15);}}
   previous=current;
 }
@@ -243,7 +276,7 @@ let layoutFrames=0,largestLayoutStep=0,farthestCard=0,layoutOverlap=0,portraitOv
 let worstPortrait:unknown=null,worstDistance:unknown=null;
 let wideLayoutFrames=0,wideLayoutOverlap=0,wideLayoutStep=0;
 for(const width of [760,1280,1920])for(const scenario of ['crossing','heights','crowded']){
-  const height=Math.round(1.3*Math.max(560,Math.min(680,width*.5)));
+  const height=36+Math.round(1.3*Math.max(560,Math.min(680,width*.5)));
   const runners=Array.from({length:scenario==='crowded'?9:4},(_,i)=>({...race.runners[i%race.runners.length],id:`layout-${i}`,index:i,gate:i+1,name:`Layout runner ${i+1}`}));
   const layoutRace:Race={...race,runners,duration:12,courseId:10506,distance:2500,events:[],frames:Array.from({length:49},(_,frame)=>{
     const time=frame/4;return {time,runners:runners.map((r,i)=>({runnerId:r.id,speed:20,hp:1000,lane:(i%3)*.1,
@@ -254,43 +287,44 @@ for(const width of [760,1280,1920])for(const scenario of ['crossing','heights','
   if(scenario==='crowded')for(const zoom of [150,200,300,600]){
     const wideOptions={...layoutOptions,window:zoom};let maxOverlap=0,maxOverlapRatio=0,maxStep=0,last:ReturnType<typeof drawReplay>|null=null;
     for(let frame=60;frame<150;frame++){
-      texts.length=0;const wide=drawReplay(context,wideOptions,frame/30,width,height);wideLayoutFrames++;
+      texts.length=0;const wide=drawReplay(context,wideOptions,frame/30,width,height);wideLayoutFrames++;assertOffTrack(wide);
       assert.equal(wide.cardRects.length,wide.markers.reduce((n,m)=>n+m.cards.length,0));
       assert.equal(texts.at(-1),wide.cardGroups.find(g=>g.runnerId===wideOptions.selected)!.header,'The selected header and effects must paint above all other content.');
       let area=0;
       for(const [i,g]of wide.cardGroups.entries()){
         const owner=wide.markers.find(m=>m.runner.id===g.runnerId)!;
         const gap=Math.hypot(Math.max(g.x-owner.x,0,owner.x-g.x-g.width),Math.max(g.y-owner.y,0,owner.y-g.y-g.height));
-        assert.ok(gap<230,`Wide card left its owner: ${width}/${zoom}: ${gap}`);
+        assert.ok(gap<Math.max(394,width*.3),`Wide card left its owner: ${width}/${zoom}: ${gap}`);
         assert.ok(g.x>=7.999&&g.y>=35.999&&g.x+g.width<=width-7.999&&g.y+g.height<=height-103.999);
         for(const other of wide.cardGroups.slice(i+1))area+=overlaps(g,other);
         const prev=last?.cardGroups.find(p=>p.runnerId===g.runnerId);if(prev)maxStep=Math.max(maxStep,Math.hypot(g.x-prev.x,g.y-prev.y));
       }
       maxOverlap=Math.max(maxOverlap,area);maxOverlapRatio=Math.max(maxOverlapRatio,area/wide.cardGroups.reduce((sum,g)=>sum+g.width*g.height,0));last=wide;
     }
-    // Dense nine-runner fields allow limited overlap to keep labels near their
-    // owners. Check a fraction of visible stack area, independent of font size.
-    if(width>=1280){assert.ok(maxOverlapRatio<.2,`Wide stacks remain crowded: ${width}/${zoom}: ${maxOverlapRatio}`);wideLayoutOverlap=Math.max(wideLayoutOverlap,maxOverlap);}
-    assert.ok(maxStep<15,`Wide layout jumped: ${width}/${zoom}: ${maxStep}`);wideLayoutStep=Math.max(wideLayoutStep,maxStep);
+    // The road is now forbidden even in a dense nine-runner view. Keep all
+    // effect rows and measure crowding in the smaller off-track area.
+    if(width>=1280){assert.ok(maxOverlapRatio<.35,`Wide stacks remain crowded: ${width}/${zoom}: ${maxOverlapRatio}`);wideLayoutOverlap=Math.max(wideLayoutOverlap,maxOverlap);}
+    assert.ok(maxStep<28,`Wide layout jumped: ${width}/${zoom}: ${maxStep}`);wideLayoutStep=Math.max(wideLayoutStep,maxStep);
     const seek=drawReplay(context,wideOptions,3,width,height);drawReplay(context,wideOptions,1,width,height);assert.deepEqual(drawReplay(context,wideOptions,3,width,height),seek);
   }
   let previousLayout:ReturnType<typeof drawReplay>|null=null,initialOrder:number|null=null;
   for(let frame=1;frame<360;frame++){
     texts.length=0;arcs.length=0;fills.length=0;strokes=[];strokeCaps=[];
-    const scene=drawReplay(context,layoutOptions,frame/30,width,height);layoutFrames++;
+    const scene=drawReplay(context,layoutOptions,frame/30,width,height);layoutFrames++;assertOffTrack(scene);
     assert.equal(scene.cardRects.length,scene.markers.reduce((n,m)=>n+m.cards.length,0),'Every skill/status must have a visible row.');
     assert.ok(!texts.some(t=>/^\+\d+ more$/.test(t)),'No hidden-effect count chips.');
     for(const group of scene.cardGroups){
       const owner=scene.markers.find(m=>m.runner.id===group.runnerId)!;
       const gap=Math.hypot(Math.max(group.x-owner.x,0,owner.x-group.x-group.width),Math.max(group.y-owner.y,0,owner.y-group.y-group.height));if(gap>farthestCard){farthestCard=gap;worstDistance={scenario,width,frame,group,owner:{x:owner.x,y:owner.y}};}
-      assert.ok(gap<180,`Card too far from owner: ${scenario}/${width}/${frame}: ${gap}`);
+      // Clearing the full road takes precedence over the old 180px tether.
+      assert.ok(gap<Math.max(394,width*.3),`Card too far from owner: ${scenario}/${width}/${frame}: ${gap}`);
       assert.ok(group.x>=7.999&&group.y>=35.999&&group.x+group.width<=width-7.999&&group.y+group.height<=height-103.999,JSON.stringify({scenario,width,frame,group}));
       minimapOverlap=Math.max(minimapOverlap,overlaps(group,reserve));
       for(const m of scene.markers){const area=overlaps(group,{x:m.x-26,y:m.y-26,width:52,height:52});if(area>portraitOverlap){portraitOverlap=area;worstPortrait={scenario,width,frame,group,marker:{id:m.runner.id,x:m.x,y:m.y}};}}
       for(const other of scene.cardGroups)if(other.runnerId!==group.runnerId&&group.alpha>.99&&other.alpha>.99)layoutOverlap=Math.max(layoutOverlap,overlaps(group,other));
       const old=previousLayout?.cardGroups.find(g=>g.runnerId===group.runnerId);if(old&&old.alpha>.99&&group.alpha>.99&&frame>15){
         const step=Math.hypot(group.x-old.x,group.y-old.y);largestLayoutStep=Math.max(largestLayoutStep,step);assert.equal(group.side,old.side);
-        assert.ok(step<15,`Layout relocation: ${scenario}/${width}/${frame}: ${step}`);
+        assert.ok(step<28,`Layout relocation: ${scenario}/${width}/${frame}: ${step}`);
       }
     }
     if(scenario==='crossing'){
@@ -305,6 +339,30 @@ assert.ok(swaps>0,`Crossing owner boxes must exchange horizontal order. ${JSON.s
 // The user explicitly prefers every effect row over perfect packing. Measure
 // intersections honestly; never hide rows to drive these counters to zero.
 assert.ok([portraitOverlap,minimapOverlap,layoutOverlap].every(Number.isFinite));
+const trafficTicks=[{start:5,end:5.04,blocked:true,near:false,selfLoss:.2,finalLoss:0},{start:5.15,end:5.19,blocked:true,near:false,selfLoss:.1,finalLoss:0},{start:6.5,end:6.54,blocked:true,near:false,selfLoss:.3,finalLoss:0}];
+const flickerIntervals=[{kind:'traffic',label:'Traffic',start:5,end:6.54,evidence:'simulated' as const,traffic:trafficTicks,detail:'Short traffic checks.'}];
+const flickerOptions={...realOptions,overlays:{vision:false,debuffs:false},analysis:{...cardAnalysis,runners:{...cardAnalysis.runners,[sourceId]:{...cardAnalysis.runners[sourceId],intervals:flickerIntervals,skillActivations:[]}}}};
+const originalTraffic=JSON.stringify(flickerIntervals);
+const trafficCards=(time:number)=>replayCards(flickerOptions,sourceId,time,cardFrame.markers[0].sample).filter(c=>c.label==='Traffic');
+assert.equal(trafficCards(4.99).length,0,'Look-ahead never shows a status before it occurs');
+const firstTraffic=trafficCards(5.02)[0],heldTraffic=trafficCards(5.1)[0],againTraffic=trafficCards(5.17)[0];
+assert.equal(firstTraffic.id,heldTraffic.id);assert.equal(heldTraffic.id,againTraffic.id);
+assert.equal(heldTraffic.end,5.04);assert.equal(heldTraffic.visualOnly,true);assert.equal(heldTraffic.progress,0);
+assert.match(replayCardHelp(flickerOptions,heldTraffic),/Recently active/);
+assert.equal(againTraffic.end,5.19);assert.equal(againTraffic.visualOnly,false);
+assert.equal(trafficCards(5.5).length,1,'A very brief notification stays readable');
+assert.equal(trafficCards(5.8).length,0,'A settled clear gap removes the notification');
+assert.notEqual(trafficCards(6.52)[0].id,firstTraffic.id,'Separate episodes stay separate');
+assert.deepEqual(trafficCards(5.1),[heldTraffic],'Rewinding reproduces the same display hold');
+assert.equal(JSON.stringify(flickerIntervals),originalTraffic,'Display holds never alter traffic evidence or totals');
+
+const forecastRunners=race.runners.slice(0,2);
+const forecastRace=(moving:boolean):Race=>({...race,courseId:null,distance:2500,duration:4,runners:forecastRunners,events:[],frames:[0,.1,1,4].map(time=>({time,runners:forecastRunners.map((r,i)=>({runnerId:r.id,distance:300-i*6+(moving&&time>.1&&i?18:0),lane:0,speed:20,hp:1000}))}))});
+const forecastOptions:ReplayOptions={race:forecastRace(false),course:null,reference,selected:forecastRunners[0].id,window:140,follow:'selected',labels:true,elevation:false,intervals:()=>[{kind:'skill',skillId:200362,label:'Current skill',start:0,end:4,evidence:'recorded'}]};
+const still=replayScene(forecastOptions,.05,1280,800),moving=replayScene({...forecastOptions,race:forecastRace(true)},.05,1280,800);
+assert.deepEqual(still.markers.map(m=>[m.x,m.y]),moving.markers.map(m=>[m.x,m.y]));
+assert.notDeepEqual(still.cardGroups,moving.cardGroups,'Future positions influence the initial card placement');
+assertOffTrack(still);assertOffTrack(moving);
 console.log(JSON.stringify({gameCourses,renderedFrames,cornerBoundaries:boundaries,smoothCamera:'passed',worldTicks:'passed',sharedCanvas:'passed',markerToggles:'passed',
   outfitMappings:224,closerCamera:'passed',flatCuts:'passed',visionCandidates:'separate',automaticDebuffCone:'passed',visionModifiers:'passed',cardSideStability:'passed',cardClocks:'passed',seekClipDeterminism:'passed',receivedCards:'passed',cardViewport:'passed',teamImmunity:'passed',doubledTrack:'passed',singleRunnerHeader:'passed',runnerHeaderColor:'passed',
-  layoutFrames,largestLayoutStep,farthestCard,layoutOverlap,portraitOverlap,minimapOverlap,horizontalSwaps:swaps,ownerAnchoredLayout:'passed',allEffectRowsVisible:'passed',fontScaling:'passed',wideLayoutFrames,wideLayoutOverlap,wideLayoutStep,wideViewSpacing:'passed',selectedStackOnTop:'passed'}));
+  layoutFrames,largestLayoutStep,farthestCard,layoutOverlap,portraitOverlap,minimapOverlap,horizontalSwaps:swaps,ownerAnchoredLayout:'passed',allEffectRowsVisible:'passed',fontScaling:'passed',wideLayoutFrames,wideLayoutOverlap,wideLayoutStep,wideViewSpacing:'passed',selectedStackOnTop:'passed',offTrack:'passed',initialLookAhead:'passed',statusFlickerHold:'passed'}));

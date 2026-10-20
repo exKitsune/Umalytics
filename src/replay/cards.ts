@@ -1,6 +1,7 @@
 import { trafficActive, trafficAt, trafficColor } from '../simulation/traffic';
 import type { ReplayCard, ReplayOptions, ReplayScene } from './model';
 import type { RunnerSample } from '../data/types';
+import type { StatusInterval } from '../data/analytics';
 import { combinedStatusIntervals, statusLabel } from '../data/status-presentation';
 import { skillName, runnerName, getSkillReference, type SkillReference } from '../data/reference';
 import { statusColor, statusDescription } from '../data/analysis-copy';
@@ -9,7 +10,30 @@ import { placeReplayCards } from './layout';
 import { receivedEffectWindow } from './received-effects';
 
 export const CARD_DWELL=2.5;
+export const STATUS_MIN_DISPLAY=.6;
+export const STATUS_CLEAR_DELAY=.35;
 const hiddenReplayStatuses=new Set(['downhill-section','rushed-boost','force-in','conserve-power']);
+
+interface StatusEpisode {kind:string;start:number;displayEnd:number;segments:StatusInterval[]}
+const statusCache=new WeakMap<StatusInterval[],{length:number;episodes:StatusEpisode[]}>();
+/** Display holds are separate from simulation intervals and traffic totals.
+ * Calculate them from race time so seeking/rewinding never inherits UI state. */
+function statusEpisodes(intervals:StatusInterval[]):StatusEpisode[]{
+  const cached=statusCache.get(intervals);if(cached?.length===intervals.length)return cached.episodes;
+  const segments=combinedStatusIntervals(intervals,{includeModels:true}).flatMap(status=>{
+    if(hiddenReplayStatuses.has(status.kind))return [];
+    return status.traffic?status.traffic.filter(tick=>trafficActive(status,tick.start)).map(tick=>({...status,start:tick.start,end:tick.end})):[status];
+  }).sort((a,b)=>a.start-b.start);
+  const episodes:StatusEpisode[]=[],last=new Map<string,StatusEpisode>();
+  for(const status of segments){
+    const stop=status.end??status.observedUntil??status.start+CARD_DWELL;
+    const displayEnd=status.kind==='last-spurt'?Math.min(stop,status.start+CARD_DWELL):Math.max(status.start+STATUS_MIN_DISPLAY,stop+STATUS_CLEAR_DELAY);
+    const prior=last.get(status.kind);
+    if(prior&&status.kind!=='last-spurt'&&status.start<=prior.displayEnd){prior.segments.push(status);prior.displayEnd=Math.max(prior.displayEnd,displayEnd);}
+    else{const episode={kind:status.kind,start:status.start,displayEnd,segments:[status]};episodes.push(episode);last.set(status.kind,episode);}
+  }
+  statusCache.set(intervals,{length:intervals.length,episodes});return episodes;
+}
 type Effects=SkillReference['branches'][number]['effects'];
 /** Keep mixed effects and unresolved skills; hide only known self-only vision. */
 function selfVisionOnly(options:ReplayOptions,id:number,effects?:Effects):boolean{
@@ -22,26 +46,30 @@ function passiveSkill(options:ReplayOptions,id:number,branchIndex?:number|null):
   const branches=getSkillReference(options.reference,id)?.branches.filter((branch,index)=>branchIndex==null||(branch.branchIndex??index)===branchIndex);
   return !!branches?.length&&branches.every(branch=>branch.rawDuration<0);
 }
-type CardInput=Omit<ReplayCard,'displayEnd'|'progress'|'alpha'>&{observedUntil?:number};
+type CardInput=Omit<ReplayCard,'displayEnd'|'progress'|'alpha'>&{observedUntil?:number;displayUntil?:number;displayStart?:number};
 function card(value:CardInput,time:number):ReplayCard|null {
   // Notification dwell never truncates the underlying passive or spurt effect.
   const spurtProc=value.kind==='status'&&value.id.split(':')[1].replace(/-model$/,'')==='last-spurt';
   const proc=spurtProc||value.passive;
-  const displayEnd=value.passive?value.start+CARD_DWELL:spurtProc?Math.min(value.end??Infinity,value.start+CARD_DWELL):value.kind==='status'&&value.end!==null?value.end:Math.max(value.start+CARD_DWELL,value.end??value.observedUntil??value.start);
+  const displayEnd=value.passive?value.start+CARD_DWELL:spurtProc?Math.min(value.end??Infinity,value.start+CARD_DWELL):value.displayUntil??(value.kind==='status'&&value.end!==null?value.end:Math.max(value.start+CARD_DWELL,value.end??value.observedUntil??value.start));
   if(time<value.start||time>=displayEnd)return null;
   const progress=!proc&&value.end!==null&&value.end>value.start?Math.max(0,Math.min(1,(value.end-time)/(value.end-value.start))):null;
   return {...value,displayEnd,progress,visualOnly:!!proc||value.visualOnly||value.end!==null&&time>=value.end,
-    alpha:Math.min(1,(time-value.start)/.15,(displayEnd-time)/.15)};
+    alpha:Math.min(1,(time-(value.displayStart??value.start))/.4,(displayEnd-time)/.2)};
 }
 export function replayCards(options:ReplayOptions,runnerId:string,time:number,sample:RunnerSample):ReplayCard[] {
   const result:ReplayCard[]=[];
   const add=(value:CardInput)=>{const visible=card(value,time);if(visible)result.push(visible);};
   const runner=options.analysis?.runners[runnerId];
   if(runner){
-    for(const status of combinedStatusIntervals(runner.intervals,{includeModels:true})){
-      if(hiddenReplayStatuses.has(status.kind)||status.traffic&&!trafficActive(status,time))continue;
+    for(const episode of statusEpisodes(runner.intervals)){
+      if(time<episode.start||time>=episode.displayEnd)continue;
+      let lo=0,hi=episode.segments.length;
+      while(lo<hi){const mid=(lo+hi)>>>1;if(episode.segments[mid].start<=time)lo=mid+1;else hi=mid;}
+      const status=episode.segments[Math.max(0,lo-1)];
       const end=status.end;
-      add({id:`status:${status.kind}:${status.start}`,kind:'status',label:statusLabel(status.kind),iconKey:'',color:status.traffic?trafficColor(trafficAt(status,time)):statusColor(status.kind),start:status.start,end,observedUntil:status.observedUntil,
+      const colorTime=Math.min(time,(end??status.observedUntil??time)-1e-7);
+      add({id:`status:${status.kind}:${episode.start}`,kind:'status',label:statusLabel(status.kind),iconKey:'',color:status.traffic?trafficColor(trafficAt(status,colorTime)):statusColor(status.kind),start:status.start,end,observedUntil:status.observedUntil,displayStart:episode.start,displayUntil:episode.displayEnd,
         visualOnly:end===null&&time>=(status.observedUntil??status.start),detail:`${status.evidence==='estimated'?'Modeled status. ':''}${status.detail}${end===null?' End unknown; 2.5s display dwell only.':''}`});
     }
     for(const skill of runner.skillActivations){
@@ -86,7 +114,7 @@ export function replayCardHelp(options:ReplayOptions,value:ReplayCard):string {
     if(value.confirmed)return `From ${source?runnerName(options.reference,source):'another runner'}. ${value.passive?'Passive effect applied.':value.end===value.start?'Instant effect applied.':'Effect applied.'}`;
     return `From ${source?runnerName(options.reference,source):'another runner'}. Targeted by this skill. ${value.detail.startsWith('Same-team')?'Same team; immune to this debuff.':'Effect depends on immunity.'}`;
   }
-  if(value.kind==='status')return `${statusDescription(value.id.split(':')[1])}${value.end!==null?` ${(value.end-value.start).toFixed(2)} s.`:''}`;
+  if(value.kind==='status')return `${value.visualOnly?'Recently active. ':''}${statusDescription(value.id.split(':')[1])}`;
   return value.end===value.start?'Instant effect.':value.end===null?'Duration unavailable.':value.visualOnly?'Effect ended.':'Remaining effect duration.';
 }
 export const layoutReplayCards=placeReplayCards;

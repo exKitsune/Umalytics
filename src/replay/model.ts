@@ -54,7 +54,7 @@ export interface ReplayScene {
   routeEnds:{start:boolean;finish:boolean};
   camera:{angle:number;scale:number;x:number;y:number};
   distanceTicks:{distance:number;x:number;y:number;angle:number;major:boolean}[];
-  courseMarkers:{distance:number;x:number;y:number;angle:number;label:string}[];
+  courseMarkers:{distance:number;x:number;y:number;angle:number;label:string;phase?:boolean}[];
   vision:{sourceRunnerId:string;polygon:{x:number;y:number}[];route:{x:number;y:number}[];label:string;detail:string;candidateRunnerIds:string[]}[];
   debuffs:{source:{x:number;y:number};sourceRunnerId:string;label:string;recipientsKnown:boolean;activationOnly:boolean;targets:{runnerId:string;x:number;y:number}[]}[];
 }
@@ -130,10 +130,10 @@ function phaseAt(distance:number,total:number):string {
   return distance<total/6?'Early race':distance<total*2/3?'Middle race':distance<total*5/6?'Late race':'Last spurt';
 }
 /** Marker distances are fixed in course space, independently of the camera. */
-export function replayCourseMarkers(course:CourseReference|null,total:number,enabled:ReplayOptions['courseMarkers']):{distance:number;label:string}[] {
+export function replayCourseMarkers(course:CourseReference|null,total:number,enabled:ReplayOptions['courseMarkers']):{distance:number;label:string;phase?:boolean}[] {
   if(!enabled||!Number.isFinite(total)||total<=0)return [];
-  const markers:{distance:number;label:string}[]=[];
-  if(enabled.phases)for(const phase of coursePhases(total).slice(1))markers.push({distance:phase.start,label:phase.label});
+  const markers:{distance:number;label:string;phase?:boolean}[]=[];
+  if(enabled.phases)for(const phase of coursePhases(total).slice(1))markers.push({distance:phase.start,label:phase.kind==='middle'?'Midleg':phase.kind==='late'?'Late race':phase.label,phase:phase.kind==='middle'||phase.kind==='late'});
   if(course&&enabled.sections){
     const bands=courseSegments(course);
     const edges=[...new Set(bands.flatMap(b=>[b.start,b.end]))].sort((a,b)=>a-b);
@@ -156,16 +156,17 @@ export function replayCourseMarkers(course:CourseReference|null,total:number,ena
   }
   if(enabled.remaining777&&total>=777)markers.push({distance:total-777,label:'777m left'});
   // One sign at coincident boundaries, preserving every enabled category.
-  const merged=new Map<number,string[]>();
-  for(const marker of markers){const distance=Math.round(marker.distance*1000)/1000;merged.set(distance,[...(merged.get(distance)??[]),marker.label]);}
-  return [...merged].sort((a,b)=>a[0]-b[0]).map(([distance,labels])=>({distance,label:[...new Set(labels)].join(' · ')}));
+  const merged=new Map<number,{labels:string[];phase:boolean}>();
+  for(const marker of markers){const distance=Math.round(marker.distance*1000)/1000,entry=merged.get(distance)??{labels:[],phase:false};entry.labels.push(marker.label);entry.phase||=!!marker.phase;merged.set(distance,entry);}
+  return [...merged].sort((a,b)=>a[0]-b[0]).map(([distance,entry])=>({distance,label:[...new Set(entry.labels)].join(' · '),phase:entry.phase}));
 }
 export function replayLabels(options:ReplayOptions,runnerId:string,time:number,sample:RunnerSample):string[] {
   return replayCards(options,runnerId,time,sample).map(card=>card.label);
 }
-function buildReplayScene(options:ReplayOptions,time:number,width:number,height:number,layout:boolean,markersOnly:true):ReplayScene['markers'];
+type LayoutScene=Pick<ReplayScene,'markers'|'route'|'trackWidth'>;
+function buildReplayScene(options:ReplayOptions,time:number,width:number,height:number,layout:boolean,markersOnly:true):LayoutScene;
 function buildReplayScene(options:ReplayOptions,time:number,width:number,height:number,layout?:boolean,markersOnly?:false):ReplayScene;
-function buildReplayScene(options:ReplayOptions,time:number,width:number,height:number,layout=true,markersOnly=false):ReplayScene|ReplayScene['markers'] {
+function buildReplayScene(options:ReplayOptions,time:number,width:number,height:number,layout=true,markersOnly=false):ReplayScene|LayoutScene {
   const samples=sampleAt(options.race,time,options.reference),known=samples.filter(s=>s.distance!==null&&Number.isFinite(s.distance));
   const chosen=options.follow==='leader'?known.reduce<RunnerSample|undefined>((a,b)=>!a||b.distance!>a.distance!?b:a,undefined):known.find(s=>s.runnerId===options.selected);
   const total=options.race.distance??options.course?.distance??telemetryIndex(options.race).extent;
@@ -191,14 +192,14 @@ function buildReplayScene(options:ReplayOptions,time:number,width:number,height:
     const cards=replayCards(options,runner.id,time,sample);
     markers.push({runner,sample,...projected,name:runnerName(options.reference,runner),labels:cards.map(c=>c.label),cards,cardSide:runner.index%2===0?'above':'below',focused:runner.id===options.selected});
   }
-  // Layout history needs owner positions and cards only. Avoid constructing
-  // routes, elevation, signs and vision polygons for each smoothing knot.
-  if(markersOnly)return markers;
   const world:{distance:number;point:ReplayPoint}[]=[];
   const steps=Math.max(2,Math.ceil((to-from)/2));
   for(let i=0;i<=steps;i++){
     const d=from+(to-from)*i/steps;world.push({distance:d,point:rawCoursePoint(course,d)});
   }
+  const route=world.map(p=>({...transform(p.point),distance:p.distance,height:p.point.height}));
+  // Look-ahead layout needs the road boundary, but not the signs or effects.
+  if(markersOnly)return {markers,route,trackWidth};
   const distanceTicks:ReplayScene['distanceTicks']=[],step=window>300?100:50;
   for(let d=Math.ceil(from/step)*step;d<=to;d+=step){const point=rawCoursePoint(course,d);distanceTicks.push({distance:d,...transform(point),angle:point.angle-angle,major:d%100===0});}
   const courseMarkers=replayCourseMarkers(course,options.race.distance??course?.distance??0,options.courseMarkers).filter(m=>m.distance>=from&&m.distance<=to).map(m=>{const point=rawCoursePoint(course,m.distance);return {...m,...transform(point),angle:point.angle-angle};});
@@ -247,9 +248,9 @@ function buildReplayScene(options:ReplayOptions,time:number,width:number,height:
       label:`Reference vision ${visibleDistance.toFixed(0)}m${skill?` · ${skill}`:''}${resolved===null||resolved===undefined?' · modifiers unknown':''}`,
       detail:`Reference lane envelope: horse lane=1/18 course width; half-width=(gap/visibleDistance×11.5+2)/36. ${modified?.detail??'Base20m; skill modifiers unresolved.'} Visual spacing follows the portrait lane projection. Cone candidates are not recorded targets or proof of debuff effect; teammates may consume target limits but are immune to debuffs.`});
   }
-  const cardLayout=layout?layoutReplayCards(markers,width,height,options.cardObstacles,undefined,options.fontScale,options.window):{cardRects:[],cardGroups:[]};
+  const cardLayout=layout?layoutReplayCards(markers,width,height,options.cardObstacles,undefined,options.fontScale,options.window,{route,trackWidth}):{cardRects:[],cardGroups:[]};
   return {time,distance,phase:phaseAt(distance,options.race.distance??course?.distance??0),from,to,
-    route:world.map(p=>({...transform(p.point),distance:p.distance,height:p.point.height})),markers,...cardLayout,
+    route,markers,...cardLayout,
     elevation:course?world.map(p=>({distance:p.distance,height:relativeElevation(course,p.distance)})):[],
     geometry:course?.gameGeometry?'Game-extracted course curve':course?'Course schematic':'Distance view · course unknown',
     trackWidth,routeEnds:{start:from===0,finish:(options.race.distance??course?.distance??0)>0&&to===(options.race.distance??course?.distance)},camera:{angle,scale,x:camera.x,y:camera.y},distanceTicks,courseMarkers,vision,debuffs,
@@ -265,9 +266,10 @@ const layoutOffsets=(markers:ReplayScene['markers'],groups:ReplayScene['cardGrou
   const m=markers.find(m=>m.runner.id===g.runnerId);
   return m?[[g.runnerId,{x:g.x+g.width/2-m.x,y:g.y-m.y-(m.cardSide==='above'?-34-g.height:34)}] as const]:[];
 }));
-/** A fixed race-time smoothing window filters placement targets, not playback
- * history. Only nine nearby knots are needed on a cold seek. Residual offsets
- * follow owners immediately and never lag the camera or hide effect rows. */
+/** Look ahead 1.4 seconds, with a short 0.6-second trailing window. Upcoming
+ * positions influence the very first layout as well as playback. Only layout
+ * offsets are anticipated: future statuses/skills never become visible early.
+ * Fixed race-time samples keep direct seeks and exported clips identical. */
 export function replayScene(options:ReplayOptions,time:number,width:number,height:number):ReplayScene {
   const scene=buildReplayScene(options,time,width,height,false);
   if(!options.labels)return scene;
@@ -278,18 +280,21 @@ export function replayScene(options:ReplayOptions,time:number,width:number,heigh
   let frames=cache.get(key);if(!frames){frames=new Map();cache.set(key,frames);if(cache.size>8)cache.delete(cache.keys().next().value!);}
   const target=(index:number)=>{
     index=Math.max(0,index);let frame=frames!.get(index);
-    if(!frame){const markers=buildReplayScene(options,index/5,width,height,false,true),placed=layoutReplayCards(markers,width,height,options.cardObstacles,undefined,options.fontScale,options.window);
-      frame=layoutOffsets(markers,placed.cardGroups);frames!.set(index,frame);
+    if(!frame){const preview=buildReplayScene(options,Math.min(options.race.duration,index/5),width,height,false,true);
+      const upcoming=buildReplayScene(options,Math.min(options.race.duration,index/5+.8),width,height,false,true);
+      const futureRows=new Map(upcoming.markers.map(m=>[m.runner.id,m.cards.reduce((n,c)=>n+c.alpha,0)]));
+      const placed=layoutReplayCards(preview.markers,width,height,options.cardObstacles,undefined,options.fontScale,options.window,{...preview,futureRows});
+      frame=layoutOffsets(preview.markers,placed.cardGroups);frames!.set(index,frame);
       if(frames!.size>400)frames!.delete(frames!.keys().next().value!);
     }
     return frame;
   };
   const p=Math.max(0,time*5),k=Math.floor(p),f=p-k;
   const sums=new Map<string,{x:number;y:number;weight:number}>();
-  for(let i=k-7;i<=k+1;i++){
-    const weight=i===k-7?1-f:i===k+1?f:1;if(weight<=0)continue;
+  for(let i=k-3;i<=k+7;i++){
+    const weight=i===k-3?1-f:i===k+7?f:1;if(weight<=0)continue;
     for(const[id,point]of target(i)){const sum=sums.get(id)??{x:0,y:0,weight:0};sum.x+=point.x*weight;sum.y+=point.y*weight;sum.weight+=weight;sums.set(id,sum);}
   }
   const offsets=new Map([...sums].map(([id,p])=>[id,{x:p.x/p.weight,y:p.y/p.weight}]));
-  return {...scene,...layoutReplayCards(scene.markers,width,height,options.cardObstacles,{offsets,iterations:0},options.fontScale,options.window)};
+  return {...scene,...layoutReplayCards(scene.markers,width,height,options.cardObstacles,{offsets,iterations:0},options.fontScale,options.window,scene)};
 }

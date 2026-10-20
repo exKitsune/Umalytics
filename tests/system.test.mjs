@@ -249,6 +249,7 @@ test('imported race and game reference render a stable camera through course cor
   for(const field of ['closerCamera','flatCuts','automaticDebuffCone','visionModifiers'])assert.equal(report[field],'passed');
   for(const field of ['cardSideStability','cardClocks','seekClipDeterminism','receivedCards','cardViewport','teamImmunity','doubledTrack'])assert.equal(report[field],'passed');
   for(const field of ['singleRunnerHeader','runnerHeaderColor','ownerAnchoredLayout','allEffectRowsVisible','fontScaling','wideViewSpacing','selectedStackOnTop'])assert.equal(report[field],'passed');
+  for(const field of ['offTrack','initialLookAhead','statusFlickerHold'])assert.equal(report[field],'passed');
   assert.equal(report.visionCandidates,'separate');assert.ok(report.outfitMappings>=224);
   t.diagnostic(`Rendered ${report.renderedFrames} frames across ${report.gameCourses} game courses and ${report.cornerBoundaries} corner boundaries.`);
 });

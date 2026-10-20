@@ -17,6 +17,7 @@
   import RaceConditions from './components/RaceConditions.svelte';
   import Telemetry from './components/Telemetry.svelte';
   import CurveReplay from './components/CurveReplay.svelte';
+  import ReplaySeek from './components/ReplaySeek.svelte';
   import RunnerPanel from './components/RunnerPanel.svelte';
   import FieldStats from './components/FieldStats.svelte';
   import RaceTeams from './components/RaceTeams.svelte';
@@ -339,7 +340,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
         <div class="primary-replay">
           <CurveReplay race={analysisRace} {course} {reference} {selected} {time} {analysis} {fontScale} onSelect={selectRunner} onSeek={seek}>
             <div slot="minimap" aria-label="Course minimap"><RaceTrack race={analysisRace} {samples} {course} {reference} {selected} compact onSelect={selectRunner}/></div>
-            <div class="transport main-transport"><button class="play-button" aria-label={playing?'Pause replay':'Play replay'} onclick={togglePlay}>{playing?'Ⅱ':'▶'}</button><button class="icon-button" aria-label="Restart replay" onclick={()=>{time=0;playing=false}}>↺</button><span class="time">{time.toFixed(1)}<small> / {race.duration.toFixed(1)}s</small></span><input aria-label="Replay time" type="range" min="0" max={race.duration} step=".05" bind:value={time}/><select aria-label="Playback speed" bind:value={playbackSpeed}><option value={.25}>¼×</option><option value={.5}>½×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></div>
+            <div class="transport main-transport"><button class="play-button" aria-label={playing?'Pause replay':'Play replay'} onclick={togglePlay}>{playing?'Ⅱ':'▶'}</button><button class="icon-button" aria-label="Restart replay" onclick={()=>{time=0;playing=false}}>↺</button><span class="time">{time.toFixed(1)}<small> / {race.duration.toFixed(1)}s</small></span><ReplaySeek race={analysisRace} {selected} distance={analysisRace.distance??course?.distance??null} bind:time/><select aria-label="Playback speed" bind:value={playbackSpeed}><option value={.25}>¼×</option><option value={.5}>½×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></div>
           </CurveReplay>
         </div>
           {#if selectedReady}<DeferredPanel identity={activeId} label="Telemetry"><Telemetry race={analysisRace} {course} {reference} {analysis} {selected} {time} sample={selectedSample} gap={selectedGap} onSeek={seek}/></DeferredPanel>

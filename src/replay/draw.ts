@@ -5,6 +5,7 @@ import { coursePath, coursePoint } from '../data/reference';
 import { runnerColors } from '../library';
 import { portraitImage } from '../data/portraits';
 import { replayIcon } from './cards';
+import { REPLAY_PHASE_COLOR } from './phases';
 export interface ReplayPalette {bg:string;panel:string;track:string;edge:string;text:string;muted:string;accent:string;accentText?:string;border?:string}
 export const fallbackPalette:ReplayPalette={bg:'#101610',panel:'#1a2418',track:'#34482a',edge:'#6c795f',text:'#e7eedb',muted:'#9ba793',accent:'#79ca0b',border:'#32383a'};
 export function replayPalette():ReplayPalette {
@@ -154,31 +155,49 @@ export function drawReplay(ctx:CanvasRenderingContext2D,options:ReplayOptions,ti
     ctx.strokeStyle='#7a1420';ctx.setLineDash(debuff.recipientsKnown?[]:[3,4]);ctx.beginPath();ctx.arc(debuff.source.x,debuff.source.y,31,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
   }
   for(const marker of scene.courseMarkers){
+    const color=marker.phase?REPLAY_PHASE_COLOR:palette.accent,textColor=marker.phase?REPLAY_PHASE_COLOR:palette.accentText??palette.accent;
     const nx=-Math.sin(marker.angle),ny=Math.cos(marker.angle),half=scene.trackWidth/2+12;
     ctx.beginPath();ctx.moveTo(marker.x-nx*half,marker.y-ny*half);ctx.lineTo(marker.x+nx*half,marker.y+ny*half);
-    ctx.strokeStyle=palette.accent;ctx.lineWidth=1.4;ctx.stroke();
+    ctx.strokeStyle=color;ctx.lineWidth=1.4;ctx.stroke();
     ctx.font=font(15);const texts=wrappedText(ctx,`${marker.label} · ${Number(marker.distance.toFixed(1))} m`,240);
     const labelWidth=Math.max(...texts.map(s=>ctx.measureText(s).width))+18,labelHeight=texts.length*(fontPixels(15,options.fontScale)+7)+16;
     const rect=courseLabelRect(marker,labelWidth,labelHeight,scene.trackWidth/2,options.course?.turn===1?-1:1);
+    if(marker.phase){
+      // Keep the phase sign readable when a runner's popup occupies the same
+      // off-track spot. Move outward without covering the selected stack.
+      const above=rect.y+rect.height/2<marker.y,obstacles=[...scene.cardGroups,...options.cardObstacles??[]];
+      for(let i=0;i<=obstacles.length;i++){
+        const hits=obstacles.filter(r=>rect.x<r.x+r.width+6&&rect.x+rect.width+6>r.x&&rect.y<r.y+r.height+6&&rect.y+rect.height+6>r.y);
+        if(!hits.length)break;
+        const y=above?Math.min(...hits.map(r=>r.y))-rect.height-8:Math.max(...hits.map(r=>r.y+r.height))+8;
+        if(y<36||y+rect.height>height-104)break;
+        rect.y=y;
+      }
+    }
     ctx.fillStyle=palette.panel;ctx.fillRect(rect.x,rect.y,rect.width,rect.height);
-    ctx.strokeStyle=palette.accent;ctx.lineWidth=1.2;ctx.strokeRect(rect.x,rect.y,rect.width,rect.height);
+    ctx.strokeStyle=color;ctx.lineWidth=1.2;ctx.strokeRect(rect.x,rect.y,rect.width,rect.height);
     const trackX=marker.x-nx*half,trackY=marker.y-ny*half,cx=rect.x+rect.width/2,cy=rect.y+rect.height/2;
     const edgeX=Math.abs(trackX-cx)>Math.abs(trackY-cy)?(trackX>cx?rect.x+rect.width:rect.x):cx;
     const edgeY=Math.abs(trackX-cx)>Math.abs(trackY-cy)?cy:(trackY>cy?rect.y+rect.height:rect.y);
     ctx.beginPath();ctx.moveTo(trackX,trackY);ctx.lineTo(edgeX,edgeY);ctx.stroke();
-    ctx.fillStyle=palette.accentText??palette.accent;for(const [i,text]of texts.entries())ctx.fillText(text,rect.x+9,rect.y+8+fontPixels(15,options.fontScale)+i*(fontPixels(15,options.fontScale)+7));
+    ctx.fillStyle=textColor;for(const [i,text]of texts.entries())ctx.fillText(text,rect.x+9,rect.y+8+fontPixels(15,options.fontScale)+i*(fontPixels(15,options.fontScale)+7));
   }
   if(options.labels)for(const group of scene.cardGroups){
     const marker=scene.markers.find(m=>m.runner.id===group.runnerId)!;
     const endX=Math.max(group.x,Math.min(group.x+group.width,marker.x)),endY=Math.max(group.y,Math.min(group.y+group.height,marker.y));
-    ctx.globalAlpha=group.alpha*.65;ctx.strokeStyle=runnerColors[marker.runner.index%runnerColors.length];ctx.lineWidth=1;
+    ctx.globalAlpha=group.alpha*(marker.focused?.95:.55);ctx.strokeStyle=marker.focused?palette.accent:runnerColors[marker.runner.index%runnerColors.length];ctx.lineWidth=marker.focused?2.2:1;
     ctx.beginPath();ctx.moveTo(marker.x,marker.y);ctx.lineTo(endX,endY);ctx.stroke();
     ctx.globalAlpha=1;
   }
   const drawGroup=(group:ReplayScene['cardGroups'][number])=>{
+    const focused=group.runnerId===options.selected;
+    if(focused){ctx.save();ctx.globalAlpha=group.alpha*.22;ctx.fillStyle=palette.accent;ctx.shadowColor=palette.accent;ctx.shadowBlur=14;ctx.fillRect(group.x-4,group.y-4,group.width+8,group.height+8);ctx.restore();}
     ctx.globalAlpha=group.alpha;ctx.fillStyle=palette.panel;ctx.fillRect(group.x,group.y,group.width,group.height);
-    ctx.strokeStyle=palette.edge;ctx.lineWidth=.7;ctx.strokeRect(group.x,group.y,group.width,group.height);
+    ctx.strokeStyle=focused?palette.accent:palette.edge;ctx.lineWidth=focused?2.5:.7;ctx.strokeRect(group.x,group.y,group.width,group.height);
     ctx.globalAlpha=1;
+    // Rows expand/fade within the stack; no fading text or icon may paint
+    // beyond its safe off-track rectangle.
+    ctx.save();ctx.beginPath();ctx.rect(group.x,group.y,group.width,group.height);ctx.clip();
     for(const rect of scene.cardRects.filter(r=>r.runnerId===group.runnerId)){
       const {card,x,y,width:cardWidth,height:cardHeight}=rect;
       ctx.globalAlpha=card.alpha;ctx.fillStyle=palette.panel;ctx.fillRect(x,y,cardWidth,cardHeight);
@@ -193,9 +212,10 @@ export function drawReplay(ctx:CanvasRenderingContext2D,options:ReplayOptions,ti
       else{ctx.strokeStyle=card.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(x+3,y+cardHeight-1);ctx.lineTo(x+cardWidth,y+cardHeight-1);ctx.stroke();ctx.setLineDash([]);}
       ctx.globalAlpha=1;
     }
+    ctx.restore();
     const marker=scene.markers.find(m=>m.runner.id===group.runnerId)!;
     ctx.globalAlpha=group.alpha;ctx.fillStyle=runnerColors[marker.runner.index%runnerColors.length];ctx.fillRect(group.x,group.y,group.width,text.headerHeight);
-    ctx.font=font(11);ctx.fillStyle='#101610';
+    ctx.font=font(11,focused);ctx.fillStyle='#101610';
     ctx.fillText(fittedText(ctx,group.header,group.width-12),group.x+6,group.y+text.font+2);
     ctx.globalAlpha=1;
   };

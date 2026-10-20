@@ -23,7 +23,8 @@
   let phaseMarkers=true,sectionMarkers=true,slopeMarkers=true,remainingMarker=true;
   let visionGuide=false,debuffTargets=true;
   let canvas:HTMLCanvasElement,scene:ReplayScene|null=null,frame:number|null=null;
-  let canvasWidth=1280,canvasHeight=780;
+  let markerMenu:HTMLDetailsElement;
+  let canvasWidth=1280,canvasHeight=816;
   let mounted=false,portraitRace:Race|null=null,iconReference:ReferenceData|null|undefined=undefined,iconAnalysis:RaceAnalysis|null|undefined=undefined,cardTitle='';
   $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,intervals,analysis,courseMarkers:{phases:phaseMarkers&&analysis?.source!=='recorded',sections:sectionMarkers&&analysis?.source!=='recorded',slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[replayMinimapObstacle(canvasWidth)]:[]} satisfies ReplayOptions;
   // Include every visual dependency explicitly; playback time does not rebuild data.
@@ -58,12 +59,13 @@
     // Match the draw coordinate space to the visible size: a 1280px bitmap
     // squeezed into a narrow panel made 11px callout text unreadably small.
     const resize=new ResizeObserver(entries=>{
-      const width=Math.max(1,Math.round(entries[0].contentRect.width)),height=Math.round(1.3*Math.max(560,Math.min(680,width*.5)));
+      const width=Math.max(1,Math.round(entries[0].contentRect.width)),height=36+Math.round(1.3*Math.max(560,Math.min(680,width*.5)));
       if(width!==canvasWidth||height!==canvasHeight){canvasWidth=width;canvasHeight=height;schedule();}
     });
     resize.observe(canvas);return()=>{observer.disconnect();resize.disconnect();};
   });
 </script>
+<svelte:window onkeydown={event=>{if(event.key==='Escape'&&markerMenu)markerMenu.open=false;}}/>
 <section class="panel curve-replay" class:clips-open={showClips}>
   <div class="panel-heading"><div><strong>Race replay</strong><span class="subtitle">Follow the field</span></div><button class:active={showClips} onclick={()=>showClips=!showClips}>Create clip</button></div>
   <div class="replay-tools">
@@ -71,15 +73,17 @@
     <label>Window <input aria-label="Zoomed replay view window" type="range" min="40" max="600" step="10" bind:value={viewWindow}/><output>{viewWindow} m</output></label>
     <label><input type="checkbox" bind:checked={labels}/> Names & statuses</label>
     <label><input type="checkbox" bind:checked={elevation}/> Elevation</label>
-  </div>
-  <div class="course-marker-tools" aria-label="Race replay course markers">
-    <span>Markers</span>
+    <details class="marker-menu" bind:this={markerMenu}>
+    <summary>Markers <span aria-hidden="true">▸</span></summary>
+    <div class="course-marker-tools" aria-label="Race replay course markers">
     <label><input type="checkbox" bind:checked={phaseMarkers}/> Phases</label>
     <label><input type="checkbox" bind:checked={sectionMarkers} disabled={!course}/> Corners & straights</label>
     <label><input type="checkbox" bind:checked={slopeMarkers} disabled={!course}/> Slope changes</label>
     <label><input type="checkbox" bind:checked={remainingMarker} disabled={(race.distance??course?.distance??0)<777}/> 777m left</label>
     <label title="Shows the skill’s view. Dashed rings mark possible targets."><input type="checkbox" bind:checked={visionGuide}/> Vision guide</label>
     <label title="Shows targets listed in the replay. Immunity can prevent the effect."><input type="checkbox" bind:checked={debuffTargets}/> Debuff targets</label>
+    </div>
+    </details>
   </div>
   <div class="replay-stage">
     <canvas bind:this={canvas} width={canvasWidth} height={canvasHeight} style:height={`${canvasHeight}px`} data-replay-time={scene?.time} data-replay-distance={scene?.distance} data-replay-angle={scene?.camera.angle} data-replay-scale={scene?.camera.scale} title={cardTitle} onmousemove={describeCard} tabindex="0" aria-describedby="curve-replay-statuses" aria-label="Race replay. Click a Uma portrait to select. Arrow keys seek; Shift arrows seek five seconds; Home and End seek race endpoints." onclick={select} onkeydown={keyboard}></canvas>
@@ -90,7 +94,7 @@
   <ReplayClip {options} {time} liveWidth={canvasWidth} liveHeight={canvasHeight} bind:open={showClips}/>
 </section>
 <style>
-  .curve-replay{overflow:hidden}.curve-replay.clips-open{overflow:visible}.subtitle{display:block;color:var(--muted);font-size:var(--font-10);margin-top:4px}.replay-tools{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11)}.replay-tools label{display:flex;align-items:center;gap:7px}.replay-tools select{font-size:var(--font-11)}.replay-tools input[type=range]{width:135px;padding:0}.replay-tools output{min-width:44px;color:var(--text);font-variant-numeric:tabular-nums}.curve-replay canvas{display:block;width:100%;cursor:pointer}.curve-replay canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}.course-marker-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11);color:var(--muted)}.course-marker-tools label{display:flex;align-items:center;gap:5px;color:var(--text)}
+  .curve-replay{overflow:hidden}.curve-replay.clips-open{overflow:visible}.subtitle{display:block;color:var(--muted);font-size:var(--font-10);margin-top:4px}.replay-tools{position:relative;z-index:3;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11)}.replay-tools label{display:flex;align-items:center;gap:7px}.replay-tools select{font-size:var(--font-11)}.replay-tools input[type=range]{width:115px;padding:0}.replay-tools output{min-width:44px;color:var(--text);font-variant-numeric:tabular-nums}.curve-replay canvas{display:block;width:100%;cursor:pointer}.curve-replay canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}.marker-menu{position:relative;border-left:1px solid var(--border);padding-left:14px}.marker-menu summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;padding:4px 0;font-weight:550}.marker-menu summary::-webkit-details-marker{display:none}.marker-menu summary span{font-size:10px;transition:transform .15s}.marker-menu[open] summary span{transform:rotate(90deg)}.course-marker-tools{position:absolute;top:calc(100% + 10px);right:0;display:grid;grid-template-columns:repeat(2,max-content);gap:12px 16px;padding:14px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 5px 18px #0003;font-size:var(--font-11)}.course-marker-tools label{display:flex;align-items:center;gap:5px;color:var(--text)}@media(max-width:700px){.course-marker-tools{grid-template-columns:1fr;right:auto;left:0}}
   .replay-stage{position:relative}.replay-minimap{position:absolute;right:12px;top:38px;width:210px;height:100px;border:1px solid var(--border);border-radius:8px;background:color-mix(in srgb,var(--panel) 82%,transparent);overflow:hidden;box-shadow:0 2px 12px #0002}@media(max-width:650px){.replay-minimap{width:190px;right:8px;top:38px;height:95px}}
 .runner-status-description{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 </style>

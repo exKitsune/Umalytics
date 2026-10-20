@@ -4,7 +4,90 @@ type Rect={x:number;y:number;width:number;height:number};
 type Marker=ReplayScene['markers'][number];
 const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 export interface LayoutSeed {offsets:Map<string,{x:number;y:number}>;iterations?:number}
-interface Box extends Rect {marker:Marker;alpha:number;anchorX:number;anchorY:number}
+export interface ReplayTrack {route:readonly {x:number;y:number}[];trackWidth:number;futureRows?:Map<string,number>}
+interface Box extends Rect {marker:Marker;alpha:number;anchorX:number;anchorY:number;capacity:number;reserveHeight:number;reserveWidth:number}
+
+/** Envelope of the stroked route beneath the entire card width. Segment
+ * quads and circular joins preserve the curved edge at a starting gate or
+ * corner; inflating an axis-aligned bounding box creates abrupt dead zones. */
+function trackBand(x:number,width:number,track:ReplayTrack){
+  const radius=track.trackWidth/2+12,left=x-width/2,right=x+width/2;
+  let top=Infinity,bottom=-Infinity;
+  const include=(y:number)=>{top=Math.min(top,y);bottom=Math.max(bottom,y);};
+  for(const p of track.route){
+    const dx=Math.max(left-p.x,0,p.x-right);
+    if(dx<=radius){const reach=Math.sqrt(Math.max(0,radius*radius-dx*dx));include(p.y-reach);include(p.y+reach);}
+  }
+  for(let i=1;i<track.route.length;i++){
+    const a=track.route[i-1],b=track.route[i],dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+    if(!length||Math.max(a.x,b.x)+radius<left||Math.min(a.x,b.x)-radius>right)continue;
+    const nx=-dy/length*radius,ny=dx/length*radius;
+    const points=[{x:a.x+nx,y:a.y+ny},{x:b.x+nx,y:b.y+ny},{x:b.x-nx,y:b.y-ny},{x:a.x-nx,y:a.y-ny}];
+    for(let j=0;j<4;j++){
+      const p=points[j],q=points[(j+1)%4];
+      if(p.x>=left&&p.x<=right)include(p.y);
+      if(p.x!==q.x)for(const edge of [left,right]){const t=(edge-p.x)/(q.x-p.x);if(t>=0&&t<=1)include(p.y+t*(q.y-p.y));}
+    }
+  }
+  return {top,bottom};
+}
+
+/** Hard clearance runs after interpolation as well as initial placement. A
+ * smoothed path between two safe layouts must never cut through the track. */
+function clearTrack(boxes:Box[],width:number,bottom:number,track:ReplayTrack,obstacles:Rect[],settle=true,viewWindow=140){
+  const placed:Box[]=[];
+  const bands=new Map<string,ReturnType<typeof trackBand>>();
+  const bandAt=(x:number,w:number)=>{const key=x+':'+w;let value=bands.get(key);if(!value){value=trackBand(x,w,track);bands.set(key,value);}return value;};
+  const fieldX=boxes.length?(Math.min(...boxes.map(b=>b.marker.x))+Math.max(...boxes.map(b=>b.marker.x)))/2:width/2;
+  for(const original of [...boxes].sort((a,b)=>Number(b.marker.focused)-Number(a.marker.focused)||byGate(a,b))){
+    const b={...original,height:original.reserveHeight,width:original.reserveWidth};
+    // Use nearly the full width, retaining a broad field tether only at the
+    // widest zoom where remote bends create disappearing off-track pockets.
+    const left=clamp(viewWindow>300?fieldX-width*.3:8+b.width/2,8+b.width/2,width-8-b.width/2);
+    const right=clamp(viewWindow>300?fieldX+width*.3:width-8-b.width/2,left,width-8-b.width/2);
+    const xs=new Set([clamp(b.x,left,right),clamp(b.anchorX,left,right),left,right]);
+    for(const r of obstacles){xs.add(clamp(r.x-6-b.width/2,left,right));xs.add(clamp(r.x+r.width+6+b.width/2,left,right));}
+    for(let x=left;x<right;x+=32)xs.add(x);
+    const ranges=(x:number,side:'above'|'below')=>{
+      const band=bandAt(x,b.width);
+      let spans=side==='above'?[[36,Math.min(bottom-b.height,band.top-b.height)]]:[[Math.max(36,band.bottom),bottom-b.height]];
+      for(const r of obstacles){
+        if(x+b.width/2+6<=r.x||x-b.width/2-6>=r.x+r.width)continue;
+        // Tall stacks cannot travel through the narrow gap below the minimap
+        // on bends. Short notifications can use that space normally.
+        if(side==='above'&&r.y<bottom*.25&&b.height>r.height)return [];
+        const lo=r.y-b.height-6,hi=r.y+r.height+6;
+        spans=spans.flatMap(([a,z])=>hi<=a||lo>=z?[[a,z]]:[[a,Math.min(z,lo)],[Math.max(a,hi),z]]);
+      }
+      return spans.filter(([lo,hi])=>hi>=lo);
+    };
+    let best:{x:number;y:number;score:number;side:'above'|'below'}|null=null;
+    for(const x of xs){
+      for(const side of ['above','below'] as const){
+        for(const [lo,hi] of ranges(x,side)){
+          for(const y of new Set([clamp(b.y,lo,hi),lo,hi])){
+            let overlap=0;
+            if(settle)for(const other of placed)overlap+=Math.max(0,Math.min(x+b.width/2,other.x+other.width/2)-Math.max(x-b.width/2,other.x-other.width/2))*Math.max(0,Math.min(y+b.height,other.y+other.height)-Math.max(y,other.y));
+            const score=(x-b.x)**2*(settle?1:100)+(y-b.y)**2+(side===b.marker.cardSide?0:16000000)+overlap*4;
+            if(!best||score<best.score)best={x,y,score,side};
+          }
+        }
+      }
+    }
+    if(!settle&&best&&best.side===b.marker.cardSide&&!ranges(b.x,best.side).length){
+      let invalid=b.x,valid=best.x;
+      for(let i=0;i<14;i++){const mid=(invalid+valid)/2;if(ranges(mid,best.side).length)valid=mid;else invalid=mid;}
+      best.x=valid;
+      best.y=ranges(valid,best.side).map(([lo,hi])=>clamp(b.y,lo,hi)).sort((a,z)=>Math.abs(a-b.y)-Math.abs(z-b.y))[0];
+    }
+    // Very small export sizes can have no room for a full stack. Keep the
+    // track clear even then; the live viewer reserves enough vertical space.
+    if(best){b.x=best.x;b.y=best.y;}
+    else{const band=trackBand(b.x,b.width,track);b.y=b.marker.cardSide==='above'?band.top-b.height:band.bottom;}
+    original.x=b.x;original.y=b.y;
+    placed.push(b);
+  }
+}
 
 const byGate=(a:Box,b:Box)=>(a.marker.runner.gate??a.marker.runner.index)-(b.marker.runner.gate??b.marker.runner.index);
 const gapToOwner=(b:Box)=>{
@@ -120,15 +203,19 @@ function clearPortraits(boxes:Box[],markers:Marker[]){
 /** Owner proximity takes precedence over filling empty space at the edges.
  * Horizontal order follows current owners, so boxes can exchange places.
  * A bunched starting field uses fixed gate shelves instead of stacking. */
-export function placeReplayCards(markers:ReplayScene['markers'],width:number,height:number,obstacles:Rect[]=[],seed?:LayoutSeed,fontScale=100,viewWindow=140):Pick<ReplayScene,'cardRects'|'cardGroups'> {
+export function placeReplayCards(markers:ReplayScene['markers'],width:number,height:number,obstacles:Rect[]=[],seed?:LayoutSeed,fontScale=100,viewWindow=140,track?:ReplayTrack):Pick<ReplayScene,'cardRects'|'cardGroups'> {
   const text=replayTextMetrics(fontScale),header=text.headerInset+2;
   const spread=clamp((viewWindow-140)/460,0,1);
-  const bottom=height-104,capacity=Math.max(1,Math.floor((bottom-36-header)/text.rowStride));
+  const bottom=height-104;
   const ds=markers.map(m=>m.sample.distance).filter((d):d is number=>d!=null&&Number.isFinite(d));
   const raceSpread=ds.length>1?Math.max(...ds)-Math.min(...ds):0;
   const ahead=ds.length?Math.max(...ds):0;
   const bunch=markers.length>1?clamp((120-ahead)/40,0,1)*clamp((12-raceSpread)/8,0,1):0;
   const boxes:Box[]=markers.filter(m=>m.cards.length).map(marker=>{
+    // Keep a row of headroom for bends; overflowing stacks grow sideways
+    // before their height would force them across the road.
+    const railHeight=track?Math.max(height*.46-track.trackWidth/2-84,bottom-height*.46-track.trackWidth/2-48):bottom-36;
+    const capacity=Math.max(1,Math.min(viewWindow>100&&width<1000?3:Infinity,Math.floor((railHeight-header)/text.rowStride)));
     const count=marker.cards.reduce((n,c)=>n+c.alpha,0),rows=Math.min(capacity,Math.max(.15,count));
     let boxWidth=text.groupWidth;for(let start=capacity;start<count;start+=capacity)boxWidth+=text.columnStride*Math.min(1,count-start);
     boxWidth=Math.min(width-16,boxWidth);
@@ -136,7 +223,11 @@ export function placeReplayCards(markers:ReplayScene['markers'],width:number,hei
     const overflow=marker.cardSide==='above'?36-anchorY:anchorY+boxHeight-bottom;
     const ownerX=marker.x+(marker.x>width/2?-1:1)*(boxWidth/2+34)*clamp(overflow/40,0,1);
     const prior=seed?.offsets.get(marker.runner.id);
-    return {marker,width:boxWidth,height:boxHeight,x:prior?marker.x+prior.x:ownerX,y:prior?anchorY+prior.y:anchorY,anchorX:ownerX,anchorY,alpha:Math.max(...marker.cards.map(c=>c.alpha))};
+    const futureCount=Math.max(count,track?.futureRows?.get(marker.runner.id)??0);
+    const reserveHeight=Math.max(boxHeight,header+Math.min(capacity,futureCount)*text.rowStride);
+    let reserveWidth=text.groupWidth;for(let start=capacity;start<futureCount;start+=capacity)reserveWidth+=text.columnStride*Math.min(1,futureCount-start);
+    reserveWidth=Math.min(width-16,reserveWidth);
+    return {marker,width:boxWidth,height:boxHeight,capacity,reserveHeight,reserveWidth,x:prior?marker.x+prior.x:ownerX,y:prior?anchorY+prior.y:anchorY,anchorX:ownerX,anchorY,alpha:Math.max(...marker.cards.map(c=>c.alpha))};
   });
   if(bunch>0&&boxes.length&&!seed){
     const owner=boxes.map(b=>({x:b.anchorX,y:b.anchorY}));
@@ -146,7 +237,8 @@ export function placeReplayCards(markers:ReplayScene['markers'],width:number,hei
   }
   const bound=(b:Box)=>{
     const reach=(viewWindow>140?240:140)+Math.round(280*bunch),vertical=50*spread+200*bunch;
-    b.x=clamp(b.x,b.marker.x-reach,b.marker.x+reach);b.y=clamp(b.y,b.marker.y-b.height-170-vertical,b.marker.y+170+vertical);
+    if(!track)b.x=clamp(b.x,b.marker.x-reach,b.marker.x+reach);
+    b.y=clamp(b.y,b.marker.y-b.height-170-vertical,b.marker.y+170+vertical);
     b.x=clamp(b.x,8+b.width/2,width-8-b.width/2);b.y=clamp(b.y,36,bottom-b.height);
   };
   const push=(a:Box,r:Rect,weight:number,tie:number)=>{
@@ -184,22 +276,24 @@ export function placeReplayCards(markers:ReplayScene['markers'],width:number,hei
     separateSide(boxes.filter(b=>b.marker.cardSide==='below'));
     for(const b of boxes)bound(b);
     clearPortraits(boxes,markers);
-    for(const b of boxes){bound(b);tether(b,(viewWindow>140?220:170)+Math.round(160*bunch));}
+    for(const b of boxes){bound(b);if(!track)tether(b,(viewWindow>140?220:170)+Math.round(160*bunch));}
   }
   if(!seed&&fixed)for(const b of boxes){b.x=clamp(b.x,8+b.width/2,width-8-b.width/2);b.y=clamp(b.y,36,bottom-b.height);}
+  if(track)clearTrack(boxes,width,bottom,track,obstacles,!seed,viewWindow);
   const cardGroups:ReplayScene['cardGroups']=[],cardRects:ReplayScene['cardRects']=[];
   // This is also the paint/hit-test order: the selected stack is last.
   boxes.sort((a,b)=>Number(a.marker.focused)-Number(b.marker.focused));
   for(const b of boxes){
-    if(bunch>=.6){b.x=clamp(b.x,8+b.width/2,width-8-b.width/2);b.y=clamp(b.y,36,bottom-b.height);}
-    else bound(b);
+    if(!track){if(bunch>=.6){b.x=clamp(b.x,8+b.width/2,width-8-b.width/2);b.y=clamp(b.y,36,bottom-b.height);}else bound(b);}
     const x=b.x-b.width/2,y=b.y;
     cardGroups.push({runnerId:b.marker.runner.id,header:`#${b.marker.runner.gate??b.marker.runner.index+1} ${b.marker.name}`,x,y,width:b.width,height:b.height,alpha:b.alpha,side:b.marker.cardSide});
+    const capacity=b.capacity;
     const point=(n:number)=>{const column=Math.floor(n/capacity),row=n%capacity;return{x:column*text.columnStride,y:(column%2?capacity-1-row:row)*text.rowStride};};
     let slot=0;
     for(const card of b.marker.cards){
       const index=Math.floor(slot),f=slot-index,a=point(index),c=point(index+1);
-      cardRects.push({runnerId:b.marker.runner.id,card,x:clamp(x+4+a.x+(c.x-a.x)*f,8,width-text.rowWidth-8),y:clamp(y+text.headerInset+a.y+(c.y-a.y)*f,36+text.headerInset,bottom-text.rowHeight),width:text.rowWidth,height:text.rowHeight,side:b.marker.cardSide});slot+=card.alpha;
+      const rowX=clamp(x+4+a.x+(c.x-a.x)*f,8,width-text.rowWidth-8),rowY=y+text.headerInset+a.y+(c.y-a.y)*f;
+      cardRects.push({runnerId:b.marker.runner.id,card,x:rowX,y:rowY,width:Math.max(0,Math.min(text.rowWidth,x+b.width-rowX)),height:Math.max(0,Math.min(text.rowHeight,y+b.height-rowY)),side:b.marker.cardSide});slot+=card.alpha;
     }
   }
   return {cardGroups,cardRects};
