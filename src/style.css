@@ -119,3 +119,9 @@ button.danger:hover{background:color-mix(in srgb,#ef7474 20%,var(--panel));borde
 @media(min-width:1900px){.analysis-layout{grid-template-columns:minmax(0,1fr) 390px}}
 @media(max-width:1550px){.app-shell{grid-template-columns:275px minmax(0,1fr)}.analysis-layout{grid-template-columns:minmax(0,1fr) 340px}}
 @media(max-width:1100px){.app-shell{grid-template-columns:250px minmax(0,1fr)}.analysis-layout{grid-template-columns:1fr}}
+
+/* Stable race identity accents reuse the card edge, leaving category labels intact. */
+.race-card{border-left-color:var(--race-color)}
+.race-row .race-card.chosen{box-shadow:inset 4px 0 0 var(--race-color)}
+.race-mini{box-shadow:inset 3px 0 0 var(--race-color)}
+.race-mini.chosen{box-shadow:inset 3px 0 0 var(--race-color),0 0 0 1px color-mix(in srgb,var(--category) 30%,transparent)}

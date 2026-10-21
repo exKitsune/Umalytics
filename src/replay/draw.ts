@@ -165,18 +165,8 @@ export function drawReplay(ctx:CanvasRenderingContext2D,options:ReplayOptions,ti
     ctx.font=font(15);const texts=wrappedText(ctx,`${marker.label} · ${Number(marker.distance.toFixed(1))} m`,240);
     const labelWidth=Math.max(...texts.map(s=>ctx.measureText(s).width))+18,labelHeight=texts.length*(fontPixels(15,options.fontScale)+7)+16;
     const rect=courseLabelRect(marker,labelWidth,labelHeight,scene,width);
-    {
-      // Keep the phase sign readable when a runner's popup occupies the same
-      // off-track spot. Move outward without covering the selected stack.
-      const obstacles=[...scene.cardGroups,...options.cardObstacles??[]];
-      for(let i=0;i<=obstacles.length;i++){
-        const hits=obstacles.filter(r=>rect.x<r.x+r.width+6&&rect.x+rect.width+6>r.x&&rect.y<r.y+r.height+6&&rect.y+rect.height+6>r.y);
-        if(!hits.length)break;
-        const y=Math.min(...hits.map(r=>r.y))-rect.height-8;
-        if(y<36||y+rect.height>height-104)break;
-        rect.y=y;
-      }
-    }
+    // Course signs stay anchored to the course. Skill stacks paint over them;
+    // neither kind of label changes placement to avoid the other.
     ctx.fillStyle=palette.panel;ctx.fillRect(rect.x,rect.y,rect.width,rect.height);
     ctx.strokeStyle=color;ctx.lineWidth=1.2;ctx.strokeRect(rect.x,rect.y,rect.width,rect.height);
     const trackX=marker.x-nx*half,trackY=marker.y-ny*half,cx=rect.x+rect.width/2,cy=rect.y+rect.height/2;

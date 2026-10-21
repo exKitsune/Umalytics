@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import { assembleReferenceData } from '../src/data/reference';
 import { readGeometry } from '../src/data/geometry';
 import { DEFAULT_REPLAY_WINDOW, cameraAngle, replayCourseMarkers, replayScene, type ReplayOptions, type ReplayScene } from '../src/replay/model';
-import { drawReplay, courseLabelRect, replayMetres } from '../src/replay/draw';
+import { drawReplay, courseLabelRect, replayMetres, fallbackPalette } from '../src/replay/draw';
 import { portraitUrl } from '../src/data/portraits';
 import { iconSource } from '../src/data/game-icons';
-import { replayCardHelp, replayCards } from '../src/replay/cards';
+import { replayCardHelp, replayCards, layoutReplayCards } from '../src/replay/cards';
 import { runnerColors } from '../src/library';
 import type { Race } from '../src/data/types';
 import { analyzeRace } from '../src/data/analytics';
@@ -105,7 +105,10 @@ for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
     assert.ok(Math.abs(after.camera.angle-before.camera.angle)<.005);
     assert.ok(Math.hypot((b.x-a.x)-(b2.x-a2.x),(b.y-a.y)-(b2.y-a2.y))<2);
     assert.ok(Math.hypot(a2.x-a.x,a2.y-a.y)<2);
-    for(const rect of before.cardRects){const other=after.cardRects.find(r=>r.runnerId===rect.runnerId&&r.card.id===rect.card.id)!;assert.equal(rect.side,other.side);assert.ok(Math.hypot(rect.x-other.x,rect.y-other.y)<2);}
+    for(const rect of before.cardRects){const other=after.cardRects.find(r=>r.runnerId===rect.runnerId&&r.card.id===rect.card.id)!;
+      if(rect.side!==other.side)assert.ok(Math.max(rect.card.alpha,other.card.alpha)<.03,'A bank swap at a corner must be faded out');
+      else assert.ok(Math.hypot(rect.x-other.x,rect.y-other.y)<2);
+    }
     assert.deepEqual(render(edge-.02),before); // no corner rotation/fitting leap
   }
   const signs=replayCourseMarkers(course,course.distance,enabled);
@@ -249,7 +252,10 @@ assert.equal(instant.progress,null);assert.equal(instant.visualOnly,true);
 assert.ok(!drawReplay(context,instantOptions,62.5,1280,500).markers.find(m=>m.runner.id===targetId)!.cards.some(c=>c.kind==='received'));
 let previous=cardFrame;
 for(let t=61.01;t<62;t+=.01){const current=drawReplay(context,realOptions,t,1280,800);
-  for(const rect of current.cardRects){const prior=previous.cardRects.find(r=>r.runnerId===rect.runnerId&&r.card.id===rect.card.id);if(prior){assert.equal(rect.side,prior.side);assert.ok(Math.hypot(rect.x-prior.x,rect.y-prior.y)<15);}}
+  for(const rect of current.cardRects){const prior=previous.cardRects.find(r=>r.runnerId===rect.runnerId&&r.card.id===rect.card.id);if(prior){
+    if(rect.side!==prior.side)assert.ok(Math.max(rect.card.alpha,prior.card.alpha)<.03,'A bank swap must not jump while visible');
+    else assert.ok(Math.hypot(rect.x-prior.x,rect.y-prior.y)<15);
+  }}
   previous=current;
 }
 const awayRace={...visionRace,frames:visionRace.frames.map(frame=>({...frame,runners:frame.runners.map(sample=>sample.runnerId===targetId?{...sample,distance:Math.max(0,frame.runners[0].distance!-30)}:sample)}))};
@@ -302,10 +308,13 @@ for(const width of [760,1280,1920])for(const scenario of ['crossing','heights','
       for(const [i,g]of wide.cardGroups.entries()){
         const owner=wide.markers.find(m=>m.runner.id===g.runnerId)!;
         const gap=Math.hypot(Math.max(g.x-owner.x,0,owner.x-g.x-g.width),Math.max(g.y-owner.y,0,owner.y-g.y-g.height));
-        assert.ok(gap<Math.max(394,width*.3),`Wide card left its owner: ${width}/${zoom}: ${gap}`);
+        assert.ok(gap<Math.max(500,width*.5),`Wide card left its owner: ${width}/${zoom}: ${gap}`);
         assert.ok(g.x>=7.999&&g.y>=35.999&&g.x+g.width<=width-7.999&&g.y+g.height<=height-103.999);
         for(const other of wide.cardGroups.slice(i+1))area+=overlaps(g,other);
-        const prev=last?.cardGroups.find(p=>p.runnerId===g.runnerId);if(prev)maxStep=Math.max(maxStep,Math.hypot(g.x-prev.x,g.y-prev.y));
+        const prev=last?.cardGroups.find(p=>p.runnerId===g.runnerId);if(prev){
+          if(g.side!==prev.side)assert.ok(Math.max(g.alpha,prev.alpha)<.08,'A cross-track relocation must happen while the box is faded out');
+          if(g.alpha>.99&&prev.alpha>.99)maxStep=Math.max(maxStep,Math.hypot(g.x-prev.x,g.y-prev.y));
+        }
       }
       maxOverlap=Math.max(maxOverlap,area);maxOverlapRatio=Math.max(maxOverlapRatio,area/wide.cardGroups.reduce((sum,g)=>sum+g.width*g.height,0));last=wide;
     }
@@ -324,8 +333,9 @@ for(const width of [760,1280,1920])for(const scenario of ['crossing','heights','
     for(const group of scene.cardGroups){
       const owner=scene.markers.find(m=>m.runner.id===group.runnerId)!;
       const gap=Math.hypot(Math.max(group.x-owner.x,0,owner.x-group.x-group.width),Math.max(group.y-owner.y,0,owner.y-group.y-group.height));if(gap>farthestCard){farthestCard=gap;worstDistance={scenario,width,frame,group,owner:{x:owner.x,y:owner.y}};}
-      // Clearing the full road takes precedence over the old 180px tether.
-      assert.ok(gap<Math.max(394,width*.3),`Card too far from owner: ${scenario}/${width}/${frame}: ${gap}`);
+      // Allow a broader tether to use free space rather than cover another
+      // stack; track clearance and readable boxes take priority over centering.
+      assert.ok(gap<Math.max(500,width*.5),`Card too far from owner: ${scenario}/${width}/${frame}: ${gap}`);
       assert.ok(group.x>=7.999&&group.y>=35.999&&group.x+group.width<=width-7.999&&group.y+group.height<=height-103.999,JSON.stringify({scenario,width,frame,group}));
       minimapOverlap=Math.max(minimapOverlap,overlaps(group,reserve));
       for(const m of scene.markers){const area=overlaps(group,{x:m.x-26,y:m.y-26,width:52,height:52});if(area>portraitOverlap){portraitOverlap=area;worstPortrait={scenario,width,frame,group,marker:{id:m.runner.id,x:m.x,y:m.y}};}}
@@ -371,8 +381,115 @@ const still=replayScene(forecastOptions,.05,1280,800),moving=replayScene({...for
 assert.deepEqual(still.markers.map(m=>[m.x,m.y]),moving.markers.map(m=>[m.x,m.y]));
 assert.notDeepEqual(still.cardGroups,moving.cardGroups,'Future positions influence the initial card placement');
 assertOffTrack(still);assertOffTrack(moving);
-console.log(JSON.stringify({gameCourses,renderedFrames,cornerBoundaries:boundaries,smoothCamera:'passed',worldTicks:'passed',sharedCanvas:'passed',markerToggles:'passed',
+const cameraReport={gameCourses,renderedFrames,cornerBoundaries:boundaries,smoothCamera:'passed',worldTicks:'passed',sharedCanvas:'passed',markerToggles:'passed',
   outfitMappings:224,closerCamera:'passed',flatCuts:'passed',visionCandidates:'separate',automaticDebuffCone:'passed',visionModifiers:'passed',cardSideStability:'passed',cardClocks:'passed',seekClipDeterminism:'passed',receivedCards:'passed',cardViewport:'passed',teamImmunity:'passed',doubledTrack:'passed',singleRunnerHeader:'passed',runnerHeaderColor:'passed',
-  layoutFrames,largestLayoutStep,farthestCard,layoutOverlap,portraitOverlap,minimapOverlap,horizontalSwaps:swaps,ownerAnchoredLayout:'passed',allEffectRowsVisible:'passed',fontScaling:'passed',wideLayoutFrames,wideLayoutOverlap,wideLayoutStep,wideViewSpacing:'passed',selectedStackOnTop:'passed',offTrack:'passed',initialLookAhead:'passed',statusFlickerHold:'passed'}));
+  layoutFrames,largestLayoutStep,farthestCard,layoutOverlap,portraitOverlap,minimapOverlap,horizontalSwaps:swaps,ownerAnchoredLayout:'passed',allEffectRowsVisible:'passed',fontScaling:'passed',wideLayoutFrames,wideLayoutOverlap,wideLayoutStep,wideViewSpacing:'passed',selectedStackOnTop:'passed',offTrack:'passed',initialLookAhead:'passed',statusFlickerHold:'passed'};
 
 assert.ok(courseLabels>100,'Exercise actual course signs across course geometry');
+
+// Two leaders on the same notification shelf stay almost level after late
+// race. They must use free horizontal space instead of remaining superimposed.
+const pairRunners=Array.from({length:9},(_,i)=>({...race.runners[i%race.runners.length],id:`pair-${i}`,index:i,gate:i+1,name:`Pair runner ${i+1}`}));
+const pairRace:Race={...race,runners:pairRunners,courseId:10701,distance:1200,duration:12,events:[],frames:Array.from({length:49},(_,frame)=>{
+  const time=frame/4;return {time,runners:pairRunners.map((runner,i)=>({runnerId:runner.id,speed:20,hp:1000,lane:(i%3)*.08,
+    distance:820+20*time+(i===0?0:i===8?Math.sin(time/2)*.5:-4-i*1.5)}))};})};
+const pairOptions:ReplayOptions={race:pairRace,course:reference.courses[10701],reference,selected:pairRunners[0].id,follow:'selected',window:50,labels:true,elevation:true,
+  intervals:()=>Array.from({length:5},(_,i)=>({kind:'skill',label:`Pair effect ${i+1}`,skillId:200362,start:0,end:12,evidence:'recorded'}))};
+const pairChecks=[];
+for(const width of [1206,1846,2726,3126]){
+  const height=36+Math.round(1.3*Math.max(560,Math.min(680,width*.5))),options={...pairOptions,cardObstacles:[{x:width-222,y:38,width:210,height:100}]};
+  let run=0,longest=0,maxStep=0,leaderMoved=false,previous:ReplayScene|null=null;
+  for(let frame=15;frame<345;frame++){
+    const scene=replayScene(options,frame/30,width,height);assertOffTrack(scene);
+    const a=scene.cardGroups.find(g=>g.runnerId==='pair-0')!,b=scene.cardGroups.find(g=>g.runnerId==='pair-8')!;
+    if(overlaps(a,b)>1){run+=1/30;longest=Math.max(longest,run);}else run=0;
+    const owner=scene.markers.find(m=>m.runner.id==='pair-0')!;leaderMoved||=Math.abs(a.x+a.width/2-owner.x)>40;
+    if(previous)for(const group of scene.cardGroups){const old=previous.cardGroups.find(g=>g.runnerId===group.runnerId);if(old){
+      if(group.side!==old.side)assert.ok(Math.max(group.alpha,old.alpha)<.08,'A side swap fades between off-track positions');
+      if(group.alpha>.99&&old.alpha>.99)maxStep=Math.max(maxStep,Math.hypot(group.x-old.x,group.y-old.y));
+    }}
+    previous=scene;
+  }
+  assert.ok(longest<1,`A clear wide viewport must not leave the leaders overlapped: ${width}/${longest}s`);
+  assert.ok(maxStep<28,`The over-center transition must stay smooth: ${width}/${maxStep}px`);
+  const direct=replayScene({...options,race:{...pairRace}},7.35,width,height);
+  assert.deepEqual(direct,replayScene(options,7.35,width,height),'A cold direct seek reconstructs the same slot history');
+  pairChecks.push({width,longestOverlap:longest,maxStep,leaderMoved});
+}
+
+// Opposite gate parity must not put a lower runner's box above the field. As
+// the runners exchange lanes, both boxes should exchange banks without ever
+// painting through the road or oscillating back to their old gate-based side.
+const bankRunners=pairRunners.slice(0,2);
+const bankRace:Race={...pairRace,runners:bankRunners,courseId:null,distance:2500,frames:Array.from({length:49},(_,frame)=>{
+  const time=frame/4,lane=Math.max(0,Math.min(1,(6-time)/3));
+  return {time,runners:bankRunners.map((runner,i)=>({runnerId:runner.id,speed:20,hp:1000,lane:i?1-lane:lane,distance:200+time*20+(i?2:-2)}))};
+})};
+const bankChecks=[];
+for(const width of [1280,3092]){
+  const height=920,options={...pairOptions,race:bankRace,course:null};
+  const first=replayScene(options,.05,width,height);
+  assert.deepEqual(bankRunners.map(r=>first.cardGroups.find(g=>g.runnerId===r.id)!.side),['below','above'],'Initial banks follow on-screen lanes rather than runner index');
+  const counts=new Map<string,number>();let previous=first;
+  for(let frame=2;frame<330;frame++){
+    const scene=replayScene(options,frame/30,width,height);assertOffTrack(scene);
+    for(const group of scene.cardGroups){const old=previous.cardGroups.find(g=>g.runnerId===group.runnerId)!;
+      if(group.side!==old.side){assert.ok(Math.max(group.alpha,old.alpha)<.08);counts.set(group.runnerId,(counts.get(group.runnerId)??0)+1);}
+      else if(group.alpha>.99&&old.alpha>.99)assert.ok(Math.hypot(group.x-old.x,group.y-old.y)<28,'Same-bank motion stays smooth');
+    }
+    previous=scene;
+  }
+  assert.deepEqual(bankRunners.map(r=>previous.cardGroups.find(g=>g.runnerId===r.id)!.side),['above','below']);
+  assert.deepEqual(bankRunners.map(r=>counts.get(r.id)),[1,1],'Each runner makes one sustained bank exchange');
+  assert.deepEqual(replayScene({...options,race:{...bankRace}},6.35,width,height),replayScene(options,6.35,width,height),'Side planning is identical after a direct seek');
+  bankChecks.push({width,sideChanges:[...counts.values()]});
+}
+// A close upper pack has spare room below it. Short notification gaps should
+// reserve the same slots without displaying phantom rows or shifting a runner
+// whose own effects remain active throughout the gap.
+const quietRace:Race={...pairRace,courseId:null,distance:2500,duration:20,frames:[0,19,20].map(time=>({time,runners:pairRunners.map((runner,i)=>({runnerId:runner.id,speed:0,hp:1000,
+  lane:time===20?i/8:i===3?.3:i===7?.4:i*.01,distance:400+i*.35}))}))};
+const quietOptions:ReplayOptions={...pairOptions,race:quietRace,course:null,window:40,intervals:id=>{
+  const periods=id==='pair-0'?[[0,20]]:[[0,5.1],[5.7,11.1],[11.7,20]];
+  return periods.flatMap(([start,end])=>Array.from({length:3},(_,i)=>({kind:'skill',label:`Steady slot ${i}`,skillId:200362,start,end,evidence:'recorded'})));
+}};
+const quietBefore=replayScene(quietOptions,4.9,3092,920),quietGap=replayScene(quietOptions,5.4,3092,920),quietAfter=replayScene(quietOptions,6.3,3092,920);
+assert.equal(quietGap.cardGroups.length,1,'Reserved slots do not display expired or future notifications');
+assert.equal(quietGap.cardRects.length,3);
+const quietAnchor=quietBefore.cardGroups.find(g=>g.runnerId==='pair-0')!;
+for(const scene of [quietBefore,quietGap,quietAfter]){
+  assertOffTrack(scene);const anchor=scene.cardGroups.find(g=>g.runnerId==='pair-0')!;
+  assert.equal(anchor.side,quietAnchor.side);
+  assert.ok(Math.hypot(anchor.x-quietAnchor.x,anchor.y-quietAnchor.y)<4,'Short notification gaps must not reshuffle the steady box');
+}
+for(const id of ['pair-3','pair-7']){
+  assert.equal(quietBefore.cardGroups.find(g=>g.runnerId===id)!.side,'below','The lower members of a crowded upper pack use the free lower bank');
+  assert.equal(quietAfter.cardGroups.find(g=>g.runnerId===id)!.side,'below','A notification gap retains its bank');
+}
+assert.deepEqual(replayScene({...quietOptions,race:{...quietRace}},6.3,3092,920),quietAfter,'Direct seeking reproduces the reserved slots');
+
+// A squeezed middle box should not have to jump to another tier while both
+// neighbours have room to yield sideways. Exercise the actual reserved sizes.
+const sharedMarkers=[0,1,2].map((i)=>({...quietBefore.markers[i],x:[690,500,880][i],y:400,cardSide:'above' as const,
+  focused:i===0,cards:quietBefore.markers[0].cards}));
+const sharedTrack={route:[{x:0,y:400},{x:1400,y:400}],trackWidth:234};
+const shared=layoutReplayCards(sharedMarkers,1400,920,[],{offsets:new Map(sharedMarkers.map(m=>[m.runner.id,{x:0,y:-95,side:'above' as const}])),lockSides:true,iterations:0},100,50,sharedTrack);
+const sharedGroups=sharedMarkers.map(m=>shared.cardGroups.find(g=>g.runnerId===m.runner.id)!);
+assert.ok(Math.abs(sharedGroups[0].x+sharedGroups[0].width/2-690)<1,'The middle stack stays centered when neighbours can yield');
+assert.ok(sharedGroups[1].x+sharedGroups[1].width/2<480&&sharedGroups[2].x+sharedGroups[2].width/2>900,'Both neighbours share the required horizontal adjustment');
+for(const group of sharedGroups)assert.ok(Math.abs(group.y+group.height-271)<1,'All three stacks keep the same track-facing tier');
+assert.ok(overlaps(sharedGroups[0],sharedGroups[1])===0&&overlaps(sharedGroups[0],sharedGroups[2])===0);
+
+// Course signs are world-anchored decorations. Show an actual skill stack on
+// top of Midleg and verify the sign is painted first without dodging it.
+const signRace:Race={...quietRace,distance:1200,runners:[pairRunners[0]],frames:[0,20].map(time=>({time,runners:[{runnerId:pairRunners[0].id,distance:200,speed:0,hp:1000,lane:0}]}))};
+const signOptions:ReplayOptions={...quietOptions,race:signRace,window:50,elevation:false,courseMarkers:enabled};
+fills.length=0;drawReplay(context,{...signOptions,labels:false},10,1400,920);
+const signFill={...fills.find(f=>f.color===fallbackPalette.panel)!};assert.ok(signFill.width>0);
+fills.length=0;const withSign=drawReplay(context,signOptions,10,1400,920);
+const signIndex=fills.findIndex(f=>f.color===fallbackPalette.panel);
+assert.deepEqual(fills[signIndex],signFill,'Skill stacks cannot shift course signs');
+const stack=withSign.cardGroups[0];assert.ok(overlaps(signFill,stack)>0,'Exercise an actual sign/skill overlap');
+assert.ok(fills.findIndex(f=>f.x===stack.x&&f.y===stack.y&&f.width===stack.width&&f.height===stack.height)>signIndex,'Skill stacks paint over course signs');
+assert.deepEqual(replayScene({...signOptions,courseMarkers:{phases:false,sections:false,slopes:false,remaining777:false}},10,1400,920).cardGroups,withSign.cardGroups,'Course signs cannot shift skill stacks');
+console.log(JSON.stringify({...cameraReport,leaderPairSeparation:'passed',pairChecks,positionBasedBanks:'passed',bankChecks,notificationGapSlots:'passed',packBalance:'passed',sharedRowSpacing:'passed',fixedCourseSigns:'passed'}));

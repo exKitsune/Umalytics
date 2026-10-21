@@ -30,6 +30,15 @@ export function captureFacet(entry: { category?: string; raceMode?: 'practice' |
   return entry.category ?? entry.race?.category ?? 'other';
 }
 export const runnerColors = ['#4ac892','#65a9ef','#eaad5f','#ae90f1','#eb8099','#6fcbd0','#d1ce75','#df9dd0','#a2b7c5','#d48560','#83bd7b','#8c92de','#cb717c','#b7a985','#85b3ae','#c5a5e5','#9bbd62','#ccaaac'];
+/** Persistent library identity keeps the accent stable as metadata loads,
+ * filters change or races are reordered. No replay data needs to be opened. */
+export function raceIdentityColor(id:string):string {
+  let hash=2166136261;
+  for(let i=0;i<id.length;i++)hash=Math.imul(hash^id.charCodeAt(i),16777619);
+  // Avalanche the FNV hash so similar capture IDs do not produce nearby hues.
+  hash=Math.imul(hash^(hash>>>16),0x85ebca6b);hash=Math.imul(hash^(hash>>>13),0xc2b2ae35);hash=(hash^(hash>>>16))>>>0;
+  return `oklch(${62+(hash>>>20)%7}% ${(14+(hash>>>12)%5)/100} ${(hash%3600)/10})`;
+}
 export interface LibraryEntry { id: string; title: string; receivedAt: string; racedAt?: string; category?: RaceCategory; raceMode?: 'practice' | 'room'; savedReplay?: boolean; raceDesignation?: Race['raceDesignation']; synthetic?: boolean; remoteId?: string; race?: Race; raceIndex?:number; courseId?:number|null; distance?:number|null; conditions?:Race['conditions']; raceInstanceId?:number; sha256?:string; courseIdentity?:Race['courseIdentity']; courseInference?:CourseInference|null }
 /** Both sidebar layouts use the same newest-import-first order. */
 export function newestLibraryFirst(entries:readonly LibraryEntry[]):LibraryEntry[] {

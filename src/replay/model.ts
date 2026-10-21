@@ -8,6 +8,7 @@ import type { DebuffActivation } from '../data/effect-types';
 import { visionDistanceAt } from '../data/skill-impact';
 import { replayCards, layoutReplayCards, CARD_DWELL } from './cards';
 import { receivedEffectWindow } from './received-effects';
+import type { LayoutOffset } from './layout';
 
 export interface ReplayInterval { kind:string; label:string; start:number; end:number|null; evidence:string; skillId?:number|null; detail?:string }
 export const DEFAULT_REPLAY_WINDOW=50;
@@ -191,7 +192,7 @@ function buildReplayScene(options:ReplayOptions,time:number,width:number,height:
     const offset=estimatedLaneOffset(options.race,sample.lane,trackWidth)/scale*normalSign;
     const projected=transform({...point,x:point.x-Math.sin(point.angle)*offset,y:point.y+Math.cos(point.angle)*offset});
     const cards=replayCards(options,runner.id,time,sample);
-    markers.push({runner,sample,...projected,name:runnerName(options.reference,runner),labels:cards.map(c=>c.label),cards,cardSide:runner.index%2===0?'above':'below',focused:runner.id===options.selected});
+    markers.push({runner,sample,...projected,name:runnerName(options.reference,runner),labels:cards.map(c=>c.label),cards,cardSide:projected.y<=transform(point).y?'above':'below',focused:runner.id===options.selected});
   }
   const world:{distance:number;point:ReplayPoint}[]=[];
   const steps=Math.max(2,Math.ceil((to-from)/2));
@@ -257,17 +258,18 @@ function buildReplayScene(options:ReplayOptions,time:number,width:number,height:
     trackWidth,routeEnds:{start:from===0,finish:(options.race.distance??course?.distance??0)>0&&to===(options.race.distance??course?.distance)},camera:{angle,scale,x:camera.x,y:camera.y},distanceTicks,courseMarkers,vision,debuffs,
     laneNote:'Portraits identify runners. Recorded lane order is preserved; fence alignment and spacing are estimated.'};
 }
-type LayoutOffsets=Map<string,{x:number;y:number}>;
-// Retain only the owner-relative offsets used by smoothing. Marker/card/sample
-// objects are transient; a configuration holds at most400 small offset maps.
-const layoutCache=new WeakMap<Race,Map<string,Map<number,LayoutOffsets>>>();
+type LayoutOffsets=Map<string,LayoutOffset>;
+// Retain only owner-relative offsets. Marker/card/sample objects are transient;
+// each configuration holds at most 800 pairs of small keyframe maps.
+interface LayoutFrames {resolved:Map<number,LayoutOffsets>;animated:Map<number,LayoutOffsets>}
+const layoutCache=new WeakMap<Race,Map<string,LayoutFrames>>();
 const objectIds=new WeakMap<object,number>();let nextObjectId=0;
 function objectId(value:object|null|undefined){if(!value)return 0;let id=objectIds.get(value);if(!id){id=++nextObjectId;objectIds.set(value,id);}return id;}
 const layoutOffsets=(markers:ReplayScene['markers'],groups:ReplayScene['cardGroups']):LayoutOffsets=>new Map(groups.flatMap(g=>{
   const m=markers.find(m=>m.runner.id===g.runnerId);
-  return m?[[g.runnerId,{x:g.x+g.width/2-m.x,y:g.y-m.y-(m.cardSide==='above'?-34-g.height:34)}] as const]:[];
+  return m?[[g.runnerId,{x:g.x+g.width/2-m.x,y:g.y-m.y-(g.side==='above'?-34-g.height:34),side:g.side}] as const]:[];
 }));
-/** Look ahead 1.4 seconds, with a short 0.6-second trailing window. Upcoming
+/** Look ahead 0.6 seconds and retain a slot until it needs to move. Upcoming
  * positions influence the very first layout as well as playback. Only layout
  * offsets are anticipated: future statuses/skills never become visible early.
  * Fixed race-time samples keep direct seeks and exported clips identical. */
@@ -278,24 +280,78 @@ export function replayScene(options:ReplayOptions,time:number,width:number,heigh
   const revision=Object.values(options.analysis?.runners??{}).map(r=>r.intervals.length+'/'+r.skillActivations.length).join(',');
   const key=[objectId(options.course),objectId(options.reference),objectId(options.analysis),objectId(options.intervals),options.selected,options.follow,options.window,width,height,options.fontScale??100,revision,options.overlays?.debuffs,
     JSON.stringify(options.debuffActivations??options.analysis?.debuffs??[]),JSON.stringify(options.cardObstacles??[])].join('|');
-  let frames=cache.get(key);if(!frames){frames=new Map();cache.set(key,frames);if(cache.size>8)cache.delete(cache.keys().next().value!);}
-  const target=(index:number)=>{
-    index=Math.max(0,index);let frame=frames!.get(index);
-    if(!frame){const preview=buildReplayScene(options,Math.min(options.race.duration,index/5),width,height,false,true);
-      const upcoming=buildReplayScene(options,Math.min(options.race.duration,index/5+.8),width,height,false,true);
-      const futureRows=new Map(upcoming.markers.map(m=>[m.runner.id,m.cards.reduce((n,c)=>n+c.alpha,0)]));
-      const placed=layoutReplayCards(preview.markers,width,height,options.cardObstacles,undefined,options.fontScale,options.window,{...preview,futureRows});
-      frame=layoutOffsets(preview.markers,placed.cardGroups);frames!.set(index,frame);
-      if(frames!.size>400)frames!.delete(frames!.keys().next().value!);
+  let frames=cache.get(key);if(!frames){frames={resolved:new Map(),animated:new Map()};cache.set(key,frames);if(cache.size>8)cache.delete(cache.keys().next().value!);}
+  const resolved=(index:number)=>{
+    index=Math.max(0,index);const known=frames!.resolved.get(index);if(known)return known;
+    // Deterministic history provides hysteresis without depending on playback:
+    // keep the previous slot until current or forecast geometry needs space.
+    let previous=-1;
+    for(const key of frames!.resolved.keys())if(key<index&&key>previous)previous=key;
+    let offsets=frames!.resolved.get(previous);
+    for(let i=previous+1;i<=index;i++){
+      const now=Math.min(options.race.duration,i/5);
+      const preview=buildReplayScene(options,now,width,height,false,true);
+      const upcoming=buildReplayScene(options,Math.min(options.race.duration,now+.6),width,height,false,true);
+      const later=buildReplayScene(options,Math.min(options.race.duration,now+1.2),width,height,false,true);
+      const peakRows=new Map<string,number>();
+      for(const marker of [...preview.markers,...upcoming.markers,...later.markers])peakRows.set(marker.runner.id,Math.max(peakRows.get(marker.runner.id)??0,marker.cards.length));
+      // Reserve the full footprint through short notification gaps. The
+      // reservation is layout-only: no future or expired rows are displayed.
+      const futureRows=new Map<string,number>();
+      for(const[id,rows]of peakRows){const prior=offsets?.get(id);futureRows.set(id,Math.max(rows,i<(prior?.rowsUntil??0)?prior?.rows??0:0));}
+      // Reconsider leader lines every 0.6 s, with a 1.6 s minimum bank hold.
+      // Collision clearance still runs at every keyframe and every paint.
+      const seeded=offsets?new Map([...offsets].map(([id,p])=>[id,{...p,sideLocked:i-(p.sideSince??0)<8}])):undefined;
+      const forecast=layoutReplayCards(upcoming.markers,width,height,options.cardObstacles,seeded?{offsets:seeded,iterations:0,optimizeLeaders:i%3===0}:undefined,options.fontScale,options.window,{...upcoming,futureRows});
+      // A notification gap must not erase the runner's bank/slot. In
+      // particular, an empty forecast must not reset a still-visible box.
+      const anticipated=new Map([...offsets??[],...layoutOffsets(upcoming.markers,forecast.cardGroups)]);
+      const placed=layoutReplayCards(preview.markers,width,height,options.cardObstacles,{offsets:anticipated,iterations:0,lockSides:true,optimizeLeaders:false},options.fontScale,options.window,{...preview,futureRows});
+      const next=new Map([...offsets??[]].map(([id,point])=>[id,{...point}]));
+      for(const[id,point]of layoutOffsets(preview.markers,placed.cardGroups))next.set(id,point);
+      for(const[id,p]of next){const prior=offsets?.get(id);p.sideSince=prior&&prior.side===p.side?prior.sideSince??i:i;
+        p.rows=futureRows.get(id)??0;p.rowsUntil=(peakRows.get(id)??0)>=p.rows?i+6:prior?.rowsUntil??i;
+      }
+      offsets=next;frames!.resolved.set(i,offsets);
+      const prior=frames!.animated.get(i-1);
+      // A long move gets more travel time rather than teleporting across the
+      // screen. The curve below eases acceleration at the ends of the move.
+      frames!.animated.set(i,new Map([...offsets].map(([id,point])=>{
+        const from=prior?.get(id);if(!from||from.side!==point.side)return [id,point];
+        const dx=point.x-from.x,dy=point.y-from.y,ratio=Math.min(1,120/Math.hypot(dx,dy));
+        return [id,{...point,x:from.x+dx*ratio,y:from.y+dy*ratio}];
+      })));
+      // Keep the initial anchor and recent frames. A rewind reconstructs the
+      // same history from the nearest retained earlier keyframe.
+      if(frames!.resolved.size>800){const oldest=[...frames!.resolved.keys()].find(k=>k!==0);if(oldest!==undefined){frames!.resolved.delete(oldest);frames!.animated.delete(oldest);}}
     }
-    return frame;
+    return offsets!;
   };
+  // Resolve overlaps before the short transition. A final separation pass on
+  // every paint would snap between equally good sides; this smooth curve lets
+  // stacks pass one another briefly instead of staying averaged together.
   const p=Math.max(0,time*5),k=Math.floor(p),f=p-k;
-  const sums=new Map<string,{x:number;y:number;weight:number}>();
-  for(let i=k-3;i<=k+7;i++){
-    const weight=i===k-3?1-f:i===k+7?f:1;if(weight<=0)continue;
-    for(const[id,point]of target(i)){const sum=sums.get(id)??{x:0,y:0,weight:0};sum.x+=point.x*weight;sum.y+=point.y*weight;sum.weight+=weight;sums.set(id,sum);}
+  const weights=[(1-f)**3/6,(3*f**3-6*f*f+4)/6,(-3*f**3+3*f*f+3*f+1)/6,f**3/6];
+  for(let i=Math.max(0,k-2);i<=k+2;i++)resolved(i);
+  const current=frames!.animated.get(k)!;
+  const sums=new Map<string,{x:number;y:number;weight:number;side:LayoutOffset['side']}>();
+  weights.forEach((weight,i)=>{if(!weight)return;const index=Math.max(0,k+i-1);for(const[id,point]of frames!.animated.get(index)!) {
+    const side=current.get(id)?.side??point.side;if(point.side!==side)continue;
+    const sum=sums.get(id)??{x:0,y:0,weight:0,side};sum.x+=point.x*weight;sum.y+=point.y*weight;sum.weight+=weight;sums.set(id,sum);
+  }});
+  const offsets=new Map([...sums].map(([id,p])=>[id,{x:p.x/p.weight,y:p.y/p.weight,side:p.side}]));
+  const placed=layoutReplayCards(scene.markers,width,height,options.cardObstacles,{offsets,iterations:0,clearanceOnly:true},options.fontScale,options.window,scene);
+  // A straight road can divide the whole viewport. Fade out/in on either side
+  // rather than sweep a box through runners or snap a visible card across it.
+  const fades=new Map<string,number>();
+  for(const group of placed.cardGroups){
+    let fade=1;
+    for(let i=Math.max(1,k-1);i<=k+2;i++){
+      const a=frames!.animated.get(i-1)?.get(group.runnerId),b=frames!.animated.get(i)?.get(group.runnerId);
+      if(a&&b&&a.side!==b.side){const t=Math.min(1,Math.abs(time-i/5)/.22);fade=Math.min(fade,t*t*(3-2*t));}
+    }
+    fades.set(group.runnerId,fade);group.alpha*=fade;
   }
-  const offsets=new Map([...sums].map(([id,p])=>[id,{x:p.x/p.weight,y:p.y/p.weight}]));
-  return {...scene,...layoutReplayCards(scene.markers,width,height,options.cardObstacles,{offsets,iterations:0},options.fontScale,options.window,scene)};
+  placed.cardRects=placed.cardRects.map(r=>({...r,card:{...r.card,alpha:r.card.alpha*(fades.get(r.runnerId)??1)}}));
+  return {...scene,...placed};
 }
