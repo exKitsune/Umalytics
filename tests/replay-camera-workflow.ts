@@ -365,14 +365,23 @@ const trafficCards=(time:number)=>replayCards(flickerOptions,sourceId,time,cardF
 assert.equal(trafficCards(4.99).length,0,'Look-ahead never shows a status before it occurs');
 const firstTraffic=trafficCards(5.02)[0],heldTraffic=trafficCards(5.1)[0],againTraffic=trafficCards(5.17)[0];
 assert.equal(firstTraffic.id,heldTraffic.id);assert.equal(heldTraffic.id,againTraffic.id);
-assert.equal(heldTraffic.end,5.04);assert.equal(heldTraffic.visualOnly,true);assert.equal(heldTraffic.progress,0);
+assert.equal(heldTraffic.end,5.04);assert.equal(heldTraffic.visualOnly,true);
+for(const traffic of [firstTraffic,heldTraffic,againTraffic])assert.equal(traffic.progress,null,'Traffic procs never show a per-tick countdown');
 assert.match(replayCardHelp(flickerOptions,heldTraffic),/Recently active/);
 assert.equal(againTraffic.end,5.19);assert.equal(againTraffic.visualOnly,false);
-assert.equal(trafficCards(5.5).length,1,'A very brief notification stays readable');
-assert.equal(trafficCards(5.8).length,0,'A settled clear gap removes the notification');
+assert.equal(heldTraffic.color,firstTraffic.color,'The held proc keeps the most recent slowdown color');
+assert.notEqual(againTraffic.color,firstTraffic.color,'A new traffic tick updates severity without restarting the notification');
+assert.ok(againTraffic.alpha>heldTraffic.alpha,'New ticks do not restart the fade-in');
+assert.equal(trafficCards(5.89).length,1,'A very brief notification lasts at least 0.75 seconds after its last proc');
+assert.equal(trafficCards(5.91).length,0,'A settled clear gap removes the notification');
 assert.notEqual(trafficCards(6.52)[0].id,firstTraffic.id,'Separate episodes stay separate');
+assert.equal(trafficCards(7.24).length,1);assert.equal(trafficCards(7.25).length,0,'An isolated traffic tick receives the same minimum dwell');
 assert.deepEqual(trafficCards(5.1),[heldTraffic],'Rewinding reproduces the same display hold');
 assert.equal(JSON.stringify(flickerIntervals),originalTraffic,'Display holds never alter traffic evidence or totals');
+const intervalTraffic={...realOptions,analysis:null,overlays:{vision:false,debuffs:false},intervals:()=>[{kind:'traffic',label:'Traffic',start:5,end:5.04,evidence:'estimated'}]};
+const inferredTraffic=replayCards(intervalTraffic,sourceId,5.74,cardFrame.markers[0].sample).find(c=>c.label==='Traffic')!;
+assert.ok(inferredTraffic);assert.equal(inferredTraffic.progress,null);assert.equal(inferredTraffic.displayEnd,5.75);
+assert.ok(!replayCards(intervalTraffic,sourceId,5.75,cardFrame.markers[0].sample).some(c=>c.label==='Traffic'),'Interval-backed traffic uses the same proc presentation');
 
 const forecastRunners=race.runners.slice(0,2);
 const forecastRace=(moving:boolean):Race=>({...race,courseId:null,distance:2500,duration:4,runners:forecastRunners,events:[],frames:[0,.1,1,4].map(time=>({time,runners:forecastRunners.map((r,i)=>({runnerId:r.id,distance:300-i*6+(moving&&time>.1&&i?18:0),lane:0,speed:20,hp:1000}))}))});
