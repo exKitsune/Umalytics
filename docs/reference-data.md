@@ -23,15 +23,44 @@ group IDs stay absent. Unrecognized condition/effect codes remain unsupported.
 JP skill details show **JP fallback**; this is reference coverage, not a claim
 that every later JP mechanic is implemented for Global.
 
-`scripts/fetch-gametora-fallback.py` fetches only the public manifest and three
-JSON catalogs (skills, characters, character cards). It keeps the missing names,
-outfits and skill definitions inside `metadata.json`, along with immutable source
-URLs and hashes. The current fallback adds 276 Global and 1,187 JP definitions,
-66 character names and 134 outfit names. It does not replace a runner's recorded
-stats, outfit, skills or activation events. No extra runtime download is needed.
-Run it after extracting a new Global master, then regenerate the reference
-manifest with `python desktop/generate_manifest.py`. `--catalog-dir` supports
-reproducible offline refreshes and functional tests.
+`scripts/fetch-gametora-fallback.py` downloads the public manifest and skill,
+character and character-card catalogs. With `--career-output`, it also downloads
+support cards and saves SP costs, support facts and canonical GameTora links.
+English text takes priority; unavailable, empty or whitespace-only translations
+fall back to Japanese names/descriptions. Missing text in an installed Global
+skill can be filled separately, without replacing its mechanics or region.
+Immutable source URLs, revisions and hashes accompany both snapshots.
+
+The October 20 snapshot includes Razor-Sharp Steps (202491): 180 SP for its own
+step, 360 SP including Sharp Steps (202492). Installed SP records retain priority.
+The fallback resolves simple, unambiguous acquisition chains; it leaves complex
+chains unavailable instead of guessing. Support and character links use the
+catalog's canonical URL names, including Mr. C.B. and Sweep Tosho 30128.
+
+Refresh the local files with:
+
+```powershell
+python scripts/fetch-gametora-fallback.py --career-output src/data/career-fallback.json
+python desktop/generate_manifest.py
+node --import tsx scripts/audit-skill-effectiveness.ts docs/skill-effectiveness-coverage.json
+npm test
+npm run build
+```
+
+`--catalog-dir` replays a saved snapshot offline. Refresh after extracting a new
+Global master or when new content exposes missing reference entries. There is
+currently no scheduled GameTora refresh. The app uses bundled/local reference
+files; its reference updater downloads published Umalytics snapshots rather than
+calling GameTora while viewing a race. Career fallback facts are bundled into the
+app, so those updates require a new build. No runner's recorded stats, outfit,
+skills or activation events are replaced.
+
+Simulator skill data remains separately pinned. The two reviewed October 20
+Global skill additions are defined in `desktop/globalsim_bridge/skill_additions.py`,
+use existing engine conditions/effects, and only fill missing IDs. Their content
+and provenance enter the simulator identity/cache hash. JP reference coverage
+never silently adds mechanics to the simulator; the complete supported replay
+comparison must still pass before using simulation analysis.
 
 The snapshot also includes public skill descriptions, icon IDs, activation-lottery
 flags, preconditions and target/scaling fields, plus 1,817 public race-instance

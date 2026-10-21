@@ -35,8 +35,22 @@ def overlay(base, patch):
     return result
 
 
+def text(*values):
+    """Empty translations must not hide available English or native JP text."""
+    return next((value.strip() for value in values if isinstance(value, str) and value.strip()), None)
+
+
+def skill_text(row, region):
+    return {
+        'name': text(row.get('name_en') if region == 'Global' else row.get('enname'),
+                     row.get('name_en'), row.get('enname'), row.get('jpname')),
+        'description': text(row.get('desc_en') if region == 'Global' else row.get('endesc'),
+                            row.get('desc_en'), row.get('endesc'), row.get('jpdesc')),
+    }
+
+
 def skill_record(row, region):
-    name = (row.get('name_en') if region == 'Global' else row.get('enname')) or row.get('name_en') or row.get('jpname') or f"Skill {row['id']}"
+    labels = skill_text(row, region)
     branches = []
     for index, group in enumerate(row.get('condition_groups', [])):
         if not isinstance(group.get('condition'), str) or not isinstance(group.get('base_time'), int):
@@ -54,21 +68,21 @@ def skill_record(row, region):
             'durationUsage': group.get('time_scale', 1), 'rawCooldown': group.get('cd', 5000000), 'effects': effects})
     if not branches:
         raise ValueError(f"Skill has no branches: {row['id']}")
-    return {'name': name, 'rarity': row['rarity'], 'activateLot': row.get('activation'),
-        'iconId': row.get('iconid'), 'description': (row.get('desc_en') if region == 'Global' else row.get('endesc')) or row.get('desc_en') or row.get('jpdesc'),
+    return {'name': labels['name'] or f"Skill {row['id']}", 'rarity': row['rarity'], 'activateLot': row.get('activation'),
+        'iconId': row.get('iconid'), 'description': labels['description'],
         'dataRegion': region, 'branches': branches}
 
 
 def build(metadata, catalogs, source):
-    fallback = {'characters': {}, 'outfits': {}, 'skillNames': {}, 'skills': {}, 'source': source}
+    fallback = {'characters': {}, 'outfits': {}, 'skillNames': {}, 'skills': {}, 'skillTexts': {}, 'source': source}
     for row in catalogs['characters']:
         key = str(row['char_id'])
-        if key not in metadata['characters']:
-            fallback['characters'][key] = row.get('name_en') or row.get('name_ja') or f'Character {key}'
+        if not text(metadata['characters'].get(key)):
+            fallback['characters'][key] = text(row.get('name_en'), row.get('name_ja')) or f'Character {key}'
     for row in catalogs['character-cards']:
         key = str(row['card_id'])
-        if key not in metadata['outfits']:
-            fallback['outfits'][key] = row.get('title_en_gl') or row.get('title') or row.get('title_jp') or f'Outfit {key}'
+        if not text(metadata['outfits'].get(key)):
+            fallback['outfits'][key] = text(row.get('title_en_gl'), row.get('title'), row.get('title_jp')) or f'Outfit {key}'
     for original in catalogs['skills']:
         localized = original.get('loc', {}).get('en')
         region = 'Global' if localized is not None else 'JP'
@@ -81,9 +95,60 @@ def build(metadata, catalogs, source):
                 raise ValueError('Invalid skill ID.')
             if key not in metadata['skills']:
                 fallback['skills'][key] = skill_record(candidate, region)
-            if key not in metadata['skillNames']:
-                fallback['skillNames'][key] = skill_record(candidate, region)['name']
+            labels = skill_text(candidate, region)
+            if not text(metadata['skillNames'].get(key)) and labels['name']:
+                fallback['skillNames'][key] = labels['name']
+            # Text may fill a blank inside an installed record; mechanics may not.
+            if key in metadata['skills']:
+                missing = {field: value for field, value in labels.items()
+                           if value and not text(metadata['skills'][key].get(field))}
+                if missing:
+                    fallback['skillTexts'][key] = missing
     return {**metadata, 'fallback': fallback}
+
+
+def career_fallback(catalogs, source):
+    """Presentation facts only. Ambiguous acquisition chains stay unavailable."""
+    rows = {}
+    for original in catalogs['skills']:
+        row = overlay(original, original.get('loc', {}).get('en', {}))
+        for value in (row, row.get('gene_version')):
+            if value:
+                rows[value['id']] = value
+    prices = {}
+    for sid, row in rows.items():
+        cost, rarity = row.get('cost'), row['rarity']
+        if cost is None:
+            if rarity in (3, 4, 5):
+                prices[str(sid)] = {'cost': None, 'steps': []}
+            continue
+        if type(cost) is not int or cost < 0:
+            raise ValueError('Invalid SP cost')
+        variants = [rows.get(id) for id in row.get('versions', [])]
+        steps = None
+        if not variants:
+            steps = [sid]
+        elif rarity == 2 and len(variants) == 1 and variants[0] and variants[0]['rarity'] == 1:
+            steps = [variants[0]['id'], sid]
+        elif rarity == 1 and all(v and v['rarity'] == 2 for v in variants):
+            steps = [sid]
+        # Do not guess ordering for green upgrades, negatives or evolved chains.
+        prices[str(sid)] = {'cost': cost, 'steps': steps}
+    supports = {}
+    commands = {'speed': 101, 'stamina': 105, 'power': 102, 'guts': 103, 'intelligence': 106}
+    for row in catalogs['support-cards']:
+        title = text(row.get('title_en'), row.get('title_ja')) or ''
+        name = text(row.get('char_name'), row.get('name_jp')) or f"Support {row['support_id']}"
+        supports[str(row['support_id'])] = {
+            'name': f"{title} {name}".strip(), 'charaId': row['char_id'],
+            'rarity': row['rarity'], 'type': 2 if row['type'] == 'friend' else 3 if row['type'] == 'group' else 1,
+            'command': commands.get(row['type'], 0), 'slug': row['url_name'],
+        }
+    characters = {str(row['card_id']): row['url_name'] for row in catalogs['character-cards']}
+    for slug in [*characters.values(), *(s['slug'] for s in supports.values())]:
+        if not re.fullmatch(r'[0-9]+-[a-z0-9-]+', slug):
+            raise ValueError('Invalid canonical GameTora slug')
+    return {'source': source, 'prices': prices, 'supports': supports, 'characters': characters}
 
 
 def main():
@@ -91,10 +156,11 @@ def main():
     parser.add_argument('--metadata', type=Path, default=Path('public/data/metadata.json'))
     parser.add_argument('--catalog-dir', type=Path)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--career-output', type=Path, help='Also refresh SP costs, support facts and canonical links.')
     args = parser.parse_args()
     manifest_raw = (args.catalog_dir / 'manifest.json').read_bytes() if args.catalog_dir else download(BASE + '/data/manifests/\x75mamusume.json')
     manifest, catalogs, files = read_json(manifest_raw), {}, {}
-    for name in NAMES:
+    for name in (*NAMES, *(('support-cards',) if args.career_output else ())):
         revision = manifest[name]
         if not isinstance(revision, str) or not re.fullmatch(r'[a-f0-9]{8,64}', revision):
             raise ValueError('Invalid catalog revision.')
@@ -111,6 +177,8 @@ def main():
     output = args.output or args.metadata
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(public_json(json.dumps(result, ensure_ascii=False, separators=(',', ':'))), encoding='utf8')
+    if args.career_output:
+        args.career_output.write_text(public_json(json.dumps(career_fallback(catalogs, source), ensure_ascii=False, separators=(',', ':')))+'\n', encoding='utf8')
     fallback = result['fallback']
     print(json.dumps({'globalDefinitions': len(result['skills']), 'fallbackDefinitions': len(fallback['skills']),
         'fallbackGlobal': sum(s['dataRegion'] == 'Global' for s in fallback['skills'].values()),

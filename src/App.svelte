@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {newestLibraryFirst} from './library';
   import { onMount } from 'svelte';
   import {collectorStatus} from './collector-status';
   import {formatRaceTime} from './data/race-time';
@@ -141,7 +142,8 @@
   }
   $: document.documentElement.dataset.theme = theme;
   $: document.documentElement.style.setProperty('--font-scale',String(fontScale/100));
-  $: visible = library.filter(entry => (filter==='all'||captureFacet(entry)===filter) && withinDateRange(entry.race?.racedAt??entry.racedAt??entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference)} ${conditionsCaption(entry.race??entry)} ${facetInfo(captureFacet(entry)).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term))).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
+  $: orderedLibrary = newestLibraryFirst(library);
+  $: visible = orderedLibrary.filter(entry => (filter==='all'||captureFacet(entry)===filter) && withinDateRange(entry.race?.racedAt??entry.racedAt??entry.receivedAt,dateFrom,dateTo) && (!tagFilter||(raceTags[entry.id]??[]).includes(tagFilter)) && search.toLowerCase().trim().split(/\s+/).every(term=>`${courseCaption(entry.race??entry,reference)} ${conditionsCaption(entry.race??entry)} ${facetInfo(captureFacet(entry)).label} ${(raceTags[entry.id]??[]).join(' ')}`.toLowerCase().includes(term)));
   $: identityRace = race ? resolveCourseIdentity(race,reference) : null;
   $: inferredCourse = analysis && analysis.source!=='simulation' && analysis.source!=='recorded' && identityRace ? inferCourse(identityRace,reference) : null;
   $: candidateCourse = getCourse(reference,identityRace?.courseId??inferredCourse?.courseId??null);
@@ -308,7 +310,7 @@
     <details class="library-filters"><summary>Date &amp; tags{dateFrom||dateTo||tagFilter?' · filtered':''}</summary><label>From<input type="date" aria-label="Race date from" bind:value={dateFrom} max={dateTo||undefined}/></label><label>To<input type="date" aria-label="Race date to" bind:value={dateTo} min={dateFrom||undefined}/></label><label>Tag<select aria-label="Filter by tag" bind:value={tagFilter}><option value="">All tags</option>{#each allTags as tag}<option value={tag}>{tag}</option>{/each}</select></label><button onclick={()=>{dateFrom='';dateTo='';tagFilter='';}}>Clear filters</button></details>
     {/if}
     <div class="race-list">
-      {#each (sidebarCollapsed?library:visible) as entry (entry.id)}
+      {#each (sidebarCollapsed?orderedLibrary:visible) as entry (entry.id)}
         {@const category=facetInfo(captureFacet(entry))}
         {@const inference=captionInference(entry.race??entry,reference)}
         {@const manuallySelected=(entry.race?.courseIdentity??entry.courseIdentity)?.source==='manual'}
@@ -317,7 +319,7 @@
 ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><svg viewBox="0 0 32 20" aria-hidden="true"><rect x="2" y="3" width="28" height="14" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M22 2v16" stroke="currentColor" stroke-dasharray="2 2"/></svg><small>{entry.synthetic?'Demo':category.id==='room'?'Room':category.short}</small></button>{:else}
         <div class="race-row"><button class="race-card" class:chosen={activeId===entry.id} aria-current={activeId===entry.id?'true':undefined} style={`--category:${category.color}`} onclick={()=>selectEntry(entry)}><span class="race-card-top"><span class="category-label">{entry.synthetic?'Demo':category.short}</span><span title="Race time in your local timezone">{date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}</span></span><strong>{sidebarCourse(entry)}</strong><span class="race-distance">{sidebarDistance(entry)?.toLocaleString()??'Unknown'} m</span>{#if raceTags[entry.id]?.length}<span class="race-tags">{#each raceTags[entry.id] as tag}<span>{tag}</span>{/each}</span>{/if}<small>{conditionsCaption(entry.race??entry)||'Conditions unknown'}</small>{#if entryInferred}<small title="Course identified from equipped skills.">Inferred from skills</small>{:else if manuallySelected}<small>Course selected</small>{/if}{#if entry.race}<small class="race-card-count">{entry.race.runners.length} runners</small>{/if}</button>{#if pendingRemoval===entry.id}<button class="race-delete confirm" disabled={importing||!!removingId} onclick={()=>removeRace(entry)}>Remove</button>{:else}<button class="race-delete" disabled={importing||!!removingId} aria-label={`Remove ${courseCaption(entry.race??entry,reference)}`} onclick={()=>pendingRemoval=entry.id}>×</button>{/if}</div>{/if}
       {/each}
-      {#if !(sidebarCollapsed ? library : visible).length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
+      {#if !(sidebarCollapsed ? orderedLibrary : visible).length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
       {#if historyLoading}<small role="status">Loading history…</small>{:else if nextOffset!==null}<button class="load-more" onclick={loadHistory}>Load older races</button>{/if}
     </div>
     <div class="sidebar-bottom">{#if !sidebarCollapsed}<label class="check"><input type="checkbox" bind:checked={following}/> Follow new races</label>

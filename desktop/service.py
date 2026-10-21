@@ -48,7 +48,7 @@ class LocalServer(ThreadingHTTPServer):
 
 def settings_default():
     return {'schemaVersion': 1, 'collectionEnabled': True, 'startAtLogin': False,
-            'categories': {category: True for category in CATEGORIES},
+            'categories': {category: category not in ('career', 'team-trials') for category in CATEGORIES},
             'preferences': {'theme': 'dark', 'fontScale': 100, 'courseAssignments': {}, 'browserMigrationComplete': False}}
 
 

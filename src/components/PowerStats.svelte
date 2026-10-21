@@ -7,7 +7,7 @@
   $: releases=value?.releases??intervals.filter(i=>i.kind==='release-conserve-power').map(i=>({start:i.start,end:i.end,acceleration:null}));
 </script>
 <div class="power-stats">
-  {#if !available}<small>—</small>{:else}
+  {#if !available||(!value&&!releases.length)}<small title="Power accumulation and release require a matched simulator trace.">—</small>{:else}
   {#if value?.accumulationSeconds!=null}<div title="Time spent building stored power."><span class="tag">Conserve</span><strong>{value.accumulationSeconds.toFixed(1)} s</strong></div>{/if}
   {#if value?.gauge!=null}<small title="Stored power available for release.">Gauge {value.gauge.toFixed(1)}</small>{/if}
   {#each releases as release}<div title={`Power release starts at ${release.start.toFixed(3)} s${release.end==null?'; expiry unavailable':` and expires at ${release.end.toFixed(3)} s`}.`}><span class="tag release">Release</span><strong>{release.end==null?`${release.start.toFixed(2)} s`:`${(release.end-release.start).toFixed(2)} s`}</strong></div>{#if release.acceleration!=null}<small class="bonus" title="Acceleration supplied by stored power.">+{release.acceleration.toFixed(3)} m/s²</small>{/if}

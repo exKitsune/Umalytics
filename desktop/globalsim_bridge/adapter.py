@@ -21,6 +21,7 @@ import math
 from pathlib import Path
 import re
 from typing import Any
+from .skill_additions import definitions as skill_additions, SOURCE as SKILL_ADDITIONS_SOURCE
 
 
 ADAPTER_VERSION = "umalytics-globalsim-initial-v2"
@@ -155,8 +156,14 @@ class ReferenceData:
         sources["engine/data/course_geometry"] = {
             "sha256": geometry_digest, "fileCount": len(geometry_hashes), "pinVerified": True,
             "note": "Runtime must additionally verify the compiled engine's source/binary pin."}
+        additions = skill_additions()
+        sources['integration/skill-additions'] = {
+            'sha256': _hash(canonical(additions)), 'source': SKILL_ADDITIONS_SOURCE,
+            'skillIds': sorted(additions), 'policy': 'missing definitions only; replay match required',
+        }
+        skills = {**additions, **documents['data/v70-skill-data.json']}
         return cls(metadata, identities, documents["public/data/courses.json"],
-                   documents["data/course_data.json"], documents["data/v70-skill-data.json"],
+                   documents["data/course_data.json"], skills,
                    documents["examples/v74-settings.json"], documents["data/global_parameters.json"],
                    geometry_hashes, sources)
 

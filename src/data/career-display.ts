@@ -1,7 +1,8 @@
 import facts from './career-reference.json';
+import fallback from './career-fallback.json';
 import type {CareerRecord,CareerFactor,CareerSupport} from './career';
 import type {Runner} from './types';
-export const careerReference=facts as unknown as {
+export const careerReference={...facts,supports:{...fallback.supports,...facts.supports}} as unknown as {
   ranks:{id:number;min:number;max:number;label:string}[];
   supports:Record<string,{name:string;charaId:number;rarity:number;type:number;command:number}>;
   scenarios:Record<string,string>;supportLevels:Record<string,number[][]>;epithets:Record<string,string>;
@@ -116,6 +117,10 @@ export function statRank(value:number|null|undefined){
 }
 export function characterUrl(runner:Runner,name:string):string|null{
   if(!runner.cardId)return null;
-  const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  return `https://gametora.com/\u0075mamusume/characters/${runner.cardId}-${slug}`;
+  const slug=(fallback.characters as Record<string,string>)[runner.cardId];
+  return slug?`https://gametora.com/\u0075mamusume/characters/${slug}`:null;
+}
+export function supportUrl(id:number):string|null {
+  const row=(fallback.supports as Record<string,{slug:string}>)[id];
+  return row?`https://gametora.com/\u0075mamusume/supports/${row.slug}`:null;
 }

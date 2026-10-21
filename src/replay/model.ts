@@ -22,6 +22,7 @@ export interface ReplayOptions {
   race:Race; course:CourseReference|null; reference:ReferenceData|null; selected:string;
   fontScale?:number;
   window:number; follow:'selected'|'leader'; labels:boolean; elevation:boolean;
+  remainingDistance?:boolean;
   courseMarkers?:{phases:boolean;sections:boolean;slopes:boolean;remaining777:boolean};
   overlays?:{vision:boolean;debuffs:boolean};
   debuffActivations?:readonly DebuffActivation[];

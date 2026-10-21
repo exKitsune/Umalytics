@@ -1,13 +1,12 @@
 <script lang="ts">
-import type {CareerSupport} from '../data/career';import {careerReference,supportLevel} from '../data/career-display';
+import type {CareerSupport} from '../data/career';import {careerReference,supportLevel,supportUrl} from '../data/career-display';
 export let card:CareerSupport;let failed=false,previous=0;
 $: if(previous!==card.id){previous=card.id;failed=false;}
 $: meta=careerReference.supports[card.id];$: name=meta?.name??`Support ${card.id}`;
 $: type=meta?.type===2?'Friend':meta?.type===3?'Group':({101:'Speed',102:'Power',103:'Guts',105:'Stamina',106:'Wit'} as Record<number,string>)[meta?.command]??'Support';
 $: icon=({Speed:0,Stamina:1,Power:2,Guts:3,Wit:4,Friend:5,Group:6} as Record<string,number>)[type];
-$: slug=name.replace(/^\[[^\]]*\]\s*/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 </script>
-<a class="support-card" class:borrowed-card={card.borrowed===true||card.position===6} href={`https://gametora.com/\u0075mamusume/supports/${card.id}-${slug}`} target="_blank" rel="noopener noreferrer" title={`${name} · ${type} · ${card.limitBreak??'?'} limit breaks · Open GameTora`}>
+<a class="support-card" class:borrowed-card={card.borrowed===true||card.position===6} href={supportUrl(card.id)??undefined} target="_blank" rel="noopener noreferrer" title={`${name} · ${type} · ${card.limitBreak??'?'} limit breaks · Open GameTora`}>
   <div class="art">{#if !failed}<img src={`./career/support-${card.id}.png`} alt={name} loading="lazy" onerror={()=>failed=true}/>{:else}<span class="missing-art">{name}</span>{/if}<span class="support-type" aria-label={type}>{#if icon!==undefined}<img src={`./career/support-type-${icon}.png`} alt={type}/>{:else}{type}{/if}</span></div>
   <div class="support-level"><span class="diamonds" aria-label={`${card.limitBreak??'Unknown'} of 4 limit breaks`}>{#each [1,2,3,4] as n}<i class:filled={card.limitBreak!==null&&n<=card.limitBreak} aria-hidden="true"></i>{/each}</span><strong>Lv {supportLevel(card)??'—'}</strong></div>
   {#if card.borrowed===true||card.position===6}<span class="borrowed">Borrowed</span>{/if}<span class="support-name">{name}</span>

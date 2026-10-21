@@ -552,6 +552,19 @@ class ReferenceLoadingTests(unittest.TestCase):
         self.assertNotEqual(before.fingerprint, after.fingerprint)
         self.assertFalse(after.source_files["app/public/data/metadata.json"]["matchesAuditedBaseline"])
 
+    def test_reviewed_additions_are_hashed_and_never_replace_pinned_skills(self):
+        before = adapter.ReferenceData.load(self.app, self.engine)
+        self.assertEqual(set(before.skill_data) - set(references().skill_data), {"202491", "202492"})
+        self.assertEqual(before.source_files["integration/skill-additions"]["skillIds"], ["202491", "202492"])
+        changed = adapter.skill_additions()
+        changed["11"] = {"rarity": 999}  # Collision with a pinned skill.
+        changed["202491"]["alternatives"][0]["effects"][0]["modifier"] = 9999
+        with patch.object(adapter, "skill_additions", return_value=changed):
+            after = adapter.ReferenceData.load(self.app, self.engine)
+        self.assertEqual(after.skill_data["11"], before.skill_data["11"])
+        self.assertNotEqual(after.fingerprint, before.fingerprint)
+        self.assertEqual(after.skill_data["202491"]["alternatives"][0]["effects"][0]["modifier"], 9999)
+
     def test_changed_engine_data_and_geometry_fail_pin_checks(self):
         path = self.engine / "data/course_data.json"
         original = path.read_bytes()

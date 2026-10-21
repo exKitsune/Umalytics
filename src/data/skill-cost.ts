@@ -1,10 +1,17 @@
 import reference from './career-reference.json';
+import fallback from './career-fallback.json';
 import type {RunnerSkill} from './types';
 interface Price {cost:number|null;group:number;order:number;rarity:number}
 const prices=reference.skills as Record<string,Price>;
+const extra=fallback.prices as Record<string,{cost:number|null;steps:number[]|null}>;
+const stepCost=(id:number)=>prices[id]?.cost??extra[id]?.cost??null;
 /** Undiscounted acquisition cost. Prerequisites shared by equipped upgrades count once. */
 export function skillCost(id:number):{cost:number|null;steps:number[];free:boolean}{
-  const row=prices[id];if(!row)return {cost:null,steps:[],free:false};
+  const row=prices[id];if(!row){
+    const value=extra[id],steps=value?.steps;
+    if(!steps||steps.some(id=>stepCost(id)===null))return {cost:null,steps:[],free:false};
+    return {cost:steps.reduce((sum,id)=>sum+stepCost(id)!,0),steps,free:steps.length===0};
+  }
   if(row.cost===null)return {cost:[3,4,5].includes(row.rarity)?0:null,steps:[],free:[3,4,5].includes(row.rarity)};
   if(row.order<=0)return {cost:0,steps:[],free:true}; // negative traits are removed, not purchased
   const prerequisites=Object.entries(prices).filter(([,p])=>p.group===row.group&&p.order>0&&p.order<row.order&&p.cost!==null);
@@ -17,6 +24,6 @@ export function skillCost(id:number):{cost:number|null;steps:number[];free:boole
 export function totalSkillCost(skills:readonly RunnerSkill[]|undefined){
   const steps=new Set<number>();let unknown=0;
   for(const id of new Set(skills?.map(s=>s.id)??[])){const price=skillCost(id);if(price.cost===null)unknown++;else price.steps.forEach(x=>steps.add(x));}
-  return {total:[...steps].reduce((sum,id)=>sum+prices[id].cost!,0),unknown};
+  return {total:[...steps].reduce((sum,id)=>sum+stepCost(id)!,0),unknown};
 }
 export const skillCostHelp='Base SP cost including prerequisite upgrades; hint and event discounts are not recorded.';

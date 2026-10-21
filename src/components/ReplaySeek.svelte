@@ -19,7 +19,7 @@
   /* Native range thumbs travel between their centres, inset by half a thumb. */
   .phase-marks{position:absolute;inset:0 8px;pointer-events:none}
   .phase-mark{position:absolute;top:-1px;transform:translateX(-50%);width:20px;height:15px;padding:0;border:0;background:transparent;pointer-events:auto;border-radius:3px}
-  .phase-mark span{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid var(--phase-color)}
+  .phase-mark span{display:block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid var(--phase-color)}
   .phase-mark:hover{background:color-mix(in srgb,var(--phase-color) 18%,transparent)}
   .phase-mark:focus-visible{outline:2px solid var(--phase-color);outline-offset:0}
 </style>

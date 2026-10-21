@@ -74,11 +74,14 @@ function wrappedText(ctx:CanvasRenderingContext2D,text:string,max:number):string
   if(current)lines.push(current);return lines;
 }
 interface LabelRect {x:number;y:number;width:number;height:number}
-/** Place a course callout on the outer side of the track. Horses stay toward the inner rail, so boxes may cover each other there instead. */
-function courseLabelRect(marker:{x:number;y:number;angle:number},labelWidth:number,labelHeight:number,trackHalf:number,outerSign:number):LabelRect {
-  const nx=-Math.sin(marker.angle),ny=Math.cos(marker.angle);
-  const extent=labelWidth/2*Math.abs(nx)+labelHeight/2*Math.abs(ny),dist=trackHalf+22+extent;
-  return {x:marker.x+nx*outerSign*dist-labelWidth/2,y:marker.y+ny*outerSign*dist-labelHeight/2,width:labelWidth,height:labelHeight};
+/** Screen-top signs keep the metering below the track clear on either turn direction. */
+export function courseLabelRect(marker:{x:number;y:number},labelWidth:number,labelHeight:number,scene:ReplayScene,width:number):LabelRect {
+  const x=Math.max(8,Math.min(width-labelWidth-8,marker.x-labelWidth/2));
+  const top=Math.min(marker.y,...scene.route.filter(p=>p.x>=x-scene.trackWidth/2&&p.x<=x+labelWidth+scene.trackWidth/2).map(p=>p.y));
+  return {x,y:top-scene.trackWidth/2-22-labelHeight,width:labelWidth,height:labelHeight};
+}
+export function replayMetres(distance:number,total:number|null,remaining=false):string {
+  return `${Number((remaining&&total!==null?Math.min(0,distance-total):distance).toFixed(1))} m`;
 }
 function roundRectPath(ctx:CanvasRenderingContext2D,x:number,y:number,w:number,h:number,r:number){
   const radius=Math.min(r,w/2,h/2);
@@ -132,7 +135,7 @@ export function drawReplay(ctx:CanvasRenderingContext2D,options:ReplayOptions,ti
     const nx=-Math.sin(tick.angle),ny=Math.cos(tick.angle),half=scene.trackWidth/2;
     ctx.beginPath();ctx.moveTo(tick.x-nx*half,tick.y-ny*half);ctx.lineTo(tick.x+nx*(half+(tick.major?8:4)),tick.y+ny*(half+(tick.major?8:4)));
     ctx.strokeStyle=palette.muted;ctx.lineWidth=tick.major?1:0.6;ctx.globalAlpha=tick.major?0.75:0.4;ctx.stroke();ctx.globalAlpha=1;
-    if(tick.major||options.window<=100){ctx.fillStyle=palette.muted;ctx.font=font(11);ctx.textAlign='center';ctx.fillText(`${tick.distance} m`,tick.x+nx*(half+23),tick.y+ny*(half+23)+4);ctx.textAlign='left';}
+    if(tick.major||options.window<=100){ctx.fillStyle=palette.muted;ctx.font=font(13);ctx.textAlign='center';ctx.fillText(replayMetres(tick.distance,options.race.distance??options.course?.distance??null,options.remainingDistance),tick.x+nx*(half+25),tick.y+ny*(half+25)+4);ctx.textAlign='left';}
   }
   const ordered=[...scene.markers].sort((a,b)=>Number(b.runner.id===options.selected)-Number(a.runner.id===options.selected));
   for(const vision of scene.vision){
@@ -161,15 +164,15 @@ export function drawReplay(ctx:CanvasRenderingContext2D,options:ReplayOptions,ti
     ctx.strokeStyle=color;ctx.lineWidth=1.4;ctx.stroke();
     ctx.font=font(15);const texts=wrappedText(ctx,`${marker.label} · ${Number(marker.distance.toFixed(1))} m`,240);
     const labelWidth=Math.max(...texts.map(s=>ctx.measureText(s).width))+18,labelHeight=texts.length*(fontPixels(15,options.fontScale)+7)+16;
-    const rect=courseLabelRect(marker,labelWidth,labelHeight,scene.trackWidth/2,options.course?.turn===1?-1:1);
-    if(marker.phase){
+    const rect=courseLabelRect(marker,labelWidth,labelHeight,scene,width);
+    {
       // Keep the phase sign readable when a runner's popup occupies the same
       // off-track spot. Move outward without covering the selected stack.
-      const above=rect.y+rect.height/2<marker.y,obstacles=[...scene.cardGroups,...options.cardObstacles??[]];
+      const obstacles=[...scene.cardGroups,...options.cardObstacles??[]];
       for(let i=0;i<=obstacles.length;i++){
         const hits=obstacles.filter(r=>rect.x<r.x+r.width+6&&rect.x+rect.width+6>r.x&&rect.y<r.y+r.height+6&&rect.y+rect.height+6>r.y);
         if(!hits.length)break;
-        const y=above?Math.min(...hits.map(r=>r.y))-rect.height-8:Math.max(...hits.map(r=>r.y+r.height))+8;
+        const y=Math.min(...hits.map(r=>r.y))-rect.height-8;
         if(y<36||y+rect.height>height-104)break;
         rect.y=y;
       }

@@ -21,12 +21,13 @@
   export let analysis:RaceAnalysis|null=null;
   let viewWindow=DEFAULT_REPLAY_WINDOW,follow:'selected'|'leader'='selected',labels=true,elevation=true,showClips=false;
   let phaseMarkers=true,sectionMarkers=true,slopeMarkers=true,remainingMarker=true;
+  let remainingDistance=true;
   let visionGuide=false,debuffTargets=true;
   let canvas:HTMLCanvasElement,scene:ReplayScene|null=null,frame:number|null=null;
   let markerMenu:HTMLDetailsElement;
   let canvasWidth=1280,canvasHeight=816;
   let mounted=false,portraitRace:Race|null=null,iconReference:ReferenceData|null|undefined=undefined,iconAnalysis:RaceAnalysis|null|undefined=undefined,cardTitle='';
-  $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,intervals,analysis,courseMarkers:{phases:phaseMarkers&&analysis?.source!=='recorded',sections:sectionMarkers&&analysis?.source!=='recorded',slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[replayMinimapObstacle(canvasWidth)]:[]} satisfies ReplayOptions;
+  $: options={race,course,reference,selected,fontScale,window:Number(viewWindow),follow,labels,elevation,remainingDistance,intervals,analysis,courseMarkers:{phases:phaseMarkers&&analysis?.source!=='recorded',sections:sectionMarkers&&analysis?.source!=='recorded',slopes:slopeMarkers,remaining777:remainingMarker},overlays:{vision:visionGuide,debuffs:debuffTargets},cardObstacles:$$slots.minimap?[replayMinimapObstacle(canvasWidth)]:[]} satisfies ReplayOptions;
   // Include every visual dependency explicitly; playback time does not rebuild data.
   $: if(canvas){options;time;schedule();}
   $: if(mounted&&race!==portraitRace){portraitRace=race;Promise.all([preloadPortraits(race.runners)]).then(()=>{if(mounted)schedule();});}
@@ -73,6 +74,7 @@
     <label>Window <input aria-label="Zoomed replay view window" type="range" min="40" max="600" step="10" bind:value={viewWindow}/><output>{viewWindow} m</output></label>
     <label><input type="checkbox" bind:checked={labels}/> Names & statuses</label>
     <label><input type="checkbox" bind:checked={elevation}/> Elevation</label>
+    <label title="Show distance to the finish, such as −200 m."><input type="checkbox" bind:checked={remainingDistance}/> Distance remaining</label>
     <details class="marker-menu" bind:this={markerMenu}>
     <summary>Markers <span aria-hidden="true">▸</span></summary>
     <div class="course-marker-tools" aria-label="Race replay course markers">
@@ -94,7 +96,7 @@
   <ReplayClip {options} {time} liveWidth={canvasWidth} liveHeight={canvasHeight} bind:open={showClips}/>
 </section>
 <style>
-  .curve-replay{overflow:hidden}.curve-replay.clips-open{overflow:visible}.subtitle{display:block;color:var(--muted);font-size:var(--font-10);margin-top:4px}.replay-tools{position:relative;z-index:3;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11)}.replay-tools label{display:flex;align-items:center;gap:7px}.replay-tools select{font-size:var(--font-11)}.replay-tools input[type=range]{width:115px;padding:0}.replay-tools output{min-width:44px;color:var(--text);font-variant-numeric:tabular-nums}.curve-replay canvas{display:block;width:100%;cursor:pointer}.curve-replay canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}.marker-menu{position:relative;border-left:1px solid var(--border);padding-left:14px}.marker-menu summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;padding:4px 0;font-weight:550}.marker-menu summary::-webkit-details-marker{display:none}.marker-menu summary span{font-size:10px;transition:transform .15s}.marker-menu[open] summary span{transform:rotate(90deg)}.course-marker-tools{position:absolute;top:calc(100% + 10px);right:0;display:grid;grid-template-columns:repeat(2,max-content);gap:12px 16px;padding:14px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 5px 18px #0003;font-size:var(--font-11)}.course-marker-tools label{display:flex;align-items:center;gap:5px;color:var(--text)}@media(max-width:700px){.course-marker-tools{grid-template-columns:1fr;right:auto;left:0}}
+  .curve-replay{overflow:hidden}.curve-replay.clips-open{overflow:visible}.subtitle{display:block;color:var(--muted);font-size:var(--font-10);margin-top:4px}.replay-tools{position:relative;z-index:3;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border);font-size:var(--font-11)}.replay-tools label{display:flex;align-items:center;gap:7px}.replay-tools select{font-size:var(--font-11)}.replay-tools input[type=range]{width:80px;padding:0}.replay-tools output{min-width:34px;color:var(--text);font-variant-numeric:tabular-nums}.curve-replay canvas{display:block;width:100%;cursor:pointer}.curve-replay canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}.marker-menu{position:relative;border-left:1px solid var(--border);padding-left:14px}.marker-menu summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;padding:4px 0;font-weight:550}.marker-menu summary::-webkit-details-marker{display:none}.marker-menu summary span{font-size:10px;transition:transform .15s}.marker-menu[open] summary span{transform:rotate(90deg)}.course-marker-tools{position:absolute;top:calc(100% + 10px);right:0;display:grid;grid-template-columns:repeat(2,max-content);gap:12px 16px;padding:14px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 5px 18px #0003;font-size:var(--font-11)}.course-marker-tools label{display:flex;align-items:center;gap:5px;color:var(--text)}@media(max-width:700px){.course-marker-tools{grid-template-columns:1fr;right:auto;left:0}}
   .replay-stage{position:relative}.replay-minimap{position:absolute;right:12px;top:38px;width:210px;height:100px;border:1px solid var(--border);border-radius:8px;background:color-mix(in srgb,var(--panel) 82%,transparent);overflow:hidden;box-shadow:0 2px 12px #0002}@media(max-width:650px){.replay-minimap{width:190px;right:8px;top:38px;height:95px}}
 .runner-status-description{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 </style>

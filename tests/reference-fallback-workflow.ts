@@ -16,20 +16,26 @@ await mkdir(folder,{recursive:true});
 const pythonPath=join(root,'.cache/proxy-venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
 const python=process.env.UMALYTICS_TEST_PYTHON??(existsSync(pythonPath)?pythonPath:'python');
 const global=JSON.parse(await readFile(join(root,'public/data/metadata.json'),'utf8'));
+global.skills[860004]={...structuredClone(global.skills[110161]),name:'',description:'   '};
+global.skillNames[860004]=' ';global.characters[9992]='';global.outfits[999201]='\t';
 const globalBefore=JSON.stringify(global.skills),fixture=join(folder,'catalog');await mkdir(fixture);
 const group=(value:number,extra:any={})=>({condition:'always==1',base_time:20000,effects:[{type:27,value}],...extra});
 const row=(id:number,extra:any={})=>({id,rarity:1,activation:1,enname:'JP fixture',name_en:'Global fixture',iconid:20011,condition_groups:[group(1500)],...extra});
-await writeFile(join(fixture,'manifest.json'),JSON.stringify({skills:'abcdef12',characters:'abcdef13','character-cards':'abcdef14'}));
+await writeFile(join(fixture,'manifest.json'),JSON.stringify({skills:'abcdef12',characters:'abcdef13','character-cards':'abcdef14','support-cards':'abcdef15'}));
 await writeFile(join(fixture,'skills.json'),JSON.stringify([
   row(110161,{condition_groups:[group(999999)],loc:{en:{}}}),
   row(860001),row(860002,{loc:{en:{condition_groups:[group(3500,{precondition:'phase==1'})]}}}),
   row(140991,{rarity:5,gene_version:row(940991),loc:{en:{gene_version:{condition_groups:[group(500)]}}}}),
   row(860003,{condition_groups:[group(1500,{time_scale:99,effects:[{type:999,value:1234,value_scale:99,target:20,target_details:3,additional_activation:3}]})]}),
+  row(860004,{name_en:' ',enname:'',desc_en:null,endesc:'\t',jpname:'日本語の名前',jpdesc:'日本語の説明',loc:{en:{}}}),
+  row(860005,{name_en:undefined,enname:undefined,jpname:'別のスキル',jpdesc:'別の説明'}),
 ]));
-await writeFile(join(fixture,'characters.json'),JSON.stringify([{char_id:1001,name_en:'Must not replace Global'},{char_id:9991,name_en:'Fallback runner'}]));
-await writeFile(join(fixture,'character-cards.json'),JSON.stringify([{card_id:100101,title:'Must not replace Global'},{card_id:999101,title:'Fallback outfit'}]));
+await writeFile(join(fixture,'characters.json'),JSON.stringify([{char_id:1001,name_en:'Must not replace Global'},{char_id:9991,name_en:'Fallback runner'},{char_id:9992,name_en:' ',name_ja:'日本語キャラクター'}]));
+await writeFile(join(fixture,'character-cards.json'),JSON.stringify([{card_id:100101,title:'Must not replace Global',url_name:'100101-test'},{card_id:999101,title:'Fallback outfit',url_name:'999101-test'},{card_id:999201,title_en_gl:'',title:' ',title_jp:'日本語の衣装',url_name:'999201-test'}]));
+await writeFile(join(fixture,'support-cards.json'),JSON.stringify([{support_id:99999,char_id:9992,rarity:3,type:'intelligence',title_en:' ',title_ja:'日本語の称号',name_jp:'日本語キャラクター',url_name:'99999-test'}]));
 const generated=join(folder,'metadata.json');await writeFile(generated,JSON.stringify(global));
-const command=[join(root,'scripts/fetch-gametora-fallback.py'),'--metadata',generated,'--catalog-dir',fixture];
+const career=join(folder,'career.json');
+const command=[join(root,'scripts/fetch-gametora-fallback.py'),'--metadata',generated,'--catalog-dir',fixture,'--career-output',career];
 await run(python,command,{cwd:root,windowsHide:true,timeout:15000});
 const first=await readFile(generated);await run(python,command,{cwd:root,windowsHide:true,timeout:15000});
 assert.deepEqual(await readFile(generated),first,'Same source snapshot must regenerate identical bytes.');
@@ -38,6 +44,14 @@ const fallbackRef=assembleReferenceData(generatedMetadata,{},global.source,[]);
 assert.deepEqual(fallbackRef.metadata.skills[110161],global.skills[110161]);
 assert.equal(fallbackRef.metadata.characters[1001],global.characters[1001]);assert.equal(fallbackRef.metadata.outfits[100101],global.outfits[100101]);
 assert.equal(fallbackRef.metadata.characters[9991],'Fallback runner');assert.equal(fallbackRef.metadata.outfits[999101],'Fallback outfit');
+assert.equal(fallbackRef.metadata.characters[9992],'日本語キャラクター');assert.equal(fallbackRef.metadata.outfits[999201],'日本語の衣装');
+assert.equal(skillName(fallbackRef,860004),'日本語の名前');
+assert.equal(fallbackRef.metadata.skills[860004].name,'日本語の名前');
+assert.equal(fallbackRef.metadata.skills[860004].description,'日本語の説明');
+assert.deepEqual(fallbackRef.metadata.skills[860004].branches,global.skills[110161].branches,'Japanese text cannot replace installed Global mechanics');
+assert.equal(fallbackRef.metadata.skills[860004].dataRegion,undefined,'Text fallback does not turn a Global definition into a JP definition');
+assert.equal(skillName(fallbackRef,860005),'別のスキル');assert.equal(fallbackRef.metadata.skills[860005].description,'別の説明');
+assert.equal(JSON.parse(await readFile(career,'utf8')).supports[99999].name,'日本語の称号 日本語キャラクター');
 assert.equal(fallbackRef.metadata.skills[860001].dataRegion,'JP');
 assert.equal(fallbackRef.metadata.skills[860002].dataRegion,'Global');assert.equal(fallbackRef.metadata.skills[860002].branches[0].effects[0].rawValue,3500);
 assert.equal(fallbackRef.metadata.skills[940991].branches[0].effects[0].rawValue,500,'Inherited regional patch must remain separate.');

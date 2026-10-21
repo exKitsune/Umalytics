@@ -8,6 +8,7 @@ import {collectorStatus} from '../src/collector-status';
 import {defaultSettings,type Health} from '../src/api';
 import {mergeSkillMetrics,type SkillMetric} from '../src/data/skill-metrics';
 import {skillCost,totalSkillCost} from '../src/data/skill-cost';
+import {characterUrl,supportUrl} from '../src/data/career-display';
 
 const captured={trained_chara_id:71,owner_viewer_id:111222333444,card_id:100101,rank_score:12868,rank:14,rarity:3,talent_level:5,scenario_id:2,
   speed:1200,stamina:908,power:695,guts:545,wiz:497,proper_ground_turf:7,proper_distance_mile:8,nickname_id:97,
@@ -32,6 +33,15 @@ assert.equal(rating(12099)?.label,'A');assert.equal(rating(12100)?.label,'A+');a
 assert.equal(rating(null,14)?.label,'A+');assert.equal(rating(null,null),null);
 assert.equal(skillCost(200012).cost,90);assert.equal(skillCost(200011).cost,200);assert.equal(skillCost(200013).cost,0);
 assert.equal(skillCost(100011).cost,0,'Native unique is not purchased');
+assert.equal(skillCost(202491).cost,360,'Razor-Sharp Steps includes Sharp Steps');
+assert.equal(skillCost(202492).cost,180);
+assert.deepEqual(totalSkillCost([{id:202491,level:1},{id:202492,level:1}]),{total:360,unknown:0});
+assert.equal(supportUrl(30097),'https://gametora.com/\u0075mamusume/supports/30097-mr-cb');
+assert.equal(supportUrl(30128),'https://gametora.com/\u0075mamusume/supports/30128-sweep-tosho');
+assert.equal(supportLevel({id:30128,exp:118185,level:null,limitBreak:4,position:6,borrowed:true}),50);
+assert.equal(careerReference.supports[30128].command,106,'New Sweep Tosho is Wit');
+assert.equal(characterUrl({cardId:105701} as any,'Mr. C.B.'),'https://gametora.com/\u0075mamusume/characters/105701-mr-cb');
+assert.equal(supportUrl(987654321),null,'Never guess a URL from display text');
 assert.deepEqual(totalSkillCost([{id:200011,level:1},{id:200012,level:1},{id:200011,level:1},{id:987654321,level:1}]),{total:200,unknown:1});
 assert.equal(careerReference.programs[1].name,'February Stakes');assert.equal(careerReference.programs[36].name,'Manyo Stakes');assert.equal(careerReference.programs[1068].name,'Junior Make Debut');assert.ok(Object.values(careerReference.programs).every(r=>!/^Race \d+$/.test(r.name)));assert.equal(careerReference.scenarios[2],'Unity Cup');
 const ids=Object.keys(careerReference.relations).map(Number).slice(0,3);

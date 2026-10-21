@@ -31,6 +31,11 @@ export function captureFacet(entry: { category?: string; raceMode?: 'practice' |
 }
 export const runnerColors = ['#4ac892','#65a9ef','#eaad5f','#ae90f1','#eb8099','#6fcbd0','#d1ce75','#df9dd0','#a2b7c5','#d48560','#83bd7b','#8c92de','#cb717c','#b7a985','#85b3ae','#c5a5e5','#9bbd62','#ccaaac'];
 export interface LibraryEntry { id: string; title: string; receivedAt: string; racedAt?: string; category?: RaceCategory; raceMode?: 'practice' | 'room'; savedReplay?: boolean; raceDesignation?: Race['raceDesignation']; synthetic?: boolean; remoteId?: string; race?: Race; raceIndex?:number; courseId?:number|null; distance?:number|null; conditions?:Race['conditions']; raceInstanceId?:number; sha256?:string; courseIdentity?:Race['courseIdentity']; courseInference?:CourseInference|null }
+/** Both sidebar layouts use the same newest-import-first order. */
+export function newestLibraryFirst(entries:readonly LibraryEntry[]):LibraryEntry[] {
+  const clock=(entry:LibraryEntry)=>Date.parse(entry.receivedAt)||0;
+  return [...entries].sort((a,b)=>clock(b)-clock(a)||b.id.localeCompare(a.id));
+}
 type CaptionEnvelope={data?:unknown;envelopeJson?:string;bytes:number};
 type CaptionFetcher=(id:string,limit:number)=>Promise<CaptionEnvelope>;
 function createCaptionDecoder() {

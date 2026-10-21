@@ -26,7 +26,9 @@ export interface ReferenceMetadata {
   skills: Record<string, SkillReference>; source: ReferenceSource;
   raceInstances?: Record<string, number>;
   raceInstanceConditions?: Record<string, { grade?: number; time?: number }>;
-  fallback?: Pick<ReferenceMetadata, 'characters' | 'outfits' | 'skillNames' | 'skills' | 'source'>;
+  fallback?: Pick<ReferenceMetadata, 'characters' | 'outfits' | 'skillNames' | 'skills' | 'source'> & {
+    skillTexts?: Record<string, {name?: string; description?: string}>;
+  };
 }
 export interface ReferenceData {
   metadata: ReferenceMetadata; courses: Record<string, CourseReference>;
@@ -40,12 +42,20 @@ interface RawCourse extends Omit<CourseReference, 'id' | 'name' | 'trackName' | 
 export function assembleReferenceData(metadata: ReferenceMetadata, raw: Record<string, RawCourse>,
   source: ReferenceSource, skillIds: string[], geometry?: GeometryData | null): ReferenceData {
   // Installed Global records always win, including complete branch arrays.
-  // Fallback names and mechanics never fill individual holes inside a known skill.
-  if (metadata.fallback) metadata = { ...metadata,
-    characters: { ...metadata.fallback.characters, ...metadata.characters },
-    outfits: { ...metadata.fallback.outfits, ...metadata.outfits },
-    skillNames: { ...metadata.fallback.skillNames, ...metadata.skillNames },
-    skills: { ...metadata.fallback.skills, ...metadata.skills } };
+  // Only display text may fill blanks inside a known Global skill.
+  if (metadata.fallback) {
+    const names = (primary:Record<string,string>,fallback:Record<string,string>) =>
+      ({...fallback,...Object.fromEntries(Object.entries(primary).filter(([,v])=>v?.trim()))});
+    const skills = {...metadata.fallback.skills,...metadata.skills};
+    for (const [id,labels] of Object.entries(metadata.fallback.skillTexts??{})) {
+      const skill=skills[id];if(!skill)continue;
+      skills[id]={...skill,name:skill.name?.trim()?skill.name:labels.name??skill.name,
+        description:skill.description?.trim()?skill.description:labels.description??skill.description};
+    }
+    metadata={...metadata,characters:names(metadata.characters,metadata.fallback.characters),
+      outfits:names(metadata.outfits,metadata.fallback.outfits),
+      skillNames:names(metadata.skillNames,metadata.fallback.skillNames),skills};
+  }
   const courses: Record<string, CourseReference> = {};
   for (const [id, c] of Object.entries(raw)) {
     const trackName = metadata.trackNames[c.raceTrackId] ?? `Track ${c.raceTrackId}`;

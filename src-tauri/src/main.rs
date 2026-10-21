@@ -248,6 +248,8 @@ fn main() {
         }))
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(URL.parse()?))
+                // Let the frontend receive HTML5 File drops, as it does in a browser.
+                .disable_drag_drop_handler()
                 .on_navigation(|url| url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
                 .on_new_window(|url, _features| {
                     if url.as_str() == "https://umalator.app/umalator-global/" || url.as_str() == "http://127.0.0.1:4317/api/licenses"

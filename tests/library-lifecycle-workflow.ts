@@ -1,3 +1,4 @@
+import {newestLibraryFirst} from '../src/library';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {AnalysisClient,type AnalysisState} from '../src/analysis/client';
@@ -52,3 +53,7 @@ for(const clock of [stamp,stamp+'Z','2026-10-17T03:45:48-04:00','2026-10-17T07:4
 const timezone=process.env.TZ;process.env.TZ='America/New_York';
 try{assert.equal(withinDateRange('2026-10-18T01:00:00','2026-10-17','2026-10-17'),true);assert.equal(withinDateRange('2026-10-18T01:00:00','2026-10-18','2026-10-18'),false);}finally{if(timezone===undefined)delete process.env.TZ;else process.env.TZ=timezone;}
 console.log('Library lifecycle: deleted selection cancellation, delayed failure isolation, worker termination, reimport and local timezone display passed.');
+
+const arrivals=[{...entry("old"),receivedAt:"2026-10-20T16:00:00Z"},{...entry("new"),receivedAt:"2026-10-20T13:00:00-04:00"}];
+assert.deepEqual(newestLibraryFirst(arrivals).map(e=>e.id),["new","old"]);
+assert.equal(arrivals[0].id,"old","Sorting does not mutate service insertion order");

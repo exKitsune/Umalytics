@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { assembleReferenceData } from '../src/data/reference';
 import { readGeometry } from '../src/data/geometry';
 import { DEFAULT_REPLAY_WINDOW, cameraAngle, replayCourseMarkers, replayScene, type ReplayOptions, type ReplayScene } from '../src/replay/model';
-import { drawReplay } from '../src/replay/draw';
+import { drawReplay, courseLabelRect, replayMetres } from '../src/replay/draw';
 import { portraitUrl } from '../src/data/portraits';
 import { iconSource } from '../src/data/game-icons';
 import { replayCardHelp, replayCards } from '../src/replay/cards';
@@ -17,6 +17,10 @@ import { runnerGap } from '../src/view-model';
 import { replayPhaseTimes, REPLAY_PHASE_COLOR } from '../src/replay/phases';
 
 const folder=process.argv[2],root=join(import.meta.dirname,'..');
+assert.equal(replayMetres(1000,1200,true),'-200 m');
+assert.equal(replayMetres(1200,1200,true),'0 m');
+assert.equal(replayMetres(1000,null,true),'1000 m','Unknown finish stays distance travelled');
+assert.equal(replayMetres(1000,1200,false),'1000 m');
 const json=async(path:string)=>JSON.parse(await readFile(path,'utf8'));
 const race:Race=parseRaceJson(await json(join(folder,(await readdir(folder))[0])))[0];
 // Imported field: a leader gets a negative gap, a pursuer a positive one.
@@ -59,7 +63,7 @@ function assertOffTrack(scene:ReplayScene){
     }
   }
 }
-let renderedFrames=0,boundaries=0,gameCourses=0,left=false,right=false;
+let renderedFrames=0,boundaries=0,gameCourses=0,courseLabels=0,left=false,right=false;
 for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
   gameCourses++;left||=course.turn===2;right||=course.turn===1;
   const value:Race={...race,distance:course.distance,courseId:course.id,duration:120,
@@ -70,6 +74,10 @@ for(const course of Object.values(reference.courses).filter(c=>c.gameGeometry)){
   const options:ReplayOptions={race:value,course,reference,selected:value.runners[0].id,follow:'selected',window:140,labels:[10101,10506,10606].includes(course.id),elevation:true,courseMarkers:enabled,intervals:()=>[{kind:'skill',label:'Synthetic corner effect',start:0,end:120,evidence:'recorded',skillId:200362}]};
   const render=(distance:number)=>{texts.length=0;arcs.length=0;fills.length=0;strokes=[];strokeCaps=[];const scene=drawReplay(context,options,distance/course.distance*120,1280,500);renderedFrames++;
     assertOffTrack(scene);
+    for(const marker of scene.courseMarkers){
+      const rect=courseLabelRect(marker,180,44,scene,1280);courseLabels++;
+      assert.ok(rect.y+rect.height<marker.y-scene.trackWidth/2,'Course signs stay above the road for both turn directions');
+    }
     assert.equal(scene.camera.angle,cameraAngle(course,scene.distance));assert.equal(scene.camera.scale,1180/options.window);
     assert.ok(strokes.length>=3);assert.deepEqual(strokes[0],scene.route.map(p=>[p.x,p.y]));
     assert.equal(strokeCaps[0],'butt');assert.equal(strokeCaps[1],'butt');
@@ -366,3 +374,5 @@ assertOffTrack(still);assertOffTrack(moving);
 console.log(JSON.stringify({gameCourses,renderedFrames,cornerBoundaries:boundaries,smoothCamera:'passed',worldTicks:'passed',sharedCanvas:'passed',markerToggles:'passed',
   outfitMappings:224,closerCamera:'passed',flatCuts:'passed',visionCandidates:'separate',automaticDebuffCone:'passed',visionModifiers:'passed',cardSideStability:'passed',cardClocks:'passed',seekClipDeterminism:'passed',receivedCards:'passed',cardViewport:'passed',teamImmunity:'passed',doubledTrack:'passed',singleRunnerHeader:'passed',runnerHeaderColor:'passed',
   layoutFrames,largestLayoutStep,farthestCard,layoutOverlap,portraitOverlap,minimapOverlap,horizontalSwaps:swaps,ownerAnchoredLayout:'passed',allEffectRowsVisible:'passed',fontScaling:'passed',wideLayoutFrames,wideLayoutOverlap,wideLayoutStep,wideViewSpacing:'passed',selectedStackOnTop:'passed',offTrack:'passed',initialLookAhead:'passed',statusFlickerHold:'passed'}));
+
+assert.ok(courseLabels>100,'Exercise actual course signs across course geometry');
