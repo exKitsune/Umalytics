@@ -362,8 +362,11 @@ def main():
                               'userData': 'preserved'}))
         finally:
             if app:
-                app.updater.close()
-                app.closed.set()
+                # Stop every service worker before TemporaryDirectory removes
+                # the profile. The analysis worker has its own stop signal and
+                # can otherwise recreate cache files during Windows cleanup.
+                app.shutdown()
+                assert not app.analysis_service.thread or not app.analysis_service.thread.is_alive()
             release_helper.touch()
             if server:
                 server.shutdown()
