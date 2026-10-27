@@ -170,6 +170,39 @@ const delivery=projectSimulation(original,deliveryReport,null)!;
 assert.equal(delivery.analysis.debuffs[0].simulatedRecipients?.r1[0].evaluatedValue,-10);
 populateSkillImpacts(delivery.race,null,null,delivery.analysis);
 assert.equal(delivery.analysis.debuffs[0].simulatedRecipients?.r1[0].appliedEnd,1.5,'Mathematical enrichment must retain delivery evidence and timing');
+// Both runners own the same mixed buff/debuff. The first caster later receives
+// the other caster's copy; that received expiry must not extend its own proc.
+const sharedSkillReport=structuredClone(report);
+sharedSkillReport.simulation.modeled.skillEvents=[];
+sharedSkillReport.simulation.modeled.decisionTrace.events=[
+  event('skill-activated',0,{},'100251'),
+  event('effect-evaluated',0,{type:27,ability:0,modifier:.25,duration:.5},'100251'),
+  event('effect-applied',0,{type:27,ability:0,modifier:.25,duration:.5},'100251'),
+  event('effect-evaluated',0,{type:21,ability:1,modifier:-.05,duration:.5},'100251'),
+  event('effect-applied',0,{type:21,ability:0,modifier:-.05,duration:.5},'100251',1),
+  event('effect-queued',0,{ability:1,targets:[1]},'100251'),
+  event('effect-ended',.533,{},'100251'),event('effect-ended',.533,{},'100251',1),
+  event('skill-activated',1.1,{},'100251',1),
+  event('effect-evaluated',1.1,{type:27,ability:0,modifier:.25,duration:.5},'100251',1),
+  event('effect-applied',1.1,{type:27,ability:0,modifier:.25,duration:.5},'100251',1),
+  event('effect-evaluated',1.1,{type:21,ability:1,modifier:-.05,duration:.5},'100251',1),
+  event('effect-evaluated',1.1,{type:21,ability:0,modifier:-.05,duration:.5,followUp:true},'100251'),
+  event('effect-applied',1.1,{type:21,ability:0,modifier:-.05,duration:.5},'100251'),
+  event('effect-queued',1.1,{ability:1,targets:[0]},'100251',1),
+  event('effect-ended',1.633,{},'100251'),event('effect-ended',1.633,{},'100251',1),
+];
+const sharedSkill=projectSimulation(original,sharedSkillReport,null)!;
+for(const [id,start,end] of [['r0',0,.533],['r1',1.1,1.633]] as const){
+  const activation=sharedSkill.analysis.runners[id].skillActivations[0];
+  assert.equal(activation.effectiveEnd,end,'A received copy cannot extend the equipped skill');
+  assert.equal(activation.effectiveDuration,end-start);
+  assert.equal(telemetrySkillEnd(activation),end);
+  assert.equal(sharedSkill.analysis.debuffs.find(d=>d.sourceRunnerId===id)?.effectiveEnd,end);
+  assert.ok(!sharedSkill.runners[id].metrics[100251].some(m=>m.label==='Current speed'),'Received debuffs do not belong in the caster\'s own modifier metrics');
+}
+populateSkillImpacts(sharedSkill.race,null,null,sharedSkill.analysis);
+assert.equal(sharedSkill.analysis.runners.r0.skillImpacts[0].scheduledDuration,.533,'Effectiveness must use the caster\'s active window');
+assert.equal(sharedSkill.analysis.runners.r1.receivedDebuffImpacts[0].scheduledDuration,.533);
 assert.ok(delivery.runners.r0.metrics[902].some(m=>m.label==='Gate delay multiplier'&&m.value===.9&&m.unit==='×'));
 assert.ok(delivery.runners.r0.metrics[903].some(m=>m.label==='Gate delay override'&&m.value===.01&&m.unit==='s'));
 assert.equal(showTelemetrySkill(detail.skillActivations[0],null),true,'Timed skill activations remain visible');

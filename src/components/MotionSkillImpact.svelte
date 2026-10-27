@@ -5,11 +5,12 @@
   import MovementGainBreakdown from './MovementGainBreakdown.svelte';
   export let value:MotionSkillImpact;
   export let expanded=false;
+  export let hideEffects=false;
   const amount=(b:MotionBand,digits:number)=>`${b.mid>=0?'+':''}${b.mid.toFixed(digits)}`;
   const saved=(b:MotionBand)=>-b.mid;
 </script>
 <div class="motion-impact" class:expanded>
-  {#each value.effects as effect}<EffectUtilization {effect} {expanded}/>{/each}
+  {#if !hideEffects}{#each value.effects as effect}<EffectUtilization {effect} {expanded}/>{/each}{/if}
   <div class="stats">
     {#if value.distance}<span title="Distance gained from this skill.">{value.laneMovement?'Total: ':''}{amount(value.distance,2)} m gained</span>{/if}
     {#if value.time}<span title="Equivalent travel time saved or lost.">{Math.abs(saved(value.time)).toFixed(3)} s {saved(value.time)>=0?'saved':'lost'}</span>{/if}

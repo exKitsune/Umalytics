@@ -33,7 +33,7 @@ function buildTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysi
   for(const row of detail?.skillRows??[]){
     if(!row.effectiveActive){skills.push({skillId:row.skillId,motion:null,score:race.sandbox&&row.activationStatus!=='conditions-unmet'?null:0,coverage:1,active:0,assessed:0});continue;}
     const motion=motionSkillImpact(race,reference,analysis,runnerId,row.skillId,courseId);
-    if(motion)skills.push({skillId:row.skillId,motion,...movementUse(motion.effects)});
+    if(motion){const use=movementUse(motion.effects);skills.push({skillId:row.skillId,motion,...use,score:motion.effectivenessScore===undefined?use.score:motion.effectivenessScore});}
   }
   const active=skills.filter(row=>row.motion);
   const ids=new Set(active.map(row=>row.skillId));

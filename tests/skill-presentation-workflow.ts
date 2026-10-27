@@ -1,7 +1,7 @@
 /** Offline helpers for racing-team totals, observed skill branches, and trainer grouping. */
 import assert from 'node:assert/strict';
 import { attachTeamStatTotals, finishPlace, raceTeams, teamColors } from '../src/data/race-teams';
-import { displayedSkillBranches, effectText, skillBranchNodes, usedBranchIndexes, activationDurationText } from '../src/data/skill-details';
+import { displayedSkillBranches, effectText, skillBranchNodes, usedBranchIndexes, activationDurationText, definitionDurationText, cooldownText } from '../src/data/skill-details';
 import { effectValue } from '../src/data/effect-value';
 import type { Runner } from '../src/data/types';
 import type { SkillRow } from '../src/data/analytics';
@@ -60,6 +60,13 @@ for(const end of [null,130])assert.equal(activationDurationText({...row.activati
 assert.equal(activationDurationText({...row.activations[0],timingKind:'instant',effectiveDuration:5}),'Instant');
 assert.equal(activationDurationText(row.activations[0]),'12.5 s');
 assert.equal(activationDurationText({...row.activations[0],timingKind:'unknown',effectiveDuration:null}),null);
+const timed={...skill.branches[0],rawDuration:60000,rawCooldown:5000000};
+assert.equal(definitionDurationText(timed,2500),'15 s · 6 s base');
+assert.equal(cooldownText(timed,2500),'1,250 s · 500 s base');
+assert.equal(cooldownText({...timed,rawCooldown:300000},2500),'75 s · 30 s base');
+assert.equal(cooldownText({...timed,rawCooldown:0},2500),'Once per race');
+assert.equal(cooldownText({...timed,rawCooldown:undefined},2500),'Unavailable');
+assert.equal(cooldownText(timed,null),'500 s base');
 const nodes = skillBranchNodes(skill, row);
 assert.equal(nodes[0].taken, true);
 assert.equal(nodes[1].taken, false);

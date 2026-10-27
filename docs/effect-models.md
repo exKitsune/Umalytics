@@ -66,6 +66,9 @@ Course-conditioned skills use their actual effect types. A course name in a skil
 
 Positive target-speed bars use the requested **speed score**: blocked time and time below normal speed receive zero credit; accelerating from normal to a skill's cumulative ceiling receives half credit; supported time at that ceiling receives full credit. Earlier activations receive the lower tiers. Equal-timestamp activations share a tier because their order is unknown. This is a scoring convention, not the fraction of possible race gain. Other movement bars retain their separate applicability metrics. The stored full-window score divides credited seconds by scheduled duration, including time after finish as unused. The displayed percentage uses assessed time and shows missing time separately; missing evidence is never silently scored zero.
 
+Repeat activations retain separate per-proc bars. The skill-level movement score sums each proc’s assessed-time score against one expected activation (for example, 80% + 80% = 160%). A finish-clipped simulated window retains its full reported duration as the scoring budget, with post-finish seconds unused. Joint distance/carryover comparisons remain unchanged; marginal gains are not summed.
+
+
 A stronger component measure can also account for partial application:
 
 - **Target-speed use:** local modeled distance gained during the active window divided by the nominal target-speed increment integrated over the full scheduled window. Use only a supported fixed-context comparison. This measures realized active speed benefit against an ideal immediate increment; carryover is separate. Do not clamp an unexpected ratio into 0–100% to hide changed context or an invalid model.

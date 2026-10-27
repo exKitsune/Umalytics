@@ -6,6 +6,7 @@
   export let motion:MotionSkillImpact|null=null;
   export let impact:SkillImpactSummary|null|undefined;
   export let expanded=false;
+  export let hideEffects=false;
   const signed=(v:number,unit:string)=>`${v>0?'+':''}${v.toFixed(2)} ${unit}`;
   const distanceRange=(low:number,high:number)=>`${low>=0?'+':''}${low.toFixed(2)} – ${high>=0?'+':''}${high.toFixed(2)} m`;
   const timeRange=(low:number,high:number)=>high<=0?`${Math.abs(high).toFixed(3)} – ${Math.abs(low).toFixed(3)} s saved`:low>=0?`${low.toFixed(3)} – ${high.toFixed(3)} s lost`:`${low.toFixed(3)} – +${high.toFixed(3)} s`;
@@ -28,12 +29,12 @@
 </script>
 {#if impact&&(expanded||hasData||useMotion)}
   <div class="skill-impact" class:expanded>
-    {#if useMotion&&motion}<MotionSkillImpactView value={motion} {expanded}/>{:else if lane}<p class="unavailable">Forward gain needs matched lane-movement data.</p>{:else if components.length}<div class="effect-components">{#each components as effect (effect.kind)}<EffectUtilization {effect} {expanded}/>{/each}</div>
-    {:else if percent!==null}<div class="utilization">
+    {#if useMotion&&motion}<MotionSkillImpactView value={motion} {expanded} {hideEffects}/>{:else if !hideEffects&&lane}<p class="unavailable">Forward gain needs matched lane-movement data.</p>{:else if !hideEffects&&components.length}<div class="effect-components">{#each components as effect (effect.kind)}<EffectUtilization {effect} {expanded}/>{/each}</div>
+    {:else if !hideEffects&&percent!==null}<div class="utilization">
       <div class="meter-heading"><span>{meterLabel}{partialRate!==null?' · partial':''}</span><strong>{percent}% effective</strong></div>
       <div class="meter" role="meter" aria-label={partialRate!==null?`${meterLabel} in assessed portion`:meterLabel} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}><i style:width={`${percent}%`}></i></div>
       {#if partialRate!==null&&coverage!==null}<small>{coverage}% of active time assessed</small>{/if}
-    </div>{:else if expanded}<p class="unavailable">{meterLabel} unavailable</p>{/if}
+    </div>{:else if expanded&&!hideEffects}<p class="unavailable">{meterLabel} unavailable</p>{/if}
     <div class="impact-stats">
       {#if distance!==null}<span title="Distance gained while the skill is active.">{signed(distance,'m')}{#if impact.modeledDistanceDelta===null}<small>partial</small>{/if}</span>{/if}
       {#if time!==null}<span title="Travel time saved during the skill’s active effect.">{Math.abs(time).toFixed(3)} s {time>0?'lost':'saved'}{#if impact.modeledTimeDelta===null}<small>partial</small>{/if}</span>{/if}

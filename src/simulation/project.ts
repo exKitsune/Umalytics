@@ -66,17 +66,17 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
   for(const id of ids){
     const own=events.filter(e=>Number(e.skillId)===id||e.kind==='cooldown-start'&&String(e.data.key)===String(id));
     const wit=own.filter(e=>e.kind==='skill-wit'),activated=own.filter(e=>e.kind==='skill-activated');
+    const ownApplied:DecisionEvent[]=[];
     const activations:SkillActivation[]=activated.map((e,index)=>{
       const next=activated[index+1]?.sequence??Infinity;
       const effects=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-evaluated');
       const applied=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-applied');
+      ownApplied.push(...applied);
       const queued=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-queued');
       const ref=reference?.metadata.skills[id]?.branches.find((b,i)=>(b.branchIndex??i)===e.detail);
       const event=reported.find(p=>Number(p.skillId)===id&&Math.abs(Number(p.t)-e.time)<.001);
       const passive=effects.some(x=>Number(x.data.duration)<0),reportedDuration=num(event?.duration);
       const duration=reportedDuration??(effects.length?Math.max(0,...effects.map(x=>Number(x.data.duration))):null);
-      const expiry=own.filter(x=>x.kind==='effect-ended'&&x.sequence>e.sequence&&x.sequence<next).at(-1);
-      const end=passive?stop:expiry?.time??(duration===null?null:Math.min(stop,e.time+duration));
       const effectEnd=(event:DecisionEvent,recipient=runner.index)=>{
         const seconds=Number(event.data.duration);if(seconds<0)return stop;
         const expected=event.time+seconds;
@@ -99,6 +99,11 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
         }
       }
       const targetRunnerIds=Object.keys(simulatedRecipients);
+      // Expiry callbacks identify the skill on the affected runner, not its
+      // caster. A later received copy must not extend this runner's own proc.
+      // Use the windows already matched to this activation's applied effects.
+      const effectEnds=[...displayEffects,...Object.values(simulatedRecipients).flat()].map(effect=>effect.appliedEnd!);
+      const end=passive?stop:duration===0?e.time:effectEnds.length?Math.max(...effectEnds):duration===null?null:Math.min(stop,e.time+duration);
       return {skillId:id,referenceSkillId:id,start:e.time,end,duration,effectiveEnd:end,effectiveDuration:end===null?null:Math.max(0,end-e.time),
         activationEvidence:'simulated',durationEvidence:'simulated',effectBranch:e.detail,effects:displayEffects,targetRunnerIds,simulatedRecipients,
         timingKind:passive?'passive':duration===0?'instant':'reported',timingReason:'Engine activation and effect expiry ticks.',
@@ -111,7 +116,7 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
     const items:SkillMetric[]=[];
     const add=(label:string,value:number|string,unit:string,detail:string)=>items.push({label,value,unit,detail,evidence:'simulated'});
     for(const check of wit)add('Wit check',check.data.checked?(check.data.passed?'Passed':'Failed'):'Not required','',`Actual engine check at ${check.time.toFixed(3)} s.`);
-    for(const e of own.filter(e=>e.kind==='effect-applied')){
+    for(const e of ownApplied){
       const type=Number(e.data.type),names:Record<number,[string,string]>={1:['Speed stat',''],2:['Stamina stat',''],3:['Power stat',''],4:['Guts stat',''],5:['Wit stat',''],8:['Vision distance','m'],9:['HP effect','% max HP'],10:['Gate delay multiplier','×'],14:['Gate delay override','s'],21:['Current speed','m/s'],22:['Current speed','m/s'],27:['Target speed','m/s'],28:['Lane speed','m/s'],31:['Acceleration','m/s²']};
       const [label,unit]=names[type]??[`Effect ${type}`,''];
       add(label,Number(e.data.modifier)*(type===9?100:1),unit,`Applied engine modifier at ${e.time.toFixed(3)} s.`);

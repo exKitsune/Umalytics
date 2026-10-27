@@ -3,6 +3,7 @@
   import {activationConfidence} from '../sandbox/activation-confidence';
   import {DEFAULT_IMPACT_PAIRS,type AutomaticSkills} from '../sandbox/automatic-skills';
   import SkillDefinitionPopover from './SkillDefinitionPopover.svelte';
+  import EffectivenessMeter from './EffectivenessMeter.svelte';
   import RawStatComparison from './RawStatComparison.svelte';
   import {rawProfile} from '../data/raw-stat-comparison';
   import {initialRace,lobbyMetrics} from '../sandbox/results';
@@ -152,7 +153,7 @@
           <td title={`WR when activated: ${pct(s.winRateWhenActivated)} · overall WR: ${pct(current.win)}. ${confidence?`95% range: ${points(confidence.low)} to ${points(confidence.high)}. Color fades in beyond 95% confidence, reaching full color at 99%.`:'Insufficient activation data for uncertainty.'} Association, not causal impact.`}><div class="win-difference" style:color={confidence?.strength?`color-mix(in srgb,${(winDelta??0)>0?'#83d3ac':'#ed97a2'} ${confidence.strength*100}%,var(--text))`:undefined}>{points(winDelta)}</div><small class="win-baseline">{pct(s.winRateWhenActivated)} vs {pct(current.win)}</small><span class="race-count" title="Wins / races where the skill activated">{s.winsWhenActivated} / {s.activatedRaces} races</span></td>
           <td class="carry-value" title={s.carryoverTime.mean===null?'Retained speed benefit.':`${fmt(-s.carryoverTime.mean,3)} s saved by retained speed.`}>{amount(s.carryover.mean,'m')}{#if s.carryover.mean!==null&&s.carryover.n<s.n}<small>{s.carryover.n} / {s.n} assessed</small>{/if}</td>
           <td>{amount(s.time.mean===null?null:-s.time.mean,'s',3)}</td>
-          <td><div class="rate-value">{pct(s.effectiveness.mean)}<small>{s.effectiveness.n} assessed</small></div><div class="rate-track" aria-hidden="true"><span style:width={`${percentWidth(s.effectiveness.mean)}%`} style:background={effectivenessColor(s.effectiveness.mean)}></span></div></td>
+          <td><div class="rate-value">{pct(s.effectiveness.mean)}<small>{s.effectiveness.n} assessed</small></div><EffectivenessMeter score={s.effectiveness.mean} color={effectivenessColor(s.effectiveness.mean)}/></td>
           <td><div class="rate-value">{pct(s.activation)}</div><div class="rate-track activation" aria-hidden="true"><span style:width={`${percentWidth(s.activation)}%`}></span></div><span class="race-count">{s.activatedRaces} / {s.n} races</span></td>
           <td class="efficiency-cell">{amount(s.per100Sp,'m')}{#if s.per100Sp!==null}<div class="rate-track efficiency" class:loss={s.per100Sp<0} title="Average distance gain per 100 skill points"><span style:width={`${Math.abs(s.per100Sp)/efficiencyScale*100}%`}></span></div>{/if}</td>
         </tr>

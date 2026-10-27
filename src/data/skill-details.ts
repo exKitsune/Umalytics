@@ -149,6 +149,17 @@ export function durationText(branch:SkillReference['branches'][number],distance:
   if(branch.durationUsage!==1)return 'Varies by condition';
   return distance?`${Number((base*distance/1000).toFixed(3))} s`:`${Number(base.toFixed(3))} s base`;
 }
+export function definitionDurationText(branch:SkillReference['branches'][number],distance:number|null):string {
+  const duration=durationText(branch,distance);
+  return branch.rawDuration>0&&branch.durationUsage===1&&distance?`${duration} · ${Number((branch.rawDuration/10000).toFixed(3))} s base`:duration;
+}
+export function cooldownText(branch:SkillReference['branches'][number],distance:number|null):string {
+  if(branch.rawCooldown==null||!Number.isFinite(branch.rawCooldown))return 'Unavailable';
+  if(branch.rawCooldown<=0)return 'Once per race';
+  const base=branch.rawCooldown/10000;
+  const seconds=(value:number)=>Number(value.toFixed(3)).toLocaleString('en-US');
+  return distance?`${seconds(base*distance/1000)} s · ${seconds(base)} s base`:`${seconds(base)} s base`;
+}
 /** Public master prose; a reference description does not establish a proc. */
 export function getSkillDescription(reference:ReferenceData|null,id:number):string|null {
   return getSkillReference(reference,id)?.description?.trim()||null;

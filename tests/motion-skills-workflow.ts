@@ -4,6 +4,9 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {importRaceFile,loadReference} from '../scripts/offline-analysis';
+import {analyzeRace} from '../src/data/analytics';
+import {activationImpact} from '../src/data/motion-skill-impact';
 const root=resolve(import.meta.dirname,'..'),folder=resolve(process.argv[2]),run=promisify(execFile);await mkdir(folder,{recursive:true});
 const reference=join(folder,'reference');await mkdir(reference);
 for(const name of ['metadata.json','reference-source.json','simulator-skill-ids.json'])await writeFile(join(reference,name),await readFile(join(root,'public/data',name)));
@@ -91,6 +94,20 @@ value=await analyze('missing-tail-is-not-zero-or-complete',race,860014);assert.e
 // A long decay remains useful beyond the old 12/15-second cutoffs.
 race=fixture();race.events=[event(860015,30,1)];value=await analyze('no-arbitrary-carryover-cutoff',race,860015);assert.ok(value.carryoverDistance.mid>50);near(value.activeDistance.mid,9,.000001);assert.equal(value.carryoverComplete,true);
 race=fixture();race.events=[event(860007,50,1),event(860007,60,3)];value=await analyze('repeat-procs-joint-gain',race,860007);near(value.speedPotentialDistance.mid,4);near(value.distance.mid,4,.000001);near(value.activeDistance.mid,4,.000001);
+near(value.effectivenessScore,2);
+near(component(value,'current-speed').usefulAmongAssessed,1);
+const repeatedReport=JSON.parse(await readFile(join(folder,'repeat-procs-joint-gain-report.json'),'utf8'))[0].runners[0];
+near(repeatedReport.totals.skills.find((s:any)=>s.skillId===860007).score,2);
+// A second proc after the finish earns no bonus; mixed components in one proc
+// still share a single 100% budget instead of each counting as a proc.
+race=fixture();race.events=[event(860007,50,1),event(860007,99,2)];value=await analyze('repeat-procs-finish-clipped',race,860007);near(value.effectivenessScore,1.5);
+const clippedRace=(await importRaceFile(join(folder,'repeat-procs-finish-clipped.json')))[0],clippedReference=await loadReference(reference);
+const clippedAnalysis=analyzeRace(clippedRace,clippedReference,99994),lastProc=clippedAnalysis.runners['motion-0'].skillActivations.find(a=>a.skillId===860007&&a.start===99)!;
+lastProc.end=lastProc.effectiveEnd=100;lastProc.effectiveDuration=1;
+const clippedImpact=activationImpact(clippedRace,clippedReference,clippedAnalysis,'motion-0',lastProc)!;
+near(clippedImpact.effectivenessScore!,.5);
+near(component(clippedImpact,'current-speed').afterFinishDuration,1);
+near(normal.effectivenessScore,target.usefulAmongAssessed);
 // The combined score includes both effects of a mixed skill and weights time.
 race=fixture();race.events=[event(860002),event(860007,60,8)];for(const f of race.frames)if(f.time>=50&&f.time<=54)f.runners[0].speed=20.1;
 await analyze('joint-mixed-components',race,860002);

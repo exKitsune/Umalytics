@@ -12,6 +12,12 @@ import type { MotionBenefit } from './motion-benefit';
 
 export interface MotionSkillImpact extends MotionBenefit {
   effects:EffectUtilization[];detail:string;
+  /** Sum of per-proc movement scores, with one expected activation as 100%. */
+  effectivenessScore?:number|null;
+}
+export function procEffectiveness(effects:EffectUtilization[]):number|null {
+  const assessed=effects.reduce((n,e)=>n+e.assessedDuration,0);
+  return assessed>0?effects.reduce((n,e)=>n+(e.usefulDuration??0),0)/assessed:null;
 }
 const zero=():MotionBand=>({min:0,mid:0,max:0});
 const channels=['min','mid','max'] as const;
@@ -59,7 +65,12 @@ function calculateActivationImpact(race:Race,reference:ReferenceData|null,analys
   const benefit=motionBenefitFor(race,reference,analysis,runnerId,[a],courseId);
   const activationKey=activationMotionKey(runnerId,a);
   const reasons=new Set<string>(),types=[...new Set(effects.map(e=>e.type===27?'target-speed':e.type===31?'acceleration':'current-speed'))] as EffectUtilization['kind'][];
-  const scheduled=a.effectiveDuration??Math.max(0,a.effectiveEnd-a.start),afterFinish=Math.max(0,Math.min(scheduled,a.effectiveEnd-stop));
+  // Matched traces clip visible windows at the finish. Preserve the reported
+  // full duration as the scoring budget so a late repeat cannot earn 100%
+  // from only its brief pre-finish portion.
+  const visible=a.effectiveDuration??Math.max(0,a.effectiveEnd-a.start);
+  const scheduled=a.effectiveEnd>=stop-1e-6?Math.max(visible,a.duration??0):visible;
+  const afterFinish=Math.max(0,scheduled-Math.max(0,stop-a.start));
   const runner=race.runners.find(r=>r.id===runnerId)!;
   const knownAcceleration=effects.filter(e=>e.type===31).reduce((n,e)=>n+(effectValue(runner,a.referenceSkillId??a.skillId,e)??0),0);
   const components:EffectUtilization[]=types.map(kind=>({kind,activeDuration:scheduled,assessedDuration:afterFinish,afterFinishDuration:afterFinish,usefulDuration:0,cappedDuration:0,blockedDuration:0,utilization:null,coverageRate:null,usefulAmongAssessed:null,
@@ -134,7 +145,7 @@ function calculateActivationImpact(race:Race,reference:ReferenceData|null,analys
     c.utilization=c.coverageRate>=.999&&c.scenarioUtilization&&c.scenarioUtilization.max-c.scenarioUtilization.min<.00001?c.usefulAmongAssessed:null;
     if(c.assessedDuration===0){c.usefulDuration=null;c.cappedDuration=null;c.blockedDuration=null;}
   }
-  return {...benefit,effects:components,reasons:[...new Set([...benefit.reasons,...reasons])],
+  return {...benefit,effects:components,effectivenessScore:procEffectiveness(components),reasons:[...new Set([...benefit.reasons,...reasons])],
     detail:'Gain compares movement with and without this skill in the same replay context. Acceleration’s full head start is direct gain. Carryover is retained speed from speed effects. The two parts are counted once. Time is an equivalent travel saving, not a rerun finish time.'+(laneGain?' Lane skills include their forward-speed bonus during actual lane changes. The path and other runners stay fixed; escaping a block is not attributed to the skill.':'')};
 }
 export function motionSkillImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,skillId:number,courseId?:number|null):MotionSkillImpact|null {
@@ -160,5 +171,7 @@ function combineImpacts(values:MotionSkillImpact[],benefit:MotionBenefit):Motion
       utilization:active>0&&Math.abs(active-assessed)<1e-3&&scenario&&scenario.max-scenario.min<1e-5?useful/active:null,scenarioUtilization:scenario,
       ...(scored?{scoringConvention:'target-speed-half-credit' as const,acceleratingDuration:half,deceleratingEffectiveDuration:num('deceleratingEffectiveDuration'),fullyEffectiveDuration:full,belowBaselineDuration:num('belowBaselineDuration'),wastedDuration:num('wastedDuration')}:{})};
   });
-  return {...benefit,effects,reasons:[...new Set([...benefit.reasons,...values.flatMap(v=>v.reasons)])],detail:values[0].detail};
+  const scores=values.map(v=>v.effectivenessScore??procEffectiveness(v.effects));
+  return {...benefit,effects,effectivenessScore:scores.every(s=>s!==null)?scores.reduce<number>((n,s)=>n+s!,0):null,
+    reasons:[...new Set([...benefit.reasons,...values.flatMap(v=>v.reasons)])],detail:values[0].detail};
 }
