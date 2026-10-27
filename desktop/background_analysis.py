@@ -148,6 +148,12 @@ class BackgroundAnalysis:
         signature = hmac.digest(auth, key.encode() + text.encode() + packed, 'sha256')
         with self.service.lock, self.cache.connect() as db:
             db.execute('DELETE FROM prepared WHERE race=?', (race_id,))
+            capture = summary.get('entrySha256')
+            if isinstance(capture, str) and len(capture) == 64:
+                # Context/engine cache keys used to accumulate multiple complete
+                # dashboards for the same source capture. Only its latest derived
+                # view is needed; native model caches retain their own bindings.
+                db.execute("DELETE FROM prepared WHERE CASE WHEN json_valid(summary) THEN json_extract(summary,'$.entrySha256') END=?", (capture,))
             db.execute('INSERT OR REPLACE INTO prepared VALUES (?,?,?,?,?,?,?)', (key, race_id, revision, date, packed, signature, text))
             self.cache.prune(db)
 
@@ -348,7 +354,7 @@ class BackgroundAnalysis:
         # Recheck executable/reference integrity before publishing results.
         simulation.get(race_id, selected['jobId'])
         entry = self.service.races(1, race_id, summary=True)['races'][0]
-        group = (report.get('simulation') or {}).get('cacheKey') or race_id
+        group = 'capture:' + snap['entry_hash']
         self.save(key, summary, packed, group, entry.get('racedAt') or entry['receivedAt'], job['build']['revision'])
         with self.lock:
             self.volatile[key] = (summary, packed)

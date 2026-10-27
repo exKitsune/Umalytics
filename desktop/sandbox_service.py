@@ -22,6 +22,7 @@ from engine_skill_catalog import references
 from globalsim_bridge.decision_trace import validate_trace
 from globalsim_bridge.runtime import RuntimeConfig, _canonical, _run_worker
 from globalsim_bridge.worker_pool import WorkerPool
+from globalsim_bridge.cache_storage import summary_bytes, summary_value
 from simulation_service import read_json
 from skill_automation import SkillAutomation, BackgroundBusy
 
@@ -80,6 +81,8 @@ class SandboxService:
     def connect(self):
         db = sqlite3.connect(self.path, timeout=20)
         try:
+            if db.execute('PRAGMA page_count').fetchone()[0] == 0:
+                db.execute('PRAGMA auto_vacuum=INCREMENTAL')
             db.execute('PRAGMA journal_mode=WAL')
             with db:
                 yield db
@@ -134,7 +137,7 @@ class SandboxService:
             value = json.loads(row[0])
             completed, cursor = db.execute('SELECT count(*),coalesce(max(rowid),0) FROM runs WHERE job=?', (job_id,)).fetchone()
             partial = after is not None and after <= cursor
-            value['runs'] = [json.loads(r[0]) for r in db.execute('SELECT summary FROM runs WHERE job=? AND rowid>? ORDER BY n',
+            value['runs'] = [summary_value(r[0]) for r in db.execute('SELECT summary FROM runs WHERE job=? AND rowid>? ORDER BY n',
                 (job_id, after if partial else 0))] if include_runs else []
             value.update(runCursor=cursor, runsPartial=partial, completed=completed)
             value['readyRuns'] = [r[0] for r in db.execute('SELECT n FROM runs WHERE job=? AND dashboard IS NOT NULL', (job_id,))]
@@ -354,10 +357,10 @@ class SandboxService:
     def save_run(self, job_id, index, result, connection=None):
         summary, packed = result
         if connection is not None:
-            connection.execute('INSERT INTO runs VALUES (?,?,?,?)', (job_id,index,json.dumps(summary),packed))
+            connection.execute('INSERT INTO runs VALUES (?,?,?,?)', (job_id,index,summary_bytes(summary),packed))
             return
         with self.connect() as db:
-            db.execute('INSERT INTO runs VALUES (?,?,?,?)', (job_id,index,json.dumps(summary),packed))
+            db.execute('INSERT INTO runs VALUES (?,?,?,?)', (job_id,index,summary_bytes(summary),packed))
 
     def run_outcomes(self, job, config, refs):
         # Keep the WAL connection open through the batch. Closing the final

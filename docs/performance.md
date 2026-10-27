@@ -139,3 +139,55 @@ reference-vector assertions, including duel partner selection. These failures
 were reproduced using separate Cargo target directories. No mechanics or test
 expectations were changed to hide them. These local benchmarks are not general
 latency guarantees or proof for every possible input.
+
+## Lossless cache storage (2026-10-27)
+
+The installed-data inspection found 244 native cache files but only 37 distinct
+modeled payload hashes. The files were uncompressed JSON containing full motion
+traces and replay frames. Engine/context namespaces duplicated identical output.
+The analysis database also held 239 dashboard versions for 55 distinct source
+capture hashes. Its size was occupied payload, with only one free SQLite page;
+vacuuming alone would not meaningfully reduce it. Simulator history contained
+37,100 JSON run summaries, including repeated runner metadata and unknown fields.
+
+Native caches now store one gzip payload per exact modeled SHA-256, shared across
+namespaces. Small per-key headers retain the original authentication; a shared
+blob is decompressed with a byte limit, hashed and parsed before use. Existing
+inline JSON remains readable, and every cache hit still undergoes the recorded
+comparison and trace gate. Reference counting during cache pruning preserves
+blobs still used by another header. Compression does not round or omit numbers.
+
+Simulator summaries use compressed SQLite blobs, with both legacy JSON text and
+new blobs decoded to the same API objects. New prepared dashboards replace older
+views of the same original capture hash even when an engine/context key changes.
+Original race JSON, individual simulation seeds/draws, outcomes, saved builds and
+jobs are retained. New/optimized databases support incremental page reclamation.
+
+A consistent copy of the installed data was migrated and independently checked:
+
+| Store | Before | After |
+| --- | ---: | ---: |
+| Native model caches | 2,120.4 MiB | 45.5 MiB |
+| Analysis database | 876.8 MiB | 224.1 MiB |
+| Simulator database | 155.6 MiB | 41.1 MiB |
+| Total | 3,152.7 MiB | 310.7 MiB |
+
+All 244 authenticated model bindings, all 37,100 run summaries, jobs/builds,
+50 original race files and 55 latest dashboard payloads matched after migration.
+184 superseded dashboard versions were removed on the copy. Native traces were
+retained; derived effect-removal calculations and chart data remain rebuildable.
+The original installation was not modified. Migration took about 155 seconds,
+excluding creation of the copy and the subsequent exhaustive verification.
+For one 15.6 MB signed model, authenticated cache-read median improved from
+529 ms to 308 ms across six reads (first excluded), with identical modeled data.
+This measures cache decoding/verification only, not complete race analysis.
+
+`scripts/optimize-storage.py` reports size by default. After installing a build
+with this storage reader, exit Umalytics from the tray before migrating existing
+storage. Use `--apply` to compress models and summaries, and additionally
+`--keep-latest-dashboards` to remove superseded dashboard versions. The tool refuses
+the normal running service's data directory and preserves cache timestamps.
+For an intentional downgrade to an older executable, first use
+`--apply --plain-run-summaries` to restore plain JSON simulator summaries. Native
+headers not understood by an older version are ordinary cache misses. Existing
+cache limits and preferences are preserved; live data is not silently migrated.

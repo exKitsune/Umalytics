@@ -23,6 +23,14 @@ import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "desktop"))
 from globalsim_bridge import RuntimeConfig, evaluate_capture
 from globalsim_bridge import runtime
+from globalsim_bridge.cache_storage import SHARED, read_blob
+
+
+def expanded_entry(path):
+    entry = json.loads(path.read_bytes())
+    if entry.pop('storage', None) == SHARED:
+        entry['modeled'] = json.loads(read_blob(path, entry, 64 * 1024 * 1024))
+    return entry
 
 
 def fixture():
@@ -102,7 +110,7 @@ class RuntimeGateTests(unittest.TestCase):
         first, calls = self.evaluate()
         self.assertEqual((first['status'], calls), ('verified', 1))
         path = runtime._cache_path(self.config, first['cacheKey'])
-        entry = json.loads(path.read_text())
+        entry = expanded_entry(path)
         # Even an internally consistent altered cache entry cannot reuse the
         # previous verdict; there is deliberately no cached verdict to trust.
         entry['modeled']['frames'][1]['horses'][0]['pos'] += 1

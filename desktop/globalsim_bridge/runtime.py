@@ -23,6 +23,7 @@ from typing import Any
 
 from . import adapter
 from .comparator import COMPARATOR_VERSION, compare_observations, decode_scenario
+from .cache_storage import SHARED, read_blob, write_shared
 
 RUNTIME_VERSION = "bounded-local-runtime-v1"
 UPSTREAM_REVISION = "efc2decdfeaff227ada0e9847f5deceb42c3b97f"
@@ -120,6 +121,7 @@ def _code_identities() -> tuple[dict, bool]:
         "comparator": Path(__file__).with_name("comparator.py"),
         "decisionTrace": Path(__file__).with_name("decision_trace.py"),
         "transport": Path(__file__).with_name("worker_pool.py"),
+        "cacheStorage": Path(__file__).with_name("cache_storage.py"),
     }
     hashes = {}
     complete = True
@@ -325,14 +327,21 @@ def _read_cache(path: Path | None, key: str, byte_limit: int, auth_key: bytes | 
         entry = _strict_json(raw)
         if entry.get("schemaVersion") != CACHE_SCHEMA or entry.get("cacheKey") != key:
             return None
-        modeled = entry["modeled"]
-        if not isinstance(modeled, dict) or entry.get("modeledSha256") != _digest(_canonical(modeled)):
-            return None
         if auth_key is not None and not hmac.compare_digest(str(entry.get("authentication", "")),
                 _cache_mac(auth_key, key, entry["modeledSha256"])):
             return None
+        if entry.get('storage') == SHARED:
+            if 'modeled' in entry:
+                return None
+            modeled = _strict_json(read_blob(path, entry, byte_limit))
+        else:
+            modeled = entry['modeled']
+            if entry.get('modeledSha256') != _digest(_canonical(modeled)):
+                return None
+        if not isinstance(modeled, dict):
+            return None
         return modeled
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError):
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError, EOFError):
         return None
 
 
@@ -346,21 +355,7 @@ def _write_cache(path: Path | None, key: str, modeled: dict, byte_limit: int, au
                 "modeledSha256": _digest(model_bytes), "modeled": modeled}
     if auth_key is not None:
         metadata["authentication"] = _cache_mac(auth_key, key, metadata["modeledSha256"])
-    # Reuse the exact bytes already hashed instead of encoding a large trace twice.
-    entry = b'{' + b','.join(_canonical(name) + b':' + (model_bytes if name == 'modeled' else _canonical(metadata[name]))
-                              for name in sorted(metadata)) + b'}'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(prefix="pending-", suffix=".json", dir=path.parent, delete=False) as stream:
-            temporary = Path(stream.name)
-            stream.write(entry)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    write_shared(path, metadata, model_bytes)
 
 
 def _metric_status(metrics: list[dict]) -> str:
@@ -539,7 +534,7 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
         if not report["cacheHit"]:
             try:
                 _write_cache(cache_path, report["cacheKey"], modeled, config.max_output_bytes, config.cache_auth_key)
-            except OSError as error:
+            except (OSError, ValueError) as error:
                 report["warnings"].append("Simulation result could not be cached: "+str(error))
         return finish(status)
     except _WorkerFailure as error:

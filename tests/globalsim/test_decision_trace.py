@@ -140,7 +140,7 @@ class TracedRuntimeTests(unittest.TestCase):
 
     def test_changed_hidden_roll_cannot_be_authorized_by_plain_checksum(self):
         model,_,path=self.cache_fixture()
-        entry=json.loads(path.read_bytes())
+        entry=runtime_tests.expanded_entry(path)
         entry['modeled']['decisionTrace']['events'][0]['data']['roll']=1.
         entry['modeledSha256']=hashlib.sha256(runtime._canonical(entry['modeled'])).hexdigest()
         path.write_bytes(runtime._canonical(entry))
