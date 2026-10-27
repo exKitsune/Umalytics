@@ -316,7 +316,7 @@ class RaceObserver:
             else:
                 raise ValueError('missing_request_context')
             groups = {'career': 'single_mode', 'team-trials': 'team_stadium',
-                      'practice': 'room_match', 'champions-meeting': 'champions'}
+                      'practice': 'room_match', 'champions-meeting': 'champions', 'league-of-heroes': 'heroes'}
             endpoint = route or '/\x75mamusume/' + groups.get(category, 'unknown') + '/'
             self._trace(route, 200, payload)
             traced = True

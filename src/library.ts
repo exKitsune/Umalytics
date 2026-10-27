@@ -11,15 +11,16 @@ export const categories: { id: RaceCategory; label: string; short: string; color
   { id: 'team-trials', label: 'Team Trials', short: 'Trials', color: '#67a9ec' },
   { id: 'practice', label: 'Practice and room matches', short: 'Room', color: '#b998ed' },
   { id: 'champions-meeting', label: 'Champions Meeting', short: 'CM', color: '#e7b85d' },
+  { id: 'league-of-heroes', label: 'League of Heroes', short: 'LoH', color: '#db986d' },
   { id: 'other', label: 'Other races', short: 'Other', color: '#8e9ba6' },
 ];
 export const libraryFacets: { id: string; label: string; short: string; color: string }[] = [
   categories[0], categories[1],
   { id: 'practice', label: 'Practice', short: 'Practice', color: '#7d6bd6' },
   { id: 'room', label: 'Room Match', short: 'Room Match', color: '#e15d5d' },
-  categories[3], categories[4],
+  categories[3], categories[4], categories[5],
 ];
-export const categoryInfo = (category?: string) => categories.find(c => c.id === category) ?? categories[4];
+export const categoryInfo = (category?: string) => categories.find(c => c.id === category) ?? categories[5];
 export const facetInfo = (id?: string) => libraryFacets.find(item => item.id === id) ?? categoryInfo(id);
 export function captureFacet(entry: { category?: string; raceMode?: 'practice' | 'room'; raceDesignation?: string; race?: { category?: string; raceMode?: 'practice' | 'room'; raceDesignation?: string } }) {
   const mode = entry.raceMode ?? entry.race?.raceMode;

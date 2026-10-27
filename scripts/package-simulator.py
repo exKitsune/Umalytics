@@ -31,6 +31,8 @@ def main():
     instrumentation = prepare_module.validate_prepared_source(staged)
     if b'umalytics-decisions-v1' not in binary:
         raise ValueError('Worker lacks decision instrumentation.')
+    if b'GSIMRP01' not in binary:
+        raise ValueError('Worker lacks the required binary replay protocol.')
     artifact = hashlib.sha256(binary).hexdigest()
     references = ReferenceData.load(ROOT, args.source)
     ident = 'globalsim-v74-win-' + artifact[:16]
@@ -55,6 +57,7 @@ def main():
     manifest_path = ROOT / 'simulation/installed-bundles.json'
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {'schemaVersion': 1, 'bundles': []}
     row = dict(kind='simulation', engine_id=ident, version='efc2decd-v74', profile='v74', artifact_sha256=artifact,
+        persistentWorker=True, workerProtocol='binary-v1',
         decisionTraceSchema='umalytics-decisions-v1', instrumentationSha256=instrumentation['sha256'],
         data_sha256=references.fingerprint, artifact=(relative/'worker.exe').as_posix(),
         appRoot=(relative/'app').as_posix(), resourceRoot=(relative/'engine').as_posix())

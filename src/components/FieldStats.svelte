@@ -1,5 +1,8 @@
 <script lang="ts">
+  import {startQuality} from '../data/start-quality';
   import {trafficTimeline,trafficDurations} from '../simulation/traffic-lane';
+  import RawStatComparison from './RawStatComparison.svelte';
+  import {rawProfile} from '../data/raw-stat-comparison';
   import {telemetryEndTime} from '../telemetry';
   import {statusDescription,statusColor,uphillHelp,downhillHelp} from '../data/analysis-copy';
   import type { Race } from '../data/types';
@@ -24,6 +27,10 @@
   export let race:Race, reference:ReferenceData|null, analysis:RaceAnalysis, selected:string;
   export let onSelect:(id:string)=>void;
   export let compact=false;
+  let comparingStats=false;
+  $: comparisonCourse=reference?.courses[race.courseId??0];
+  $: comparisonProfiles=comparisonCourse?race.runners.map(r=>({...rawProfile(r,comparisonCourse),name:`#${r.index+1} ${runnerName(reference,r)}`})):[];
+  $: comparisonGround=({firm:1,good:1,yielding:2,soft:3,heavy:4} as Record<string,number>)[String(race.conditions?.ground).toLowerCase()]??Number(race.conditions?.ground);
   const f=(n:number|null|undefined,d=1)=>n==null?'—':n.toFixed(d);
   const mood=(m:number|null|undefined)=>m==null?'—':({1:'Awful',2:'Bad',3:'Normal',4:'Good',5:'Great'} as Record<number,string>)[m]??String(m);
   const range=(v:MotionBand,d=2)=>Math.abs(v.max-v.min)<10**-d?v.mid.toFixed(d):`${Math.min(v.min,v.mid,v.max).toFixed(d)} – ${Math.max(v.min,v.mid,v.max).toFixed(d)}`;
@@ -114,13 +121,6 @@
       stolen:stolenHp==null?'—':stolenHp===0?'0':`${stolenHp>0?'−':'+'}${Math.round(Math.abs(stolenHp))}`,
     };
   }
-  function startQuality(delay:number|null|undefined){
-    if(delay==null)return null;
-    if(delay<.02)return {label:'Great start',tone:'great'};
-    if(delay<=.04)return {label:'Good start',tone:'good'};
-    if(delay>.08)return {label:'Late start',tone:'late'};
-    return {label:'Poor start',tone:'poor'};
-  }
   function modelBlock(id:string){
     const stats=analysis.runners[id]?.statBreakdown.stats;
     if(!stats)return null;
@@ -173,7 +173,7 @@
   {#if !row.empty}{#if !modes[id]}<span class="note">Calculating gains…</span>{:else if mode(id,kind)}<ModeImpactSummary value={mode(id,kind)}/>{:else}<span class="note">Gain unavailable</span>{/if}{/if}
 {/snippet}
 <section class="panel field-stats" class:compact>
-  <div class="panel-heading"><strong>Race results</strong><span class="muted">{analysis.source!=null?'Select a runner':'Select a runner · dotted values use models'}</span></div>
+  <div class="panel-heading"><strong>Race results</strong>{#if comparisonCourse}<button class="compare-stats" onclick={()=>comparingStats=true}>Compare raw stats</button>{/if}<span class="muted">{analysis.source!=null?'Select a runner':'Select a runner · dotted values use models'}</span></div>
   <div class="field-scroll" use:pinFinish><table use:hoverCol data-col="">
     <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Conserve / Release','Rushed','Debuffs received','Blocked / Near'] as heading}<th title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Time before leaving the gate.':undefined}>{heading}</th>{/each}</tr></thead>
     <tbody>{#each sorted as r}
@@ -215,7 +215,9 @@
     {/each}</tbody>
   </table></div>
 </section>
+{#if comparingStats&&comparisonCourse}<RawStatComparison profiles={comparisonProfiles} course={comparisonCourse} ground={comparisonGround} initialId={selected} onClose={()=>comparingStats=false}/>{/if}
 <style>
+  .compare-stats{font-size:12px;padding:6px 10px;margin-left:auto}
   .compact .field-scroll{max-height:560px}
   .field-scroll{max-height:1040px;overflow:auto;scrollbar-width:thin;--finish-w:3.4em}
   table{width:max-content;min-width:100%}th{font-size:var(--font-10)}td{font-size:var(--font-12);padding:20px 10px;vertical-align:middle;height:auto}

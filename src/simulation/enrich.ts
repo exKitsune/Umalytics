@@ -28,7 +28,7 @@ function slowdown(loss:MotionLossSummary):SlowdownAnalysis{
 
 /** Feed the established analysis cards from exact trace states plus explicitly
  * local mathematical comparisons. No whole-race rerun and no state inference. */
-export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,reference:ReferenceData,checkpoint:()=>Promise<void>=async()=>{}){
+export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,reference:ReferenceData,checkpoint:()=>Promise<void>=async()=>{},summaryOnly=false){
   const {race,analysis}=value,course=reference.courses[race.courseId??-1]??null;
   const calculation:RaceAnalysis={runners:{},debuffs:[],warnings:[]};
   for(const runner of race.runners){
@@ -65,11 +65,15 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
   const engine=createTraceMotionEngine(race,reference,calculation,trace);registerReplayMotion(calculation,engine);
   for(const runner of race.runners){
     await checkpoint();const detail=calculation.runners[runner.id];
-    populateStatusImpacts(race,runner.id,detail.intervals,course,reference,detail.skillRows,calculation);
-    detail.statusImpacts=statusImpactTotals(detail.intervals);
+    if(!summaryOnly){
+      populateStatusImpacts(race,runner.id,detail.intervals,course,reference,detail.skillRows,calculation);
+      detail.statusImpacts=statusImpactTotals(detail.intervals);
+    }
     detail.hillImpacts=hillImpactsFor(race,runner,course,detail,calculation);detail.hillTotals=hillTotals(detail.hillImpacts);
   }
-  await checkpoint();populateSkillImpacts(race,reference,course,calculation);
+  // Summary batches still calculate motion, effectiveness and carryover. The
+  // detailed per-activation explanations/HP cards are built only when opened.
+  if(!summaryOnly){await checkpoint();populateSkillImpacts(race,reference,course,calculation);}
   for(const runner of race.runners){
     await checkpoint();const detail=calculation.runners[runner.id],ready=value.runners[runner.id],display=analysis.runners[runner.id];
     const motion=engine.build({runnerId:runner.id}).runners[runner.id];
@@ -85,7 +89,7 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
     const impacts:typeof ready.impacts={},metrics:typeof ready.metrics={};
     for(const row of detail.skillRows){
       await checkpoint();impacts[row.skillId]=motionSkillImpact(race,reference,calculation,runner.id,row.skillId);
-      for(const activation of row.activations){
+      if(!summaryOnly)for(const activation of row.activations){
         const impact=activationImpact(race,reference,calculation,runner.id,activation),summary=detail.skillImpacts.find(i=>i.skillId===row.skillId&&i.start===activation.start);
         if(impact&&summary){
           summary.modeledDistanceDelta=impact.distance?.mid??null;summary.modeledTimeDelta=impact.time?.mid??null;
@@ -103,8 +107,10 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
             timeDeltaMin:impact.carryoverTime?.min??null,timeDeltaMax:impact.carryoverTime?.max??null,detail:impact.detail};
         }
       }
-      const actual=(ready.metrics[row.skillId]??[]).filter(m=>m.label!=='Movement / finish-time gain');
-      metrics[row.skillId]=mergeSkillMetrics(actual,metricsForSkill(race,reference,calculation,runner.id,row.skillId));
+      if(!summaryOnly){
+        const actual=(ready.metrics[row.skillId]??[]).filter(m=>m.label!=='Movement / finish-time gain');
+        metrics[row.skillId]=mergeSkillMetrics(actual,metricsForSkill(race,reference,calculation,runner.id,row.skillId));
+      }
     }
     for(const incoming of detail.receivedDebuffImpacts){
       const a=calculation.runners[incoming.sourceRunnerId].skillActivations.find(a=>a.skillId===incoming.skillId&&a.start===incoming.start);

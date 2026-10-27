@@ -42,6 +42,12 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+test('raw-stat course comparisons preserve hills, HP thresholds and uncertainty',async()=>{
+  await run(process.execPath,['--import','tsx','tests/raw-stat-comparison-workflow.ts'],{cwd:root,timeout:30000});
+});
+test('custom simulator separates builds and race inputs and aggregates wit reliability',async()=>{
+  await run(process.execPath,['--import','tsx','tests/sandbox-workflow.ts'],{cwd:root,timeout:30000});
+});
 test('rapid deletion cancels pending analysis and race clocks display in local time',async()=>{
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/library-lifecycle-workflow.ts')],{cwd:root,windowsHide:true,timeout:15000});
   assert.match(result.stdout,/Library lifecycle:.*passed/);
@@ -730,6 +736,11 @@ test('matched simulator decisions remain distinct from observations and discrete
 test('fixed replay calculations feed the dashboard without a simulator rerun',async()=>{
   const result=await run(process.execPath,['--import','tsx',join(root,'tests/replay-math-workflow.ts')],{cwd:root,windowsHide:true,timeout:60000});
   assert.match(result.stdout,/Fixed replay math.*passed/);
+});
+
+test('live catalogs and workspace routes preserve complete searches and engine snapshots',async()=>{
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/catalog-navigation-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
+  assert.match(result.stdout,/navigation routes passed/);
 });
 
 test('career captures retain safe metadata, reference facts and prerequisite SP costs',async()=>{

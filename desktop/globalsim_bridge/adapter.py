@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
@@ -177,6 +177,19 @@ class ReferenceData:
     @property
     def fingerprint(self) -> str:
         return _hash(canonical(self.identity))
+
+    def with_skill_catalog(self, catalog: dict | None) -> "ReferenceData":
+        if catalog is None:
+            return self
+        from .skill_catalog import Compiler, CONTRACT
+        if catalog.get('contract') != CONTRACT or catalog.get('baseData') != self.fingerprint:
+            raise ReferenceDataError('Skill catalog does not match this engine data')
+        additions, presentation, rejected = Compiler(self.skill_data).additions(catalog['rows'], self.skill_data)
+        if rejected or additions != catalog['definitions'] or presentation != catalog['presentation']:
+            raise ReferenceDataError('Saved skill catalog failed validation')
+        sources = {**self.source_files, 'integration/automatic-skills': {'sha256': _hash(canonical(catalog)),
+            'source': catalog['source'], 'contract': CONTRACT, 'skillIds': sorted(additions)}}
+        return replace(self, skill_data={**additions, **self.skill_data}, source_files=sources)
 
 
 def _integer(value: Any, field: str, low: int, high: int) -> int:

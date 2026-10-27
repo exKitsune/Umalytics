@@ -31,7 +31,7 @@ function buildTotals(race:Race,reference:ReferenceData|null,analysis:RaceAnalysi
   const detail=analysis.runners[runnerId];
   const skills:SkillTotalRow[]=[];
   for(const row of detail?.skillRows??[]){
-    if(!row.effectiveActive){skills.push({skillId:row.skillId,motion:null,score:0,coverage:1,active:0,assessed:0});continue;}
+    if(!row.effectiveActive){skills.push({skillId:row.skillId,motion:null,score:race.sandbox&&row.activationStatus!=='conditions-unmet'?null:0,coverage:1,active:0,assessed:0});continue;}
     const motion=motionSkillImpact(race,reference,analysis,runnerId,row.skillId,courseId);
     if(motion)skills.push({skillId:row.skillId,motion,...movementUse(motion.effects)});
   }

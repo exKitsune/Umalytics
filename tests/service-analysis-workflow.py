@@ -18,6 +18,7 @@ Store = fixture.Store
 from background_analysis import BackgroundAnalysis
 from analysis_cache import AnalysisCache
 from simulation_service import StaleAnalysis
+from analysis_events import AnalysisEvents
 
 
 def until(predicate, message):
@@ -41,6 +42,7 @@ with tempfile.TemporaryDirectory(prefix='service-analysis-') as temporary:
     (root / 'simulation/installed-bundles.json').write_text(json.dumps({'schemaVersion': 1, 'bundles': [bundle]}))
     (root / 'simulation/engine-registry.json').write_text(json.dumps({'schemaVersion': 1, 'registryId': 'synthetic-headless', 'eras': [], 'engines': [], 'futureInferencePolicies': [], 'allowReplayInference': True}))
     store = Store(root)
+    store.events = AnalysisEvents()
     capture = json.loads((ROOT / 'tests/fixtures/race.json').read_text())
     def add(name, day):
         (store.inbox / (name + '.json')).write_text(json.dumps({**capture, 'racedAt': f'2026-01-{day:02d}T00:00:00Z'}))
@@ -48,24 +50,38 @@ with tempfile.TemporaryDirectory(prefix='service-analysis-') as temporary:
     add('new', 3); add('old', 1); add('middle', 2)
     cache = AnalysisCache(store.data_dir)
     cache.update({'action': 'policy', 'policy': {'mode': 'unlimited', 'value': 1000, 'background': True}})
-    starts = []
+    starts, worker_pids = [], []
     original = BackgroundAnalysis.run
     def counted(self, job):
         starts.append(job['raceId'])
-        return original(self, job)
+        result = original(self, job)
+        worker_pids.append(self.node_pool.session.process.pid)
+        return result
     BackgroundAnalysis.run = counted
     service = BackgroundAnalysis(store, root)
     try:
         assert service.available
         until(lambda: len(service.checked) == 3, 'Headless backlog did not finish: ' + str(service.status()))
         assert starts == ['new~0', 'middle~0', 'old~0'], starts
+        assert len(set(worker_pids)) == 1, 'The calculation worker was restarted between races.'
+        # An idle worker can exit unexpectedly; the next job remains self-contained.
+        child = service.node_pool.session.process
+        child.kill()
+        child.wait(timeout=5)
         add('newest', 4)
         until(lambda: len(service.checked) == 4, 'New capture was not discovered without a window.')
         assert starts[-1] == 'newest~0'
+        assert worker_pids[-1] != worker_pids[0]
         body = {'revision': bundle['uiRevision']}
         saved = service.request('newest~0', body)
         assert saved['phase'] == 'complete' and saved['hasAnalysis']
         assert saved['report']['mode'] == 'inference_plan'
+        assert store.events.wait(0, 0)['analysis'] >= 4
+        reference = service.reference(saved['referenceKey'])
+        assert json.loads(gzip.decompress(reference)) == json.loads((root / bundle['data']).read_text())
+        with service.cache.connect() as db:
+            packed = db.execute('SELECT payload FROM prepared WHERE key=?', (saved['key'],)).fetchone()[0]
+        assert 'referenceData' not in json.loads(gzip.decompress(packed)), 'Shared references must not be copied into every race.'
         value = json.loads(gzip.decompress(service.payload('newest~0', saved['key'])))['value']
         assert len(value['race']['runners']) == 2 and value['runners']
         assert value['authorization']['plan']['engine']['engineId'] == bundle['engine_id']

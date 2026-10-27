@@ -1,0 +1,40 @@
+<script lang="ts">
+  import type {aggregate,lobbyMetrics} from '../sandbox/results';
+  import {metricDisplay,metricComparison} from '../sandbox/metric-display';
+  import {startQuality} from '../data/start-quality';
+  import SimSymbol from './SimSymbol.svelte';
+  export let runner:ReturnType<typeof aggregate>[number];
+  export let lobby:ReturnType<typeof lobbyMetrics>={};
+  export let onCompare:(()=>void)|undefined=undefined;
+  let showLobby=true;
+  $: groups=['Race position','Start & stamina','Course & traffic','Race modes'].map(name=>({name,rows:runner.metrics.map(m=>({...m,...metricDisplay(m.key),comparison:metricComparison(m.key,m.median,lobby[m.key]?.mean)})).filter(m=>m.group===name).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label))})).filter(g=>g.rows.length);
+  type Metric=typeof runner.metrics[number];
+  const point=(v:number|null,m:Metric)=>{const field=showLobby?lobby[m.key]:null,values=[m.mean,m.median,m.p10,m.p90,field?.mean??null,field?.median??null,field?.p10??null,field?.p90??null].filter((n):n is number=>n!==null),lo=Math.min(...values),hi=Math.max(...values);return v===null||hi===lo?50:4+92*(v-lo)/(hi-lo);};
+  const valueColor=(key:string,value:number|null)=>key==='Start delay · s'?startQuality(value)?.color:undefined;
+  const fmt=(v:number|null,d:number)=>v===null?'—':(Math.abs(v)<.5*10**-d?0:v).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+</script>
+<section class="statistics" aria-label={`${runner.name} averaged race statistics`}>
+  <header><div><span class="eyebrow">AVERAGED RACE STATISTICS</span><h3>{runner.name}</h3></div><div class="header-controls">{#if onCompare}<button onclick={onCompare}>Compare raw stats</button>{/if}<label title="All runner-race observations in this batch, including this runner"><input type="checkbox" bind:checked={showLobby}/>Lobby markers <b class="lobby-mean"></b>Average <i class="lobby-median"></i>Median</label><span>{runner.n} races</span></div></header>
+  {#each groups as group}<div class="stat-group"><h4>{group.name}</h4><div class="stat-scroll"><table aria-label={`${runner.name} ${group.name}`}><thead><tr><th>Statistic</th><th>Average</th><th>Median</th><th>10–90% range<span class="range-key"><i></i>Median <b></b>Average</span></th><th>Samples</th></tr></thead><tbody>{#each group.rows as m}<tr style={`--metric:${valueColor(m.key,m.mean)??m.color}`}>
+    <th scope="row" title={m.description}><span class="metric-name"><SimSymbol name={m.icon} size={19}/><span>{m.label}{#if m.occurred!==null}<small class="occurrence" title="Races in which this status occurred, including those with zero or unavailable gain">{m.occurred} / {m.occurrenceSamples} races</small>{/if}</span></span></th>
+    <td class="mean">{fmt(m.mean,m.decimals)}<small>{m.unit}</small>{#if m.key==='Rushed · s'&&m.whenActive.mean!==null}<span class="active-duration">{fmt(m.whenActive.mean,2)} s when rushed</span>{/if}</td>
+    <td style:color={valueColor(m.key,m.median)}>{fmt(m.median,m.decimals)}<small>{m.unit}</small></td>
+    <td class="spread">{#if m.p10!==null&&m.p90!==null}
+      <div class="range-rows">{#each [{label:'Uma',data:m,lobby:false},...(showLobby&&lobby[m.key]?.n?[{label:'Lobby',data:lobby[m.key],lobby:true}]:[])] as row}
+        <div class="range-row" class:lobby-row={row.lobby} style={`--comparison:${m.comparison.color}`} title={`${row.label} · 10–90% range · Average ${fmt(row.data.mean,m.decimals)} ${m.unit} · Median ${fmt(row.data.median,m.decimals)} ${m.unit}${row.lobby?'':` · ${m.comparison.description}`} `}>
+          <small class="range-owner">{row.label}</small><span class="range-end" style:color={valueColor(m.key,row.data.p10)}>{fmt(row.data.p10,m.decimals)}</span>
+          <div class="range"><span style:left={`${point(row.data.p10,m)}%`} style:width={`${Math.max(.6,point(row.data.p90,m)-point(row.data.p10,m))}%`}></span><i style:left={`${point(row.data.median,m)}%`}></i><b style:left={`${point(row.data.mean,m)}%`}></b></div>
+          <span class="range-end" style:color={valueColor(m.key,row.data.p90)}>{fmt(row.data.p90,m.decimals)}<small>{m.unit}</small></span>
+        </div>
+      {/each}</div>{:else}—{/if}</td>
+    <td class="samples">{m.n}<small>/ {runner.n}</small></td>
+  </tr>{/each}</tbody></table></div></div>{/each}
+  {#if !groups.length}<p>No detailed measurements are available for these races.</p>{/if}
+</section>
+<style>
+  .range-row:not(.lobby-row) .range>span{background:var(--comparison);opacity:.9}.range-row:not(.lobby-row) .range b{background:var(--comparison)}
+  .header-controls{display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)}.header-controls label{display:flex;align-items:center;gap:6px;font-size:11px}.header-controls button{font-size:12px}.lobby-mean{display:inline-block;width:7px;height:7px;background:#ffd580;transform:rotate(45deg)}.lobby-median{display:inline-block;width:2px;height:12px;background:#f4aaf2}.range-rows{display:grid;gap:9px}.range-row{display:grid;grid-template-columns:32px minmax(45px,auto) minmax(70px,1fr) minmax(52px,auto);gap:9px;align-items:center}.range-row .range{margin:0;height:16px}.range-owner{font-size:10px!important;text-align:left;color:var(--muted)}.range-end{font-size:13px;font-weight:550;color:var(--text)}.range-end:last-child{text-align:left}.lobby-row .range>span{background:#e5bc6c;opacity:.85}.lobby-row .range b{background:#ffd580;border-radius:1px;transform:translateX(-50%) rotate(45deg)}.lobby-row .range i{background:#f4aaf2;width:2px}.lobby-row .range-owner{color:#e5bc6c}
+  .occurrence{display:table;margin-top:6px;padding:4px 7px;border-radius:5px;background:color-mix(in srgb,var(--metric) 10%,var(--bg));color:var(--text);font-size:12px;font-weight:600;white-space:nowrap}.active-duration{display:block;margin-top:4px;color:var(--muted);font-size:10px;font-weight:400;white-space:nowrap}
+  .stat-group tbody th{text-transform:none;letter-spacing:normal;color:var(--text);background:transparent;font-size:12px}.stat-group td small{display:inline}.range>span{position:absolute;top:5px;height:3px;background:var(--metric);opacity:.7;border-radius:2px}
+  .statistics{display:grid;gap:20px}header{display:flex;align-items:center;justify-content:space-between;gap:12px}header .eyebrow{font-size:10px;letter-spacing:.1em;color:#8dbde7}h3{margin:6px 0 0;font-size:21px}.stat-group{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg)}h4{margin:0;padding:13px 18px;background:var(--panel-raised);font-size:12px;letter-spacing:.03em}.stat-scroll{overflow:auto}table{border-collapse:collapse;width:100%;min-width:850px;table-layout:fixed;font-size:12px;font-variant-numeric:tabular-nums}th,td{padding:13px 18px;text-align:right;border-bottom:1px solid var(--border)}thead th{font-size:10px;font-weight:500;color:var(--muted);padding-top:10px;padding-bottom:10px}th:first-child{width:26%;text-align:left}th:nth-child(4){width:40%}th:last-child{width:10%}tbody th{font-weight:500}tbody tr:last-child>*{border-bottom:0}tbody tr:hover{background:color-mix(in srgb,var(--metric) 5%,transparent)}.metric-name{display:flex;align-items:center;gap:10px}.metric-name :global(svg){color:var(--metric);flex-shrink:0}td.mean{color:var(--metric);font-size:17px;font-weight:600}td small{font-size:10px;color:var(--muted);margin-left:5px;font-weight:400}.range{position:relative;height:14px;margin-top:4px;background:linear-gradient(var(--border),var(--border)) center/100% 1px no-repeat}.range i{position:absolute;height:11px;top:1px;width:1px;background:var(--text)}.range b{position:absolute;top:3px;width:7px;height:7px;border-radius:50%;background:var(--metric);transform:translateX(-50%);box-shadow:0 0 0 2px var(--bg)}.samples{color:var(--text);font-size:15px;font-weight:600}.samples small{font-size:12px}.range-key{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-top:5px;font-size:10px}.range-key i{height:10px;width:1px;background:var(--text)}.range-key b{width:6px;height:6px;background:#95b6e2;border-radius:50%;margin-left:6px}p{font-size:13px;color:var(--muted)}
+</style>

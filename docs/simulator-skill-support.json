@@ -1,0 +1,255 @@
+{
+  "reviewedAt": "2026-10-26",
+  "engine": {
+    "engine_id": "globalsim-v74-win-616561097e7be0e0-skills-ae8cfc93aad333ec",
+    "version": "efc2decd-v74",
+    "profile": "v74",
+    "artifact_sha256": "616561097e7be0e054c21df046f19ae67537ea6b0f04dbcd3500dfd93c86442f",
+    "data_sha256": "fb523603548884295433c3f696bf5cca29414a0af34d7d26b9018f4cf90e9245"
+  },
+  "engineDefinitions": 1755,
+  "runnableDefinitions": 1755,
+  "catalogDefinitions": 2220,
+  "globalCatalogDefinitions": 741,
+  "missingGlobal": [],
+  "unavailableContext": [],
+  "missingIncludingUnreleased": 465,
+  "oldExportCatalogSource": "TheCing/uma-tools umalator-global; not active GlobalSim",
+  "blatantFear": {
+    "id": 300051,
+    "supported": true,
+    "reason": "Present in the active v74 profile. The old picker checked an unrelated Moomoolator export inventory.",
+    "verifiedRun": "14803747-39c6-4c3c-b91e-8dd926e1e8b3"
+  },
+  "note": "Run eligibility uses the same pinned definitions and context checks as sandbox_inputs.prepare. Definition presence does not prove every possible condition is correct.",
+  "resolvedContext": [
+    {
+      "id": 202251,
+      "name": "Collaborative Graded Races ◎",
+      "inherited": false,
+      "reason": "Custom races supply isDirtGrade from the course venue (Ooi, Kawasaki, Funabashi or Morioka)."
+    },
+    {
+      "id": 202252,
+      "name": "Collaborative Graded Races ○",
+      "inherited": false,
+      "reason": "Custom races supply isDirtGrade from the course venue (Ooi, Kawasaki, Funabashi or Morioka)."
+    },
+    {
+      "id": 202253,
+      "name": "Collaborative Graded Races ×",
+      "inherited": false,
+      "reason": "Custom races supply isDirtGrade from the course venue (Ooi, Kawasaki, Funabashi or Morioka)."
+    }
+  ],
+  "missingGlobalMeaning": "No released Global definitions missing in the reviewed catalog. Unsupported future mechanics remain explicit rejections.",
+  "baseEngineDefinitions": 732,
+  "importedGlobal": [
+    {
+      "id": 110671,
+      "name": "Rain Cloud Bolt",
+      "inherited": false
+    },
+    {
+      "id": 910671,
+      "name": "Rain Cloud Bolt",
+      "inherited": true
+    },
+    {
+      "id": 110681,
+      "name": "Bring on the Banquet!",
+      "inherited": false
+    },
+    {
+      "id": 910681,
+      "name": "Bring on the Banquet!",
+      "inherited": true
+    },
+    {
+      "id": 900991,
+      "name": "Shine On, Tomakomai! ☆",
+      "inherited": true
+    },
+    {
+      "id": 100471,
+      "name": "Raise My Soul's Blade!",
+      "inherited": false
+    },
+    {
+      "id": 110161,
+      "name": "Free from the Ashes",
+      "inherited": false
+    },
+    {
+      "id": 900471,
+      "name": "Raise My Soul's Blade!",
+      "inherited": true
+    },
+    {
+      "id": 910161,
+      "name": "Free from the Ashes",
+      "inherited": true
+    }
+  ],
+  "automaticImports": {
+    "contract": "v74-skill-import-1",
+    "accepted": 1023,
+    "rejected": 465,
+    "refresh": "Daily GameTora manifest check; retry after 1 hour on failure",
+    "pinning": "Each new job selects an immutable data overlay; existing jobs keep their original engine/data identities",
+    "validation": "All nine Global definitions and all twelve activation branches exercised by the installed engine; all accepted catalog definitions loaded in engine smoke runs"
+  },
+  "validationCases": [
+    {
+      "skillId": "110681",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 0,
+        "skillId": 110681,
+        "t": 88.77722930908203
+      }
+    },
+    {
+      "skillId": "910681",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 0,
+        "skillId": 910681,
+        "t": 88.77722930908203
+      }
+    },
+    {
+      "skillId": "110161",
+      "detail": 1,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 1,
+        "horseIndex": 0,
+        "skillId": 110161,
+        "t": 104.56071472167969
+      }
+    },
+    {
+      "skillId": "910161",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 0,
+        "skillId": 910161,
+        "t": 104.56071472167969
+      }
+    },
+    {
+      "skillId": "100471",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 0,
+        "skillId": 100471,
+        "t": 105.75946044921875
+      }
+    },
+    {
+      "skillId": "900471",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 0,
+        "skillId": 900471,
+        "t": 105.75946044921875
+      }
+    },
+    {
+      "skillId": "110671",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 1,
+        "skillId": 110671,
+        "t": 65.26849365234375
+      }
+    },
+    {
+      "skillId": "910671",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 1,
+        "skillId": 910671,
+        "t": 65.26849365234375
+      }
+    },
+    {
+      "skillId": "110161",
+      "detail": 0,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 1,
+        "skillId": 110161,
+        "t": 105.42647552490234
+      }
+    },
+    {
+      "skillId": "100471",
+      "detail": 1,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 1,
+        "horseIndex": 4,
+        "skillId": 100471,
+        "t": 105.9592514038086
+      }
+    },
+    {
+      "skillId": "900471",
+      "detail": 1,
+      "course": 10506,
+      "seed": 1,
+      "event": {
+        "detailIndex": 1,
+        "horseIndex": 5,
+        "skillId": 900471,
+        "t": 106.55862426757812
+      }
+    },
+    {
+      "skillId": "900991",
+      "detail": 0,
+      "course": 10613,
+      "seed": 1,
+      "event": {
+        "detailIndex": 0,
+        "horseIndex": 1,
+        "skillId": 900991,
+        "t": 83.5826644897461
+      }
+    }
+  ],
+  "baseEngine": {
+    "engine_id": "globalsim-v74-win-616561097e7be0e0",
+    "version": "efc2decd-v74",
+    "profile": "v74",
+    "artifact_sha256": "616561097e7be0e054c21df046f19ae67537ea6b0f04dbcd3500dfd93c86442f",
+    "data_sha256": "211767f268c81842e5fef3254d91224d99f028769c9906a2007406cfc618ac7c"
+  }
+}

@@ -6,7 +6,7 @@ const MAX_VISITS = 50_000;
 const MAX_ARRAY = 2_000;
 const MAX_HORSES = 64;
 const categoryRaceType: Partial<Record<RaceCategory, string>> = {
-  career: 'Single', 'team-trials': 'TeamStadium', practice: 'RoomMatch', 'champions-meeting': 'Champions',
+  career: 'Single', 'team-trials': 'TeamStadium', practice: 'RoomMatch', 'champions-meeting': 'Champions', 'league-of-heroes': 'LeagueOfHeroes',
 };
 const ENVELOPE = new Set([
   'auth', 'auth_data', 'auth_key', 'authentication', 'headers', 'request', 'requests',

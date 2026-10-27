@@ -1,9 +1,13 @@
 import reference from './career-reference.json';
-import fallback from './career-fallback.json';
+import {catalog as fallback} from './catalog';
 import type {RunnerSkill} from './types';
 interface Price {cost:number|null;group:number;order:number;rarity:number}
 const prices=reference.skills as Record<string,Price>;
 const extra=fallback.prices as Record<string,{cost:number|null;steps:number[]|null}>;
+const groups=new Map<number,[string,Price][]>();
+for(const entry of Object.entries(prices)){
+  const group=groups.get(entry[1].group)??[];group.push(entry);groups.set(entry[1].group,group);
+}
 const stepCost=(id:number)=>prices[id]?.cost??extra[id]?.cost??null;
 /** Undiscounted acquisition cost. Prerequisites shared by equipped upgrades count once. */
 export function skillCost(id:number):{cost:number|null;steps:number[];free:boolean}{
@@ -14,7 +18,7 @@ export function skillCost(id:number):{cost:number|null;steps:number[];free:boole
   }
   if(row.cost===null)return {cost:[3,4,5].includes(row.rarity)?0:null,steps:[],free:[3,4,5].includes(row.rarity)};
   if(row.order<=0)return {cost:0,steps:[],free:true}; // negative traits are removed, not purchased
-  const prerequisites=Object.entries(prices).filter(([,p])=>p.group===row.group&&p.order>0&&p.order<row.order&&p.cost!==null);
+  const prerequisites=(groups.get(row.group)??[]).filter(([,p])=>p.order>0&&p.order<row.order&&p.cost!==null);
   const byOrder=new Map<number,[string,Price][]>();
   for(const [key,p] of prerequisites)byOrder.set(p.order,[...(byOrder.get(p.order)??[]),[key,p]]);
   if([...byOrder.values()].some(rows=>rows.length!==1))return {cost:null,steps:[],free:false};

@@ -330,6 +330,8 @@ def evaluate_for_analysis(capture: dict, registry: dict,
                         raise ValueError('Registered simulator artifact differs')
                     references = adapter.ReferenceData.load(simulator.config.umalytics_root,
                                                              simulator.config.globalsim_root)
+                    if simulator.config.skill_catalog:
+                        references = references.with_skill_catalog(simulator.config.skill_catalog)
                     if _sha(_canonical(references.identity)) != simulator.data_sha256:
                         raise ValueError('Registered simulator data differs')
                     diagnostic = runtime.evaluate_capture(frozen_capture, simulator.config, context=frozen_context)

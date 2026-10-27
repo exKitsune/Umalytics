@@ -10,6 +10,9 @@ import { analyzeRace } from '../src/data/analytics';
 import { motionFor } from '../src/data/motion-analysis';
 import { effectValue } from '../src/data/effect-value';
 import { assembleReferenceData, skillName } from '../src/data/reference';
+import {skillSearch} from '../src/sandbox/search';
+import {isOutfitReleased} from '../src/sandbox/outfit-release';
+import careerFallback from '../src/data/career-fallback.json';
 
 const root=resolve(import.meta.dirname,'..'),folder=resolve(process.argv[2]),run=promisify(execFile);
 await mkdir(folder,{recursive:true});
@@ -29,9 +32,10 @@ await writeFile(join(fixture,'skills.json'),JSON.stringify([
   row(860003,{condition_groups:[group(1500,{time_scale:99,effects:[{type:999,value:1234,value_scale:99,target:20,target_details:3,additional_activation:3}]})]}),
   row(860004,{name_en:' ',enname:'',desc_en:null,endesc:'\t',jpname:'日本語の名前',jpdesc:'日本語の説明',loc:{en:{}}}),
   row(860005,{name_en:undefined,enname:undefined,jpname:'別のスキル',jpdesc:'別の説明'}),
+  row(860006,{loc:{en:{}},unreleased:['en'],gene_version:row(960006)}),
 ]));
 await writeFile(join(fixture,'characters.json'),JSON.stringify([{char_id:1001,name_en:'Must not replace Global'},{char_id:9991,name_en:'Fallback runner'},{char_id:9992,name_en:' ',name_ja:'日本語キャラクター'}]));
-await writeFile(join(fixture,'character-cards.json'),JSON.stringify([{card_id:100101,title:'Must not replace Global',url_name:'100101-test'},{card_id:999101,title:'Fallback outfit',url_name:'999101-test'},{card_id:999201,title_en_gl:'',title:' ',title_jp:'日本語の衣装',url_name:'999201-test'}]));
+await writeFile(join(fixture,'character-cards.json'),JSON.stringify([{card_id:100101,title:'Must not replace Global',url_name:'100101-test',release_en:'2025-06-26'},{card_id:999101,title:'Fallback outfit',url_name:'999101-test',release_en:'2099-01-01'},{card_id:999201,title_en_gl:'',title:' ',title_jp:'日本語の衣装',url_name:'999201-test',release:'2021-02-24'}]));
 await writeFile(join(fixture,'support-cards.json'),JSON.stringify([{support_id:99999,char_id:9992,rarity:3,type:'intelligence',title_en:' ',title_ja:'日本語の称号',name_jp:'日本語キャラクター',url_name:'99999-test'}]));
 const generated=join(folder,'metadata.json');await writeFile(generated,JSON.stringify(global));
 const career=join(folder,'career.json');
@@ -52,8 +56,20 @@ assert.deepEqual(fallbackRef.metadata.skills[860004].branches,global.skills[1101
 assert.equal(fallbackRef.metadata.skills[860004].dataRegion,undefined,'Text fallback does not turn a Global definition into a JP definition');
 assert.equal(skillName(fallbackRef,860005),'別のスキル');assert.equal(fallbackRef.metadata.skills[860005].description,'別の説明');
 assert.equal(JSON.parse(await readFile(career,'utf8')).supports[99999].name,'日本語の称号 日本語キャラクター');
+assert.deepEqual(JSON.parse(await readFile(career,'utf8')).outfitGlobalReleases,{'100101':'2025-06-26','999101':'2099-01-01','999201':null});
+assert.equal(isOutfitReleased(100101,'2025-06-25T23:59:59.999Z'),false,'Scheduled Global outfits stay hidden before their release date.');
+assert.equal(isOutfitReleased(100101,'2025-06-26T00:00:00Z'),true,'The release boundary uses UTC consistently.');
+const unreleasedOutfit=Object.entries(careerFallback.outfitGlobalReleases).find(([,date])=>date===null);
+assert.ok(unreleasedOutfit,'Catalog retains JP-only outfits.');
+assert.equal(isOutfitReleased(Number(unreleasedOutfit[0]),'2099-01-01'),false,'Missing Global release dates do not inherit the JP date.');
+assert.equal(isOutfitReleased(99999999,'2099-01-01'),false,'Unknown outfits are not assumed released.');
+assert.equal(isOutfitReleased(100101,new Date(NaN)),false);
 assert.equal(fallbackRef.metadata.skills[860001].dataRegion,'JP');
 assert.equal(fallbackRef.metadata.skills[860002].dataRegion,'Global');assert.equal(fallbackRef.metadata.skills[860002].branches[0].effects[0].rawValue,3500);
+assert.equal(fallbackRef.metadata.skills[860006].unreleasedGlobal,true);
+assert.equal(fallbackRef.metadata.skills[960006].unreleasedGlobal,true,'Inherited skills follow the same availability');
+assert(!skillSearch(fallbackRef,'860006').some(s=>s.id===860006));
+assert(skillSearch(fallbackRef,'860006',[],true).some(s=>s.id===860006));
 assert.equal(fallbackRef.metadata.skills[940991].branches[0].effects[0].rawValue,500,'Inherited regional patch must remain separate.');
 const unsupported=fallbackRef.metadata.skills[860003].branches[0];assert.equal(unsupported.durationUsage,99);assert.equal(unsupported.effects[0].valueUsage,99);assert.equal(unsupported.effects[0].targetType,20);
 

@@ -25,7 +25,8 @@ assert.equal(report.valueUsages.find((e:any)=>e.code===12).calculation.implement
 assert.equal(report.valueUsages.find((e:any)=>e.code===13).calculation.implementation,'implemented-captured-input');assert.equal(report.valueUsages.find((e:any)=>e.code===14).calculation.implementation,'implemented-contextual-input');
 for(const code of [2,3])assert.equal(report.durationUsages.find((e:any)=>e.code===code).calculation.implementation,'implemented-conditional-fallback');assert.equal(report.durationUsages.find((e:any)=>e.code===4).calculation.implementation,'implemented-sampled-history');
 assert.deepEqual(Object.values(report.unknownCodes),[[],[],[],[],[]]);
-assert.equal(report.fallbackCoverage.fallbackSkills,1463);assert.equal(report.fallbackCoverage.effectiveSkills,2197);
+assert.equal(report.fallbackCoverage.fallbackSkills,Object.keys(metadata.fallback.skills).filter(id=>!metadata.skills[id]).length);
+assert.equal(report.fallbackCoverage.effectiveSkills,new Set([...Object.keys(metadata.skills),...Object.keys(metadata.fallback.skills)]).size);
 assert.deepEqual(report.fallbackCoverage.effectTypes.filter((row:any)=>!row.known).map((row:any)=>row.code),[32,38,41,42,48,49,50]);
 assert.ok(report.fallbackCoverage.valueUsages.some((row:any)=>!row.known&&row.code===40));
 for(const [id,skill] of Object.entries(metadata.skills) as [string,any][])for(const [index,branch] of skill.branches.entries()){const row=report.branches.find((b:any)=>b.skillId===Number(id)&&b.branchIndex===(branch.branchIndex??index));assert.ok(row);assert.equal(row.effects.length,branch.effects.length);for(const [i,effect] of branch.effects.entries())assert.equal(row.effects[i].rawValue,effect.rawValue);}

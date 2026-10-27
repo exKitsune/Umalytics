@@ -3,10 +3,8 @@ from collections import OrderedDict
 import hashlib
 import hmac
 import json
-import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import tempfile
 import threading
@@ -28,10 +26,13 @@ class BackgroundAnalysis:
         self.failures = {}
         self.active = None
         self.last_error = None
-        self.process = None
         self.checked = {}
         self.last_scan = 0
         self.entries = []
+        self.references = {}
+        from globalsim_bridge.worker_pool import WorkerPool
+        self.node_pool = WorkerPool()
+        self.node_identity = None
         self.build = self.root / 'simulation/analysis/build.json'
         self.worker = self.root / 'simulation/analysis/worker.mjs'
         self.node = str(self.root / 'analysis-runtime/node.exe') if getattr(sys, 'frozen', False) else shutil.which('node')
@@ -40,6 +41,40 @@ class BackgroundAnalysis:
         if self.available:
             self.thread = threading.Thread(target=self.loop, name='saved-race-analysis', daemon=True)
             self.thread.start()
+
+    def _reference_file(self, key):
+        """Only an installed, content-verified file may reach the local worker."""
+        _, manifest = self.service.simulation.config()
+        bundle = next((r for r in manifest['bundles'] if r['kind'] == 'inference' and r['data_sha256'] == key), None)
+        path = self.service.simulation.path(bundle['data']) if bundle else self.service.simulation.skill_catalog.path(key, True)
+        if not path.is_file():
+            raise StaleAnalysis('Reference bundle is no longer installed.')
+        stat = path.stat()
+        stamp = (str(path), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+        cached = self.references.get(key)
+        if cached is None or cached[0] != stamp:
+            raw = path.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != key:
+                raise StaleAnalysis('Reference bundle changed.')
+            cached = [stamp, raw, None]
+            self.references[key] = cached
+            while len(self.references) > 3:
+                self.references.pop(next(iter(self.references)))
+        return path, cached
+
+    def reference_path(self, key):
+        return self._reference_file(key)[0]
+
+    def reference(self, key):
+        _, cached = self._reference_file(key)
+        if cached[2] is None:
+            import gzip
+            cached[2] = gzip.compress(cached[1], compresslevel=1)
+        return cached[2]
+
+    def library_changed(self):
+        self.last_scan = 0
+        self.wake.set()
 
     def signature(self, snap=None):
         """Stat signatures invalidate memoized identities; content hashes bind persisted output."""
@@ -58,6 +93,8 @@ class BackgroundAnalysis:
             if row['engine_id'] not in allowed:
                 continue
             paths.append(self.service.simulation.path(row['artifact']))
+            if row.get('skillCatalog'):
+                paths.append(self.service.simulation.skill_catalog.path(row['skillCatalog']))
             if row['kind'] == 'inference':
                 paths.append(self.service.simulation.path(row['data']))
             else:
@@ -96,7 +133,12 @@ class BackgroundAnalysis:
         auth = self.service.simulation.cache_auth_key()
         if not auth or not hmac.compare_digest(signature, hmac.digest(auth, key.encode() + summary.encode() + packed, 'sha256')):
             return None
-        return (json.loads(summary), packed if payload else None)
+        decoded = json.loads(summary)
+        with self.lock:
+            self.volatile[key] = (decoded, packed)
+            while len(self.volatile) > 2:
+                self.volatile.popitem(last=False)
+        return decoded, packed if payload else None
 
     def save(self, key, summary, packed, race_id, date, revision):
         text = json.dumps(summary, separators=(',', ':'), allow_nan=False)
@@ -168,6 +210,11 @@ class BackgroundAnalysis:
                     break
                 offset = page['nextOffset']
             self.entries = sorted(entries, key=lambda e: (e.get('racedAt') or e['receivedAt'], e['id']), reverse=True)
+            library_stamp = tuple((e['id'], e['sha256']) for e in self.entries)
+            if getattr(self, '_library_stamp', None) != library_stamp:
+                self._library_stamp = library_stamp
+                if hasattr(self.service, 'events'):
+                    self.service.events.publish('library')
             self.last_scan = time.monotonic()
         entries = self.entries[:policy['value']] if policy['mode'] == 'races' else self.entries
         signature = self.signature()
@@ -250,31 +297,37 @@ class BackgroundAnalysis:
             else:
                 bundle = next(r for r in reversed(manifest['bundles']) if r['kind'] == 'inference')
             if summary['hasAnalysis']:
-                data = read_json(simulation.path(bundle['data']))
+                summary['referenceKey'] = bundle['data_sha256']
+                reference_path = self.reference_path(summary['referenceKey'])
+                if report['mode'] == 'verified_simulation':
+                    sim_id = report['binding']['simulation']['engineId']
+                    sim_bundle = next(r for r in manifest['bundles'] if r['engine_id'] == sim_id)
+                    overlay = simulation.skill_catalog.read(sim_bundle['skillCatalog']) if sim_bundle.get('skillCatalog') else None
+                    reference_path, summary['referenceKey'] = simulation.skill_catalog.display_reference(reference_path, overlay)
                 payload = {'capture': snap['capture'], 'raceId': race_id, 'entrySha256': snap['entry_hash'],
-                           'report': report, 'auth': auth, 'data': data, 'artifact': str(simulation.path(bundle['artifact']))}
+                           'report': report, 'auth': auth, 'referencePath': str(reference_path),
+                           'referenceKey': summary['referenceKey'], 'artifact': str(simulation.path(bundle['artifact']))}
                 folder = self.service.data_dir / 'cache' / 'analysis-work'
                 folder.mkdir(parents=True, exist_ok=True)
                 with tempfile.TemporaryDirectory(prefix='job-', dir=folder) as temporary:
                     output = Path(temporary) / 'prepared.gz'
                     payload['output'] = str(output)
-                    env = {k: v for k, v in os.environ.items() if k not in ('NODE_OPTIONS', 'NODE_PATH')}
-                    flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == 'nt' else 0
-                    process = subprocess.Popen([self.node, '--max-old-space-size=2048', str(self.worker)],
-                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, creationflags=flags)
-                    with self.lock:
-                        self.process = process
-                    try:
-                        _, error = process.communicate(json.dumps(payload, separators=(',', ':')).encode(), timeout=180)
-                        if process.returncode:
-                            raise ValueError('Dashboard analysis failed: ' + error.decode('utf-8', errors='replace')[:1000])
-                        packed = output.read_bytes()
-                    finally:
-                        if process.poll() is None:
-                            process.kill()
-                            process.wait()
-                        with self.lock:
-                            self.process = None
+                    from globalsim_bridge.runtime import RuntimeConfig
+                    from globalsim_bridge.worker_pool import WorkerPool
+                    if self.node_identity != job['build']['identity']:
+                        self.node_pool.close()
+                        self.node_pool = WorkerPool()
+                        self.node_identity = job['build']['identity']
+                    config = RuntimeConfig(Path(self.node), self.root, self.root, work_root=folder,
+                        engine_args=('--max-old-space-size=2048', str(self.worker), '--serve'),
+                        expected_engine_sha256=hashlib.sha256(Path(self.node).read_bytes()).hexdigest(),
+                        timeout_seconds=180, max_input_bytes=128*1024*1024, max_output_bytes=16384, low_priority=True)
+                    # Keep each request self-contained if an idle worker exits.
+                    # The worker still reuses its assembled immutable reference.
+                    reply, _, _ = self.node_pool.run(config, json.dumps(payload, separators=(',', ':')).encode() + b'\n')
+                    if reply.get('ok') is not True:
+                        raise ValueError('Dashboard analysis failed: ' + str(reply.get('error', 'Invalid reply'))[:1000])
+                    packed = output.read_bytes()
                 if auth:
                     simulation.authorize(race_id, {'jobId': selected['jobId']})
         _, key, _ = self.identity(race_id, snap['entry_hash'])
@@ -292,6 +345,8 @@ class BackgroundAnalysis:
         with simulation.lock:
             simulation.jobs.pop(selected['jobId'], None)
         job.pop('snap', None)
+        if hasattr(self.service, 'events'):
+            self.service.events.publish('analysis')
 
     def changed(self):
         with self.lock:
@@ -303,8 +358,6 @@ class BackgroundAnalysis:
     def close(self):
         self.closed = True
         self.wake.set()
-        with self.lock:
-            if self.process and self.process.poll() is None:
-                self.process.kill()
+        self.node_pool.close()
         if self.thread and self.thread is not threading.current_thread():
             self.thread.join(timeout=5)

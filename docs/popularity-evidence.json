@@ -1,0 +1,337 @@
+{
+  "sha256": "71fc42314be6e932cb6e1deafaca15fe854ecbc3c666a228c4dad7bef73db1fe",
+  "logicalName": "race/racemain/ast_race_paramdefine",
+  "records": [
+    {
+      "field": "Popularity",
+      "value": {
+        "Z1Add": 1.0,
+        "Z1Coef": 0.20000000298023224,
+        "Z2Add": 1.0,
+        "Z2Coef": 0.20000000298023224,
+        "RankCenterZ1Pow": 1.5,
+        "RankCenterZ2Pow": 0.800000011920929,
+        "DeviationBase": 50,
+        "DeviationCoef": 10,
+        "DeviationThreshold": 55,
+        "DeviationMinus": 54,
+        "DeviationFix": 1
+      },
+      "pathId": 2816004827800634771
+    }
+  ],
+  "reviewedAt": "2026-10-26",
+  "metadataSha256": "27b8f59d91c2be040bba33964ccb6bab37d5ae674b47dfccc32d5793f76edb5f",
+  "nativeSha256": "fe5b71c7d6043e36d1058a210a886bb5ef175da434ba2e615f3a4006397bd44d",
+  "metadataSearch": {
+    "types": 38646,
+    "fields": 198835,
+    "methods": 254313
+  },
+  "metadataMatches": [
+    {
+      "type": ".SkillData",
+      "record": 27844032,
+      "hits": [
+        [
+          "field",
+          "PopularityAddParam1",
+          23428024
+        ],
+        [
+          "field",
+          "PopularityAddValue1",
+          23428036
+        ],
+        [
+          "field",
+          "PopularityAddParam2",
+          23428048
+        ],
+        [
+          "field",
+          "PopularityAddValue2",
+          23428060
+        ]
+      ]
+    },
+    {
+      "type": "Gallop.HorseData",
+      "record": 28582264,
+      "hits": [
+        [
+          "field",
+          "<Popularity>k__BackingField",
+          24030532
+        ],
+        [
+          "field",
+          "<PopularityRankLeft>k__BackingField",
+          24030544
+        ],
+        [
+          "field",
+          "<PopularityRankCenter>k__BackingField",
+          24030556
+        ],
+        [
+          "field",
+          "<PopularityRankRight>k__BackingField",
+          24030568
+        ],
+        [
+          "field",
+          "_gateInPopularity",
+          24030580
+        ],
+        [
+          "method",
+          "get_Popularity",
+          10160036
+        ],
+        [
+          "method",
+          "set_Popularity",
+          10160072
+        ],
+        [
+          "method",
+          "get_PopularityRankLeft",
+          10160108
+        ],
+        [
+          "method",
+          "set_PopularityRankLeft",
+          10160144
+        ],
+        [
+          "method",
+          "get_PopularityRankCenter",
+          10160180
+        ],
+        [
+          "method",
+          "set_PopularityRankCenter",
+          10160216
+        ],
+        [
+          "method",
+          "get_PopularityRankRight",
+          10160252
+        ],
+        [
+          "method",
+          "set_PopularityRankRight",
+          10160288
+        ],
+        [
+          "method",
+          "get_GateInPopularity",
+          10160324
+        ],
+        [
+          "method",
+          "set_GateInPopularity",
+          10160360
+        ],
+        [
+          "method",
+          "InitPopularity",
+          10163132
+        ]
+      ]
+    },
+    {
+      "type": "Gallop.RaceHorseSimulateData",
+      "record": 28675192,
+      "hits": [
+        [
+          "field",
+          "Popularity",
+          24096172
+        ],
+        [
+          "field",
+          "PopularityMarkRankArray",
+          24096184
+        ]
+      ]
+    },
+    {
+      "type": "Gallop.RaceInfo",
+      "record": 28680032,
+      "hits": [
+        [
+          "field",
+          "<IsGateInPopularityInitialized>k__BackingField",
+          24098272
+        ],
+        [
+          "field",
+          "<HorseIndexByPopularity>k__BackingField",
+          24098596
+        ],
+        [
+          "method",
+          "get_IsGateInPopularityInitialized",
+          10486160
+        ],
+        [
+          "method",
+          "set_IsGateInPopularityInitialized",
+          10486196
+        ],
+        [
+          "method",
+          "InitHorseIndexByPopularity",
+          10488500
+        ],
+        [
+          "method",
+          "CalcGateInPopularity",
+          10488608
+        ],
+        [
+          "method",
+          "get_HorseIndexByPopularity",
+          10488788
+        ],
+        [
+          "method",
+          "set_HorseIndexByPopularity",
+          10488824
+        ]
+      ]
+    },
+    {
+      "type": ".PopularityParam",
+      "record": 28686808,
+      "hits": [
+        [
+          "field",
+          "Z1Coef",
+          24106360
+        ],
+        [
+          "field",
+          "RankCenterZ1Pow",
+          24106396
+        ],
+        [
+          "field",
+          "RankCenterZ2Pow",
+          24106408
+        ],
+        [
+          "field",
+          "DeviationBase",
+          24106420
+        ],
+        [
+          "field",
+          "DeviationCoef",
+          24106432
+        ],
+        [
+          "field",
+          "DeviationThreshold",
+          24106444
+        ],
+        [
+          "field",
+          "DeviationMinus",
+          24106456
+        ],
+        [
+          "field",
+          "DeviationFix",
+          24106468
+        ]
+      ]
+    },
+    {
+      "type": "Gallop.RaceUtil",
+      "record": 28692000,
+      "hits": [
+        [
+          "method",
+          "_GetPopularityHorseOrReserveHorse",
+          10522232
+        ],
+        [
+          "method",
+          "GetPopularityIcon",
+          10528676
+        ],
+        [
+          "method",
+          "ApplyPopularityToIconArray",
+          10528712
+        ],
+        [
+          "method",
+          "GetPopularityText",
+          10529036
+        ],
+        [
+          "method",
+          "CountPopularityTopIcon",
+          10530908
+        ],
+        [
+          "method",
+          "CountPopularityIcon",
+          10530944
+        ],
+        [
+          "method",
+          "CalcGateInPopularity",
+          10530980
+        ]
+      ]
+    },
+    {
+      "type": "Gallop.RaceHorseData",
+      "record": 29596904,
+      "hits": [
+        [
+          "field",
+          "popularity",
+          24846940
+        ],
+        [
+          "field",
+          "popularity_mark_rank_array",
+          24846952
+        ]
+      ]
+    },
+    {
+      "type": "Gallop.RaceSimulateResult",
+      "record": 29597784,
+      "hits": [
+        [
+          "field",
+          "popularity",
+          24847672
+        ],
+        [
+          "field",
+          "popularity_mark_rank_array",
+          24847684
+        ]
+      ]
+    }
+  ],
+  "evidenceType": "Static metadata and Unity asset decoding using local Python readers; not native execution or REA evidence.",
+  "nativeProbe": {
+    "target": "research/replay-context/offline-loader/stage6-analysis.dll",
+    "sha256": "56a8d2033eedc67bc44f070f81490a4ec64b1af106b445b39aa4c49d085e9e52",
+    "functionEvidence": "ev_ad3d537e5dcffad1188c968c928deb098b38309861945e32a212e76f2f3955cc",
+    "procedureSearchEvidence": "ev_a69eda01305eb6bf4d0f477224fc38bfecf700d2398334a5f57ea70116c5868c",
+    "search": "popular|deviation|prediction",
+    "matches": 0,
+    "missingProcedure": "0x187b58480",
+    "limitations": "Analysis-only derivative, not execution-equivalent. Recovered buffer-processing callback does not establish popularity logic. Game native method registration and protected main-image decoder remain unresolved."
+  }
+}

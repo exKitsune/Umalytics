@@ -43,6 +43,10 @@ class SimulationService:
         self.integrity = {}
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='race-analysis')
         self.closed = False
+        from engine_skill_catalog import EngineSkillCatalog
+        self.skill_catalog = EngineSkillCatalog(self) if service is not None else None
+        from globalsim_bridge.worker_pool import WorkerPool
+        self.worker_pool = WorkerPool()
 
     def config(self):
         registry = read_json(self.root / 'simulation/engine-registry.json')
@@ -50,6 +54,8 @@ class SimulationService:
         manifest = read_json(manifest_path) if manifest_path.exists() else {'schemaVersion': 1, 'bundles': []}
         if manifest.get('schemaVersion') != 1 or not isinstance(manifest.get('bundles'), list):
             raise ValueError('Invalid installed bundle manifest.')
+        with self.lock:
+            manifest = self.skill_catalog.extend(manifest) if self.skill_catalog else manifest
         if registry.get('allowUnknownVersionSimulation') is True:
             candidates = [row for row in manifest['bundles'] if row.get('kind') == 'simulation'
                           and row.get('profile') == 'v74' and row.get('decisionTraceSchema') == 'umalytics-decisions-v1']
@@ -85,9 +91,12 @@ class SimulationService:
                 if row['profile'] != 'v74':
                     continue  # This adapter implements exactly the audited profile.
                 binding = SimulatorBinding(**kwargs, config=RuntimeConfig(
+                    skill_catalog=self.skill_catalog.read(row['skillCatalog']) if row.get('skillCatalog') else None,
                     engine_path=self.path(row['artifact']), umalytics_root=self.path(row['appRoot']),
                     globalsim_root=self.path(row['resourceRoot']),
                     expected_engine_sha256=row['artifact_sha256'],
+                    worker_pool=self.worker_pool if row.get('persistentWorker') is True else None,
+                    worker_protocol=row.get('workerProtocol', 'json'),
                     decision_trace_schema=row.get('decisionTraceSchema'),
                     cache_auth_key=self.cache_auth_key(),
                     cache_root=self.service.data_dir / 'cache/globalsim' / namespace,
@@ -140,6 +149,8 @@ class SimulationService:
         stem = race_id.rpartition('~')[0] if '~' in race_id and race_id.rpartition('~')[2].isdigit() else race_id
         paths = [getattr(self.service, 'inbox', self.service.data_dir / 'races') / (stem + '.json'), self.root / 'simulation/engine-registry.json', self.root / 'simulation/installed-bundles.json']
         paths.extend((self.service.data_dir / 'analysis-evidence').glob('*.json'))
+        catalog_file = self.service.data_dir / 'cache/catalog/current.json'
+        paths.append(catalog_file)
         stamp = (digest(context), tuple((str(p), st.st_mtime_ns, st.st_ctime_ns, st.st_size) if (st := p.stat() if p.exists() else None) else (str(p), None) for p in paths)) if hasattr(self.service, 'inbox') else None
         with self.lock:
             cached = self.snapshots.get(race_id)
@@ -261,13 +272,15 @@ class SimulationService:
             sims, _ = self.bindings(current['manifest'], current['identity'])
             binding = sims[job['report']['binding']['simulation']['engineId']]
             paths = [binding.config.engine_path]
+            if binding.config.skill_catalog:
+                paths.append(self.skill_catalog.path(digest(binding.config.skill_catalog)))
             for folder in (binding.config.umalytics_root, binding.config.globalsim_root):
                 paths.extend(sorted(p for p in folder.rglob('*') if p.is_file()))
             stamp = tuple((str(p), p.stat().st_mtime_ns, p.stat().st_ctime_ns, p.stat().st_size) for p in paths)
             key = (binding.artifact_sha256, binding.data_sha256)
             if self.integrity.get(key) != stamp:
                 if (hashlib.sha256(binding.config.engine_path.read_bytes()).hexdigest() != binding.artifact_sha256
-                    or ReferenceData.load(binding.config.umalytics_root, binding.config.globalsim_root).fingerprint != binding.data_sha256):
+                    or ReferenceData.load(binding.config.umalytics_root, binding.config.globalsim_root).with_skill_catalog(binding.config.skill_catalog).fingerprint != binding.data_sha256):
                     raise StaleAnalysis('Simulator artifacts changed; previous comparison is no longer authorized.')
                 self.integrity[key] = stamp
         return job, current
@@ -321,3 +334,4 @@ class SimulationService:
         with self.lock:
             self.closed = True
         self.executor.shutdown(wait=False, cancel_futures=True)
+        self.worker_pool.close()

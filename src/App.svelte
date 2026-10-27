@@ -1,5 +1,48 @@
 <script lang="ts">
   import {newestLibraryFirst,raceIdentityColor} from './library';
+  import SimulatorWorkspace from './components/SimulatorWorkspace.svelte';
+  import {fromRace,type Setup} from './sandbox/model';
+  import {parseRoute,routeHash,type WorkspaceRoute} from './sandbox/navigation';
+  import {loadSimulationDashboard} from './sandbox/dashboard';
+  import {catalogReference,installCatalog,catalogRevision,type CatalogSnapshot} from './data/catalog';
+  import {tick} from 'svelte';
+  const initialRoute=parseRoute(location.hash);
+  let workspaceMode:WorkspaceRoute['kind']=initialRoute.kind;
+  let simulatorInput:{setup:Setup;warnings:string[]}|null=null;
+  let simulatorWorkspace:{navigateTo:(view:'setup'|'results',jobId?:string)=>Promise<void>;cancelNavigation:()=>void}|null=null;
+  let simulatorLocation:{view:'setup'|'results';jobId?:string}={view:'setup'},lastCapturedId='';
+  let navigationRequest=0,restoringRoute=false,simulationLoading=false,catalogVersion=catalogRevision,catalogChecking=false,catalogLoaded=false;
+  let engineSkillIds:Set<string>|undefined;
+  $: simulatorReference=reference?catalogReference(reference,catalogVersion,engineSkillIds):null;
+  function writeRoute(route:WorkspaceRoute,replace=false){const hash=routeHash(route);if(location.hash===hash)return;window.history[replace?'replaceState':'pushState']({umalytics:true},'',hash);}
+  function simulatorNavigated(view:'setup'|'results',jobId?:string){simulatorLocation={view,jobId};if(workspaceMode==='simulator'&&!restoringRoute)writeRoute({kind:'simulator',...simulatorLocation});}
+  async function refreshCatalog(){
+    if(catalogChecking)return;catalogChecking=true;
+    try{const status=await api<{revision:string|null}>('catalog?status=1');if(status.revision&&(!catalogLoaded||status.revision!==catalogRevision)){const response=await fetch('/api/catalog',{signal:AbortSignal.timeout(5000)});if(response.ok){const changed=installCatalog(await response.json() as CatalogSnapshot);catalogLoaded=changed||catalogLoaded;if(changed){const capabilities=await api<{available:boolean;skillIds:string[]}>('simulator/capabilities');if(capabilities.available)engineSkillIds=new Set(capabilities.skillIds);}}}catalogVersion=catalogRevision+':'+new Date().toISOString().slice(0,10);}
+    catch{/* Use bundled/last-good catalog offline. */}finally{catalogChecking=false;}
+  }
+  async function navigate(route:WorkspaceRoute,record=true){
+    const request=++navigationRequest;simulatorWorkspace?.cancelNavigation();playing=false;skillDetail=null;restoringRoute=true;simulationLoading=false;error='';
+    if(record)writeRoute(route);
+    try{
+      workspaceMode=route.kind;
+      if(route.kind==='simulation'){
+        if(race?.sandbox?.jobId===route.jobId&&race.sandbox.runIndex===route.index)return;
+        race=null;recordedRace=null;analysis=null;activeId='';simulationLoading=true;
+        const {value,refs}=await loadSimulationDashboard(route.jobId,route.index);
+        if(request===navigationRequest)openSimulated(value,refs,false);
+      }else if(route.kind==='simulator'){
+        simulatorLocation={view:route.view,jobId:route.jobId};await tick();
+        await simulatorWorkspace?.navigateTo(route.view,route.jobId);
+      }else if(route.kind==='races'){
+        const entry=library.find(e=>e.id===(route.id??lastCapturedId))??(!route.id?library[0]:undefined);
+        if(entry)await selectEntry(entry,false,false);else if(race?.sandbox)clearRace();
+      }
+    }catch(e){if(request===navigationRequest)error=String(e);}finally{if(request===navigationRequest){restoringRoute=false;simulationLoading=false;}}
+  }
+  function switchWorkspace(mode:'races'|'simulator'|'umas'){void navigate(mode==='simulator'?{kind:mode,...simulatorLocation}:mode==='races'?{kind:mode,...(lastCapturedId?{id:lastCapturedId}:{})}:{kind:mode});}
+  async function loadSimulator(){if(!reference||!race)return;const draft=fromRace(recordedRace??race,reference),id=activeId;try{simulatorInput=race.sandbox?draft:await api<typeof draft>('simulator/from-race',{raceId:id,draft:draft.setup,warnings:draft.warnings},health?.csrfToken);simulatorLocation={view:'setup'};switchWorkspace('simulator');}catch(e){error=String(e);}}
+  function openSimulated(value:PreparedRace,refs:ReferenceData,record=true){++selectionRequest;activeId=value.race.id;race=value.race;recordedRace=null;reference=refs;analysis=value.analysis;historical=null;analysisGate=null;runnerSelectionTouched=false;selectDefaultRunner(race);time=0;playing=false;skillDetail=null;analysisState={...analysisState,busy:false};workspaceMode='simulation';if(record&&race.sandbox)writeRoute({kind:'simulation',jobId:race.sandbox.jobId,index:race.sandbox.runIndex});}
   import { onMount } from 'svelte';
   import {collectorStatus} from './collector-status';
   import {formatRaceTime} from './data/race-time';
@@ -30,6 +73,7 @@
   import type { RaceAnalysis } from './data/analytics';
   import { AnalysisClient, type AnalysisState } from './analysis/client';
   import { preparedFor } from './analysis/prepared';
+  import {watchServiceEvents} from './analysis/service-events';
   import { AnalysisStore, defaultCachePolicy, type CacheStatus } from './analysis/store';
   import CacheSettings from './components/CacheSettings.svelte';
   import DeferredPanel from './components/DeferredPanel.svelte';
@@ -111,7 +155,7 @@
     gate:(value,id)=>{if(activeId===id)analysisGate=value;},
     recorded:id=>{if(activeId===id){analysis=null;historical=null;race=recordedRace;}},
     historical:(value,id)=>{if(activeId===id)historical=value;},
-    reference:value=>reference=value,
+    reference:value=>{if(!race?.sandbox)reference=value;},
     parsed:(value,id)=>{if(activeId!==id)return;race=value;recordedRace=value;selectDefaultRunner(value);},
     base:(value,result,id)=>{if(activeId!==id)return;race=value;analysis=result;},
     ready:(value,id)=>{if(activeId!==id)return;race=value.race;analysis=value.analysis;selectDefaultRunner(race);},
@@ -178,8 +222,10 @@
     } catch(e){removingId='';if(wasSelected&&!activeId)void selectEntry(entry,true);error=String(e);}
     finally{removingId='';++libraryRevision;}
   }
-  async function selectEntry(entry:LibraryEntry,force=false) {
+  async function selectEntry(entry:LibraryEntry,force=false,record=true) {
+    workspaceMode='races';
     if(removingId===entry.id||(!force&&entry.id===activeId))return;
+    lastCapturedId=entry.id;if(record&&!restoringRoute)writeRoute({kind:'races',id:entry.id},!location.hash);
     const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
     try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
   }
@@ -265,7 +311,9 @@
     merge(entries.map(e=>{const old=library.find(old=>old.id===e.id);return {...hydrateCaptions.cached(e,reference),...(old?.race?{race:old.race,title:old.race.title,category:old.race.category}:{})}}));totalRemote=page.total;
     void hydrateCaptions(library,reference);
     if(offset>0 || !historyLoaded) nextOffset=page.nextOffset;
-    if(offset===0&&newest&&(!activeId||(following&&isNew&&!playing)))await selectEntry(newest);
+    const wanted=parseRoute(location.hash),requested=wanted.kind==='races'&&wanted.id?library.find(e=>e.id===wanted.id):null;
+    if(workspaceMode==='races'&&requested&&requested.id!==activeId)await selectEntry(requested,false,false);
+    else if(workspaceMode==='races'&&wanted.kind==='races'&&offset===0&&newest&&((!wanted.id&&!activeId)||(following&&isNew&&!!activeId&&!playing&&!restoringRoute)))await selectEntry(newest);
     if(offset===0&&!historyLoaded&&!historyLoading)void loadHistory();
     return true;
   }
@@ -283,24 +331,30 @@
   async function installCertificate() {if(!certificate?.sha256||!health?.csrfToken)return;busy=true;try{await api('certificate/install',{sha256:certificate.sha256},health.csrfToken);await refreshCertificate();}catch(e){error=String(e)}finally{busy=false}}
   function seek(t:number) {time=Math.max(0,Math.min(race?.duration??0,t));}
   function togglePlay(){if(!race)return;if(time>=race.duration)time=0;playing=!playing;}
-  function keydown(e:KeyboardEvent){if(downloadPromptOpen){if(e.key==='Escape')downloadPromptOpen=false;return;}if(e.defaultPrevented||settingsOpen||skillDetail!==null||(e.target instanceof HTMLElement&&['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)))return;if(e.code==='Space'){e.preventDefault();togglePlay();}else if(e.code==='ArrowRight'){seek(time+1)}else if(e.code==='ArrowLeft'){seek(time-1)}}
+  function keydown(e:KeyboardEvent){if(workspaceMode!=='races'&&workspaceMode!=='simulation')return;if(downloadPromptOpen){if(e.key==='Escape')downloadPromptOpen=false;return;}if(e.defaultPrevented||settingsOpen||skillDetail!==null||(e.target instanceof HTMLElement&&['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)))return;if(e.code==='Space'){e.preventDefault();togglePlay();}else if(e.code==='ArrowRight'){seek(time+1)}else if(e.code==='ArrowLeft'){seek(time-1)}}
   function dismissPopups(event:PointerEvent){analysisClient.interacting();const node=event.target as HTMLElement|null;if(!node)return;if(pendingRemoval&&!node.closest('.race-delete'))pendingRemoval='';}
   onMount(()=>{
     let cancelled=false;
-    loadReferenceData().then(async data=>{if(!cancelled){reference=data;await analysisClient.configure(data);if(cancelled)return;referenceReady=true;void hydrateCaptions(library,reference);const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry,true);}}).catch(e=>error=String(e));
+    const stopEvents=desktopSession?watchServiceEvents(event=>{
+      if(event.analysis)analysisClient.notifyService();
+      if(event.library&&storageReady&&!importing&&!removingId)void loadPage();
+    }):()=>{};
+    loadReferenceData().then(async data=>{if(!cancelled){reference=data;await analysisClient.configure(data);if(cancelled)return;referenceReady=true;void refreshCatalog();void api<{available:boolean;skillIds:string[]}>('simulator/capabilities').then(v=>{if(v.available)engineSkillIds=new Set(v.skillIds);}).catch(()=>{});if(initialRoute.kind!=='races'||initialRoute.id)await navigate(initialRoute,false);void hydrateCaptions(library,reference);const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry,true);}}).catch(e=>error=String(e));
     if(!desktopSession)savedRaces().then(entries=>{if(cancelled||desktopSession)return;entries=entries.map(entry=>{if(!entry.race||entry.race.distance)return entry;try{return {...entry,race:parseRaceJson(entry.race)[0]}}catch{return entry}});merge(entries);if(!race&&entries.length)selectEntry(entries.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt))[0]);}).catch(e=>error=`Local library unavailable: ${e}`);
-    poll();const healthTimer=setInterval(pollHealth,1000);const timer=setInterval(poll,5000);let previous=performance.now(),animation=0;
+    poll();const catalogTimer=setInterval(refreshCatalog,60000);const healthTimer=setInterval(pollHealth,1000);const timer=setInterval(poll,5000);let previous=performance.now(),animation=0;
     const step=(now:number)=>{if(playing&&race){time=Math.min(race.duration,time+Math.min(.15,(now-previous)/1000)*playbackSpeed);if(time>=race.duration)playing=false;}previous=now;animation=requestAnimationFrame(step)};animation=requestAnimationFrame(step);
-    return()=>{cancelled=true;disposed=true;analysisClient.dispose();clearInterval(timer);clearInterval(healthTimer);cancelAnimationFrame(animation);hydrateCaptions.dispose()};
+    return()=>{cancelled=true;disposed=true;stopEvents();analysisClient.dispose();clearInterval(timer);clearInterval(healthTimer);clearInterval(catalogTimer);cancelAnimationFrame(animation);hydrateCaptions.dispose()};
   });
 </script>
-<svelte:window onkeydown={keydown} onpointerdown={dismissPopups} onpointermove={e=>{if(e.buttons)analysisClient.interacting();}} onwheel={()=>analysisClient.interacting()} ondragenter={onDragEnter} ondragover={onDragOver} ondragleave={onDragLeave} ondrop={onDrop}/>
+<svelte:window onpopstate={()=>{void navigate(parseRoute(location.hash),false);}} onkeydown={keydown} onpointerdown={dismissPopups} onpointermove={e=>{if(e.buttons)analysisClient.interacting();}} onwheel={()=>analysisClient.interacting()} ondragenter={onDragEnter} ondragover={onDragOver} ondragleave={onDragLeave} ondrop={onDrop}/>
 <input class="file-input" bind:this={input} type="file" accept=".json,.jsonl,.msgpack,.mpk,.har" multiple onchange={e=>importFiles(e.currentTarget.files)}/>
 <svelte:head><title>Umalytics — {collectorLabel}</title></svelte:head>
 <div class="app-shell" class:library-collapsed={sidebarCollapsed}>
   {#if dropActive}<div class="drop-overlay" aria-hidden="true"><strong>Drop race JSON</strong><span>It will be imported into this library</span></div>{/if}
   <aside class="sidebar">
     <div class="sidebar-brand"><div class="brand"><span class="brand-mark">u<span>↗</span></span>{#if !sidebarCollapsed}<div>Umalytics<small>RACE WORKSPACE</small></div>{/if}</div><button class="library-collapse" aria-label={sidebarCollapsed?'Expand race library':'Collapse race library'} title={sidebarCollapsed?'Expand race library':'Collapse race library'} aria-expanded={!sidebarCollapsed} onclick={toggleLibrary}>{sidebarCollapsed?'›':'‹'}</button></div>
+    <nav class="workspace-nav" aria-label="Workspace">{#each [['races','Races','▤'],['simulator','Simulator','▷'],['umas','Umas','♙']] as [id,label,icon]}<button class:active={workspaceMode===id||(workspaceMode==='simulation'&&id==='simulator')} title={label} aria-label={label} onclick={()=>switchWorkspace(id as 'races'|'simulator'|'umas')}><span>{icon}</span>{#if !sidebarCollapsed}{label}{/if}</button>{/each}</nav>
+    {#if workspaceMode==='races'}
     <button class="primary import-button" onclick={()=>input.click()} disabled={importing||!!removingId} aria-label="Import race JSON" title="Import race JSON">＋{#if !sidebarCollapsed} Import race JSON{/if}</button>
     {#if !sidebarCollapsed}
     <p class="import-hint">or drop a race JSON anywhere in this window</p>
@@ -322,22 +376,26 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
       {#if !(sidebarCollapsed ? orderedLibrary : visible).length}<div class="library-empty">Your races will appear here.<br/>Import JSON, drop a file, or enable collection.</div>{/if}
       {#if historyLoading}<small role="status">Loading history…</small>{:else if nextOffset!==null}<button class="load-more" onclick={loadHistory}>Load older races</button>{/if}
     </div>
-    <div class="sidebar-bottom">{#if !sidebarCollapsed}<label class="check"><input type="checkbox" bind:checked={following}/> Follow new races</label>
+    {:else if workspaceMode==='simulation'}<div class="simulation-sidebar"><div class="simulation-badge" title="Simulated race"><span>▷</span>{#if !sidebarCollapsed}<strong>Simulated race</strong>{/if}</div>{#if !sidebarCollapsed}<strong>{race?courseCaption(race,reference):'Opening simulation…'}</strong>{#if race?.sandbox}<small>Seed {race.sandbox.seed}</small>{/if}{/if}<button title="Back to simulation results" aria-label="Back to simulation results" onclick={()=>navigate({kind:'simulator',view:'results',jobId:race?.sandbox?.jobId??simulatorLocation.jobId})}><span aria-hidden="true">←</span>{#if !sidebarCollapsed}<span>Results</span>{/if}</button><button title="Race setup" aria-label="Back to race setup" onclick={()=>navigate({kind:'simulator',view:'setup',jobId:race?.sandbox?.jobId??simulatorLocation.jobId})}><span aria-hidden="true">⚙</span>{#if !sidebarCollapsed}<span>Race setup</span>{/if}</button></div>{:else}<div class="sim-sidebar-note"></div>{/if}
+    <div class="sidebar-bottom">{#if !sidebarCollapsed}{#if workspaceMode==='races'}<label class="check"><input type="checkbox" bind:checked={following}/> Follow new races</label>{/if}
       {#if health?.update?.availableVersion}<SidebarUpdate status={health.update} disabled={!health.csrfToken||busy} onInstall={installAvailableUpdate}/>{/if}
       {/if}<button onclick={openSettings} aria-label="Settings" title="Settings"><span>⚙</span>{#if !sidebarCollapsed} Settings{/if}</button>
     </div>
   </aside>
   <main>
-    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>Race analysis</strong>{#if analysisGate?.mode==='verified_simulation'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Simulation matched</small>{:else if analysisGate?.mode==='inference_plan'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Inferred analysis</small>{/if}</div><div class="toolbar"><button onclick={()=>faqOpen=true}>FAQ</button><span class="connection"><i class="status-dot" class:live={gameConnected} class:ready={collecting&&!gameConnected}></i>{collectorLabel}</span><button class="icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} title="Toggle theme" onclick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'☀':'☾'}</button></div></header>
+    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>{workspaceMode==='simulator'?'Race simulator':workspaceMode==='umas'?'Uma library':workspaceMode==='simulation'?'Simulation analysis':'Race analysis'}</strong>{#if workspaceMode==='simulation'&&race?.sandbox}<small class="analysis-source">Simulated race · Seed {race.sandbox.seed}</small>{:else if workspaceMode==='races'&&analysisGate?.mode==='verified_simulation'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Simulation matched</small>{:else if workspaceMode==='races'&&analysisGate?.mode==='inference_plan'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Inferred analysis</small>{/if}{#if (workspaceMode==='races'||workspaceMode==='simulation')&&race&&reference}<button class="load-simulator" onclick={loadSimulator}>Load race into simulator</button>{/if}</div><div class="toolbar"><button onclick={()=>faqOpen=true}>FAQ</button><span class="connection"><i class="status-dot" class:live={gameConnected} class:ready={collecting&&!gameConnected}></i>{collectorLabel}</span><button class="icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} title="Toggle theme" onclick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'☀':'☾'}</button></div></header>
     {#if migrationError}<div class="notice" role="status">{migrationError}</div>{/if}
     {#if error||message}<div class="notice" class:error={!!error} role="status"><span>{error||message}</span><button aria-label="Dismiss message" onclick={()=>{message='';error=''}}>×</button></div>{/if}
-    {#if activeId && analysisState.busy && !analysisState.background && !analysis}
+    {#if simulatorReference}<SimulatorWorkspace bind:this={simulatorWorkspace} mode={workspaceMode==='simulation'?'races':workspaceMode} reference={simulatorReference} token={health?.csrfToken} incoming={simulatorInput} onOpen={openSimulated} onMode={switchWorkspace} onNavigate={simulatorNavigated}/>{/if}
+    {#if workspaceMode==='races'||workspaceMode==='simulation'}
+    {#if simulationLoading}<div class="workspace"><AnalysisSkeleton message="Opening simulation…"/></div>
+    {:else if activeId && analysisState.busy && !analysisState.background && !analysis}
       <div class="workspace"><AnalysisSkeleton title={courseCaption(race??library.find(e=>e.id===activeId)??{},reference)} conditions={race?.conditions??library.find(e=>e.id===activeId)?.conditions} runners={race?.runners.length??9} message={analysisState.message}/></div>
     {:else if race && analysisRace}
       <div class="workspace">
         {#if analysis?.source==='recorded'}<p class="muted">Recorded data · unavailable analysis fields are left blank.</p>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
-        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/><div class="race-datetimes">{#if analysisRace.racedAt??analysisRace.capturedAt}<span>Recorded at <time>{date(analysisRace.racedAt??analysisRace.capturedAt??'')}</time></span>{/if}{#if library.find(e=>e.id===activeId)?.receivedAt}<span>Saved at <time>{date(library.find(e=>e.id===activeId)?.receivedAt??'')}</time></span>{/if}</div></div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner}/></div><form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>
+        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.sandbox?'SIMULATED RACE':race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/><div class="race-datetimes">{#if analysisRace.racedAt??analysisRace.capturedAt}<span>Recorded at <time>{date(analysisRace.racedAt??analysisRace.capturedAt??'')}</time></span>{/if}{#if library.find(e=>e.id===activeId)?.receivedAt}<span>Saved at <time>{date(library.find(e=>e.id===activeId)?.receivedAt??'')}</time></span>{/if}</div></div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner}/></div>{#if !race.sandbox}<form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>{/if}
         <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={selectRunner}/>
         <div class="primary-replay">
           <CurveReplay race={analysisRace} {course} {reference} {selected} {time} {analysis} {fontScale} onSelect={selectRunner} onSeek={seek}>
@@ -355,6 +413,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
         {#if analysisGate&&!analysis}<AnalysisDetails report={analysisGate} frames={race.frames.length} events={race.events.length} courseSource={analysisRace.courseIdentity?.source??(race.courseId?'recorded':'unknown')} onExport={exportAnalysis}/>{/if}
       </div>
     {:else if activeId}<div class="workspace">{#if analysisState.busy&&!analysisState.background}<AnalysisSkeleton title={courseCaption(library.find(e=>e.id===activeId)??{},reference)} conditions={library.find(e=>e.id===activeId)?.conditions} message="Opening race…"/>{:else}<section class="panel"><h2>Recorded replay unavailable</h2><p>{error||'This file could not be decoded. Select another race or import a supported replay.'}</p></section>{/if}</div>{:else}<div class="empty-workspace"><span class="empty-symbol">↗</span><div class="eyebrow">RACE ANALYSIS</div><h1>Explore your races.</h1><p>Collect races as you play, or drop a race JSON anywhere in this window.<br/>View stats, skills, and replay data.</p><div class="toolbar"><button class="primary" onclick={()=>input.click()}>Import race JSON</button></div><button class="setup-cta" onclick={requestAutoCollection}>Set up auto collection</button><div class="empty-features"><span>LOCAL COLLECTION</span><span>PORTABLE JSON</span><span>RUNNER COMPARISON</span></div></div>{/if}
+    {/if}
     <footer><span>Umalytics <span class="muted">/ Steam Global</span></span><span>Race data stays on this computer · <a href="data/NOTICE.txt" target="_blank">Data sources</a></span></footer>
   </main>
 </div>
@@ -445,5 +504,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
 {#if skillDetail!==null&&analysisRace&&analysis}<SkillDetails onFaq={()=>{skillDetail=null;faqOpen=true}} skillId={skillDetail} {reference} race={analysisRace} {analysis} runner={analysisRace.runners.find(r=>r.id===(skillDetailRunner??selected))??null} onClose={()=>skillDetail=null} onSeek={seek}/>{/if}
 
 <style>
+  .simulation-sidebar button{display:flex;align-items:center;gap:9px}
+
   .analysis-source{font-size:var(--font-10);color:var(--muted);font-weight:400;margin-left:16px;white-space:nowrap}
 </style>

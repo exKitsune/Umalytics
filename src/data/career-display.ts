@@ -1,8 +1,9 @@
 import facts from './career-reference.json';
-import fallback from './career-fallback.json';
+import {catalog as fallback,catalogRevision} from './catalog';
 import type {CareerRecord,CareerFactor,CareerSupport} from './career';
 import type {Runner} from './types';
-export const careerReference={...facts,supports:{...fallback.supports,...facts.supports}} as unknown as {
+let supportRevision='',supports={...fallback.supports,...facts.supports};
+export const careerReference={...facts,get supports(){if(supportRevision!==catalogRevision){supports={...fallback.supports,...facts.supports};supportRevision=catalogRevision;}return supports;}} as unknown as {
   ranks:{id:number;min:number;max:number;label:string}[];
   supports:Record<string,{name:string;charaId:number;rarity:number;type:number;command:number}>;
   scenarios:Record<string,string>;supportLevels:Record<string,number[][]>;epithets:Record<string,string>;

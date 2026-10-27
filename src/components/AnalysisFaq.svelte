@@ -1,9 +1,10 @@
 <script lang="ts">
+  import {dismissDialog} from '../ui/dismiss-dialog';
   export let onClose:()=>void;
   function open(node:HTMLDialogElement){node.showModal();return{destroy(){node.close()}}}
   const otherViewer = '\u0048akuraku';
 </script>
-<dialog use:open onclose={onClose} onclick={(event)=>{if(event.target===event.currentTarget)onClose();}} aria-label="FAQ">
+<dialog use:dismissDialog use:open onclose={onClose} aria-label="FAQ">
   <header><h2>FAQ</h2><button aria-label="Close FAQ" onclick={onClose}>×</button></header>
   <div class="faq-body">
     <details><summary>What is Umalytics?</summary><p>It’s a replay and telemetry viewer for the Steam Global client. The Windows app can collect races while you play. This website viewer opens the same race JSON without installing anything. Either way you get the replay, stats, skills, hills, traffic, and the rest of the analysis.</p></details>

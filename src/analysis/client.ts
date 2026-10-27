@@ -35,6 +35,13 @@ export class AnalysisClient {
   private lease:ReturnType<typeof setTimeout>|null=null;
   private detailRequest:(()=>Promise<AnalysisGateReport|null>)|null=null;
   private reference:ReferenceData|null=null;
+  private references=new Map<string,ReferenceData>();
+  private serviceWake:(()=>void)|null=null;
+  notifyService(){this.serviceWake?.();}
+  private waitForService(ms:number){return new Promise<void>(resolve=>{
+    const finish=()=>{clearTimeout(timer);if(this.serviceWake===finish)this.serviceWake=null;resolve();};
+    const timer=setTimeout(finish,ms);this.serviceWake=finish;
+  });}
   private prepared=new Map<string,{hash:string;authorization:string;recorded:Race;value:PreparedRace;reference:ReferenceData|null}>();
   private remember(id:string,hash:string,authorization:string,recorded:Race,value:PreparedRace,reference=this.reference){
     this.prepared.delete(id);this.prepared.set(id,{hash,authorization,recorded,value,reference});
@@ -72,7 +79,7 @@ export class AnalysisClient {
     if(!busy&&this.activeEntry)this.backgroundQueue?.mark(this.activeEntry);
     this.backgroundQueue?.pause(busy||this.playbackPaused);this.callbacks.state(this.foregroundState);
   }
-  private stop(){this.generation++;this.cancelWorker?.();this.cancelWorker=null;this.worker?.terminate();this.worker=null;this.detailRequest=null;if(this.lease)clearTimeout(this.lease);this.lease=null;}
+  private stop(){this.generation++;this.serviceWake?.();this.cancelWorker?.();this.cancelWorker=null;this.worker?.terminate();this.worker=null;this.detailRequest=null;if(this.lease)clearTimeout(this.lease);this.lease=null;}
   clearSelection(){this.stop();this.activeEntry=null;this.state('Ready');}
   forget(id:string){
     for(const key of this.prepared.keys())if(key===id||key.startsWith(`${id}:`))this.prepared.delete(key);
@@ -184,12 +191,12 @@ export class AnalysisClient {
   private async openService(entry:LibraryEntry,generation:number){
     const alive=()=>!this.disposed&&generation===this.generation;
     const endpoint=`analysis/races/${encodeURIComponent(entry.remoteId!)}`,token=this.callbacks.token!()!;
-    type Saved={phase:string;key:string;entrySha256:string;revision:string;hasAnalysis:boolean;report:AnalysisGateReportSummary};
+    type Saved={phase:string;key:string;entrySha256:string;revision:string;hasAnalysis:boolean;report:AnalysisGateReportSummary;referenceKey?:string};
     const authorize=()=>api<Saved>(endpoint,{expectedEntrySha256:entry.sha256,revision:__ANALYSIS_REVISION__},token);
     try{
       let saved=await authorize(),delay=60;
       while(alive()&&saved.phase!=='complete'){
-        await new Promise(resolve=>setTimeout(resolve,delay));delay=Math.min(350,delay*1.5);
+        await this.waitForService(delay);delay=Math.min(1000,delay*1.5);
         if(!alive())return;saved=await authorize();
       }
       if(!alive())return;
@@ -200,9 +207,19 @@ export class AnalysisClient {
         const restored=warm?{value:warm.value,reference:warm.reference,recorded:warm.recorded}:await new Promise<{value:PreparedRace;reference:ReferenceData;recorded:Race}>((resolve,reject)=>{
           const worker=this.worker=new Worker(new URL('./dashboard-worker.ts',import.meta.url),{type:'module'});
           this.cancelWorker=()=>reject(new Error('Race selection changed.'));
-          worker.onmessage=event=>{if(!alive())return;worker.terminate();this.cancelWorker=null;if(event.data.type!=='complete'){reject(new Error(event.data.error));return;}try{const saved=JSON.parse(new TextDecoder().decode(event.data.bytes)),data=saved.referenceData;resolve({value:restoreDashboard(saved),recorded:saved.recorded,reference:assembleReferenceData(data.metadata,data.courses,data.source,data.skillIds,readGeometry(data.geometry))});}catch(error){reject(error);}};
+          worker.onmessage=event=>{
+            if(!alive())return;worker.terminate();this.cancelWorker=null;
+            if(event.data.type!=='complete'){reject(new Error(event.data.error));return;}
+            try{
+              const packed=event.data.saved??JSON.parse(new TextDecoder().decode(event.data.bytes)),data=event.data.referenceData??packed.referenceData;
+              let reference=saved.referenceKey?this.references.get(saved.referenceKey):undefined;
+              if(!reference){if(!data)throw new Error('Reference bundle unavailable.');reference=assembleReferenceData(data.metadata,data.courses,data.source,data.skillIds,readGeometry(data.geometry));
+                if(saved.referenceKey){this.references.set(saved.referenceKey,reference);while(this.references.size>3)this.references.delete(this.references.keys().next().value!);}}
+              resolve({value:restoreDashboard(packed,true),recorded:packed.recorded,reference});
+            }catch(error){reject(error);}
+          };
           worker.onerror=()=>{if(!alive())return;worker.terminate();this.cancelWorker=null;reject(new Error('Saved dashboard could not be loaded.'));};
-          worker.postMessage({url:`/api/${endpoint}?key=${saved.key}`});
+          worker.postMessage({url:`/api/${endpoint}?key=${saved.key}`,referenceUrl:saved.referenceKey&&!this.references.has(saved.referenceKey)?`/api/analysis/reference/${saved.referenceKey}`:undefined});
         });
         if(!alive())return;
         if(restored.reference)this.callbacks.reference?.(restored.reference);

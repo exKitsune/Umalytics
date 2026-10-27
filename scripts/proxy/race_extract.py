@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 MAX_RACES = 100
 MAX_SCENARIO_CHARS = 16 * 1024 * 1024
-CATEGORIES = ('career', 'team-trials', 'practice', 'champions-meeting', 'other')
+CATEGORIES = ('career', 'team-trials', 'practice', 'champions-meeting', 'league-of-heroes', 'other')
 RACE_NUMBERS = ('distance', 'race_distance', 'lane_distance_max', 'race_course_id', 'course_id', 'race_instance_id', 'random_seed', 'race_grade', 'start_time_type')
 CONDITIONS = ('season', 'weather', 'ground_condition')
 TRAINED_KEYS = ('trained_chara_array', 'trainedCharaArray', 'trained_chara_data_array')
@@ -34,7 +34,8 @@ def classify_race(endpoint='', content=None):
     known = {'single_mode': 'career', 'single_mode_free': 'career',
         'team_stadium': 'team-trials', 'team_race': 'team-trials',
         'room_match': 'practice', 'practice': 'practice', 'practice_race': 'practice',
-        'champions': 'champions-meeting', 'champions_meeting': 'champions-meeting'}
+        'champions': 'champions-meeting', 'champions_meeting': 'champions-meeting',
+        'heroes': 'league-of-heroes', 'league_of_heroes': 'league-of-heroes'}
     if group in known:
         return known[group], 'endpoint'
     content = content if isinstance(content, dict) else {}

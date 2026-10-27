@@ -41,7 +41,15 @@ function targetCredit(self:number,after:number,normal:number,normalAfter:number,
   }
   return result;
 }
+const activationCache=new WeakMap<RaceAnalysis,Map<string,WeakMap<SkillActivation,MotionSkillImpact|null>>>();
 export function activationImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,a:SkillActivation,courseId?:number|null):MotionSkillImpact|null {
+  let runners=activationCache.get(analysis);if(!runners)activationCache.set(analysis,runners=new Map());
+  const key=`${courseId??race.courseId}/${runnerId}`;
+  let entries=runners.get(key);if(!entries)runners.set(key,entries=new WeakMap());
+  if(entries.has(a))return entries.get(a)!;
+  const value=calculateActivationImpact(race,reference,analysis,runnerId,a,courseId);entries.set(a,value);return value;
+}
+function calculateActivationImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,a:SkillActivation,courseId?:number|null):MotionSkillImpact|null {
   const effects=a.effects.filter(e=>(e.targetType??1)===1&&[21,22,27,31].includes(e.type));
   const laneGain=race.analysisSource==='simulation'&&a.effects.some(e=>(e.targetType??1)===1&&e.type===28);
   if((!effects.length&&!laneGain)||a.effectiveEnd===null||a.effectiveEnd<=a.start)return null;

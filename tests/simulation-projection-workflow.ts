@@ -289,3 +289,10 @@ const {packDashboard,restoreDashboard}=await import('../src/analysis/dashboard-c
 const roundTrip=restoreDashboard(JSON.parse(JSON.stringify(packDashboard(structuredClone(result)))));
 assert.deepEqual(roundTrip.runners.r0.motion.samples,JSON.parse(JSON.stringify(result.runners.r0.motion.samples)),'Compact snapshots retain exact simulator motion and missing values.');
 assert.deepEqual(roundTrip.analysis.runners.r0.samples,JSON.parse(JSON.stringify(result.analysis.runners.r0.samples)));
+assert.deepEqual(roundTrip.runners.r0.speedChanges,result.runners.r0.speedChanges,'Compact explanations must retain every label, number and boundary.');
+const special=structuredClone(result);
+special.runners.r0.speedChanges=[{start:1,end:2,from:0,to:1,reasons:[{label:'技能 +1.000 / -0.00 · \u0001n 12',evidence:'simulated',start:1.2,end:1.8,detail:'tick 01 +0.0000; -2.50; 1e-9 · \u0001e'}]}];
+const lazy=restoreDashboard(JSON.parse(JSON.stringify(packDashboard(structuredClone(special)))),true);
+assert.equal(typeof Object.getOwnPropertyDescriptor(lazy.runners.r0.motion,'samples')?.get,'function','Unselected telemetry remains compact until requested.');
+assert.deepEqual(lazy.runners.r0.speedChanges,special.runners.r0.speedChanges);
+assert.deepEqual(lazy.runners.r0.motion.samples,special.runners.r0.motion.samples);

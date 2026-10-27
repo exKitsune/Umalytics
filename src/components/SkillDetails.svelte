@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {dismissDialog} from '../ui/dismiss-dialog';
   import type { Race, Runner } from '../data/types';
   import { getSkillReference, skillName, runnerName, type ReferenceData } from '../data/reference';
   import { effectText, durationText, activationDurationText, nonProcLabel, velocityKind, levelBuffExplanation, uniqueLevelLabel, teamScaleNote } from '../data/skill-details';
@@ -35,7 +36,7 @@
     .filter(({index})=>!usedBranches.size||usedBranches.has(index));
   function open(node:HTMLDialogElement){node.showModal();return{destroy(){node.close()}}}
 </script>
-<dialog class="skill-dialog" use:open onclose={onClose} onclick={(event)=>{if(event.target===event.currentTarget)onClose();}} aria-label={`${skillName(reference,skillId)} details`}>
+<dialog use:dismissDialog class="skill-dialog" use:open onclose={onClose} aria-label={`${skillName(reference,skillId)} details`}>
   <div class="skill-dialog-title"><GameIcon name={skillIconKey(reference,skillId)} size={32}/><div><h2>{skillName(reference,skillId)}{#if levelLabel}<span class="skill-level">{levelLabel}</span>{/if}</h2>{#if runner}<small>{runnerName(reference,runner)}</small>{/if}</div><button aria-label="Close skill details" onclick={onClose}>×</button></div>
   <div class="skill-dialog-body">
     {#if skill?.dataRegion==='JP'}<p class="muted">JP fallback · Global data unavailable.</p>{/if}

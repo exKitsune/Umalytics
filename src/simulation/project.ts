@@ -151,6 +151,12 @@ function spurt(events:DecisionEvent[],rows:number[][],stop:number):SpurtComparis
 export function projectSimulation(recorded:Race,report:AnalysisGateReport,reference:ReferenceData|null):PreparedRace|null {
   const trace=decisionTrace(report),modeled=report.simulation?.modeled;
   if(!trace||!modeled)return null;
+  return projectModeledRace(recorded,modeled,trace,reference);
+}
+
+/** Called only with a service-validated execution trace. This projection does
+ * not compare a capture or grant recorded-race compatibility authorization. */
+export function projectModeledRace(recorded:Race,modeled:JsonObject,trace:NonNullable<ReturnType<typeof decisionTrace>>,reference:ReferenceData|null,summaryOnly=false):PreparedRace {
   const results=objects(modeled.results);
   if(results.length!==recorded.runners.length)throw new Error('Simulator runner results are incomplete.');
   const runners=recorded.runners.map(r=>{const result=results[r.index];if(!result)throw new Error('Simulator runner mapping is incomplete.');return {...r,
@@ -185,7 +191,7 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
     analysis.runners[runner.id]=detail;
     const modes:PreparedRunner['modes']=[...new Set(states.map(s=>s.kind))].map(kind=>({source:'simulation',kind,intervals:states.filter(s=>s.kind===kind).length,duration:states.filter(s=>s.kind===kind).reduce((n,s)=>n+s.end!-s.start,0),reachableExtraDistance:null,reachableExtraTime:null,reachableExtraHp:null,assessedReachableExtraDistance:null,assessedReachableExtraTime:null,assessedReachableExtraHp:null,assessedDuration:0,coverage:0,carryoverDuration:0,complete:false,reachableRange:null,detail:unavailable}));
     const sections=race.distance?Array.from({length:24},(_,i)=>{const start=race.distance!*i/24,end=race.distance!*(i+1)/24,row=rows.find(r=>r[m.position]>=start&&r[m.position]<end&&!r[m.spurt]);return row?{section:i+1,start,end,modifier:row[m.section],base:row[m.base]}:null;}).filter((s):s is NonNullable<typeof s>=>s!==null):[];
-    prepared.runners[runner.id]={power,sections,motion,inferredMotion:motion,modes,spurt:spurtValue,blocking,speedChanges:explainTraceSpeed(race,runner,reference,rows,events,laneBonus),metrics,impacts:Object.fromEntries(skillRows.map(s=>[s.skillId,null])),
+    prepared.runners[runner.id]={power,sections,motion,inferredMotion:motion,modes,spurt:spurtValue,blocking,speedChanges:summaryOnly?[]:explainTraceSpeed(race,runner,reference,rows,events,laneBonus),metrics,impacts:Object.fromEntries(skillRows.map(s=>[s.skillId,null])),
       totals:{skills:skillRows.map(s=>({skillId:s.skillId,motion:null,score:null,coverage:0,active:0,assessed:0})),benefit:null,score:null,coverage:0,active:0,assessed:0}} satisfies PreparedRunner;
     for(const a of activations){
       race.events.push({time:a.start,type:'skill',runnerId:runner.id,skillId:a.skillId,label:'Simulated skill activation',params:[runner.index,a.skillId,a.duration??-1,a.effectBranch??0]});

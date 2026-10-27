@@ -29,7 +29,7 @@ PORT = 4317
 PROXY_PORT = 4327
 MAX_RACE = 16 * 1024 * 1024
 MAX_LIST = 32 * 1024 * 1024
-CATEGORIES = ('career', 'team-trials', 'practice', 'champions-meeting', 'other')
+CATEGORIES = ('career', 'team-trials', 'practice', 'champions-meeting', 'league-of-heroes', 'other')
 RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
@@ -179,6 +179,8 @@ class Service:
         self.proxy_state = 'disabled' if no_proxy else 'starting'
         self.closed = threading.Event()
         self.lock = threading.RLock()
+        from analysis_events import AnalysisEvents
+        self.events = AnalysisEvents()
         self.server = None
         self.install_lock = threading.Lock()
         self.update_lock = threading.Lock()
@@ -206,6 +208,15 @@ class Service:
                 self.assets['/'] = self.assets['/index.html']
         from reference_data import ReferenceData
         self.reference_data = ReferenceData(data_dir / 'data', self.assets)
+        from catalog_data import CatalogData
+        catalog_base = self.reference_data.assets.get('metadata.json', self.assets.get('/data/metadata.json', (b'{}',))[0])
+        try:
+            catalog_base = json.loads(catalog_base)
+        except (ValueError, TypeError):
+            catalog_base = {}
+        for field in ('characters', 'outfits', 'skillNames', 'skills'):
+            catalog_base.setdefault(field, {})
+        self.catalog = CatalogData(data_dir / 'cache' / 'catalog', catalog_base, closed=self.closed)
         from updater import UpdateController
         self.updater = UpdateController(data_dir, desktop_exe, RESOURCE_ROOT, game_active=self.game_active)
         self.runtime_build_sha256 = hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest() if getattr(sys, 'frozen', False) else None
@@ -214,6 +225,17 @@ class Service:
         self.simulation = SimulationService(self, RESOURCE_ROOT)
         from background_analysis import BackgroundAnalysis
         self.analysis_service = BackgroundAnalysis(self, RESOURCE_ROOT)
+        from sandbox_service import SandboxService
+        self.sandbox = SandboxService(self)
+        self.sandbox.auto_skills.start()
+        from analysis_events import watch_directory
+        self.library_watcher = watch_directory(self.inbox, self.closed, self.library_changed)
+
+    def library_changed(self):
+        if getattr(self, 'analysis_service', None):
+            self.analysis_service.library_changed()
+        if getattr(self, 'events', None):
+            self.events.publish('library')
 
     def game_active(self):
         proxy = self.proxy_status()
@@ -408,6 +430,7 @@ class Service:
         from storage import atomic_bytes
         atomic_bytes(target, raw)
         self._race_metadata.pop(target.name, None)
+        self.library_changed()
         return self.races(1, race_id, summary=True)['races'][0]
 
     def ensure_certificate(self):
@@ -500,7 +523,10 @@ class Service:
                               or key == 'stage' and value in ('probe', 'inspect')
                               or key == 'lastGameTrafficAt' and (value is None or isinstance(value, str) and len(value) < 64))}
                 with self.status_lock:
+                    captured = clean.get('races_written', 0) != self.collector_status.get('races_written', 0)
                     self.collector_status = clean
+                if captured and hasattr(self, 'analysis_service'):
+                    self.library_changed()
             except socket.timeout:
                 pass
             except (OSError, ValueError, TypeError):
@@ -795,13 +821,17 @@ class Service:
         else:
             path.unlink()
         self._race_metadata.pop(path.name, None)
+        self.library_changed()
         return {'ok': True}
 
     def shutdown(self):
+        self.sandbox.close()
+        self.catalog.close()
+        self.closed.set()
+        self.library_watcher.join(timeout=1)
         self.analysis_service.close()
         self.simulation.close()
         self.updater.close()
-        self.closed.set()
         if self.server:
             threading.Thread(target=self.server.shutdown, daemon=True).start()
 
@@ -851,7 +881,7 @@ def make_handler(service):
             try:
                 if path == '/api/health':
                     self.send(200, {'ok': True, 'app': 'UmaTrace', 'mode': 'desktop', 'staticReady': '/' in service.assets,
-                                    'analysisService': service.analysis_service.available, 'analysisBackground': service.analysis_service.status(),
+                                    'analysisService': service.analysis_service.available, 'analysisBackground': service.analysis_service.status(), 'analysisEvents': True,
                                     'csrfToken': service.csrf, 'proxy': service.proxy_status(), 'certificate': service.certificate(),
                                     'launchOption': f'"{service.desktop_exe}" --launch-game -- %command%' if service.desktop_exe else None,
                                     'dataDirectory': str(service.data_dir),
@@ -861,6 +891,34 @@ def make_handler(service):
                                     'update': service.updater.status(),
                                     'storageNotices': service.storage_notices,
                                     'runtimeExecutable': str(Path(sys.executable).resolve())})
+                elif path == '/api/catalog':
+                    self.send(200, service.catalog.status() if parse_qs(url.query).get('status', [''])[0] == '1' else service.catalog.snapshot())
+                elif path == '/api/simulator/capabilities':
+                    self.send(200, service.sandbox.capabilities())
+                elif path == '/api/simulator/library':
+                    self.send(200, service.sandbox.library())
+                elif path == '/api/simulator/jobs':
+                    self.send(200, service.sandbox.jobs())
+                elif path == '/api/simulator/impacts':
+                    from skill_automation import impact_view
+                    self.send(200, [impact_view(j) for j in service.sandbox.impacts(parse_qs(url.query).get('id', [''])[0])])
+                elif path == '/api/simulator/auto-impacts':
+                    self.send(200, service.sandbox.auto_skills.status(parse_qs(url.query).get('id', [''])[0]))
+                elif path == '/api/simulator/job':
+                    query = parse_qs(url.query)
+                    value = service.sandbox.job(query.get('id', [''])[0],
+                        int(query['after'][0]) if 'after' in query else None, query.get('status', ['0'])[0] != '1')
+                    if query.get('impact', ['0'])[0]=='1':
+                        from skill_automation import impact_view
+                        value = impact_view(value)
+                    self.send(200, value)
+                elif path == '/api/simulator/dashboard':
+                    query = parse_qs(url.query)
+                    self.send(200, raw=service.sandbox.dashboard(query.get('id', [''])[0], int(query.get('index', ['-1'])[0])), content_type='application/gzip')
+                elif path == '/api/analysis/events':
+                    self.send(200, service.events.wait(int(parse_qs(url.query).get('after', ['0'])[0])))
+                elif path.startswith('/api/analysis/reference/'):
+                    self.send(200, raw=service.analysis_service.reference(path.rsplit('/', 1)[-1]), content_type='application/gzip')
                 elif path == '/api/settings':
                     self.send(200, service.public_settings())
                 elif path == '/api/preferences':
@@ -926,14 +984,26 @@ def make_handler(service):
                 if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                     raise ValueError('JSON request required.')
                 length = int(self.headers.get('Content-Length', '0'))
-                limit = 34 * 1024 * 1024 if self.path == '/api/analysis-cache' else MAX_LIST if self.path == '/api/exports' else MAX_RACE + 16384 if self.path == '/api/races/import' else 1024 * 1024 if self.path == '/api/preferences' else 16384
+                limit = 34 * 1024 * 1024 if self.path == '/api/analysis-cache' else MAX_LIST if self.path == '/api/exports' else MAX_RACE + 16384 if self.path == '/api/races/import' else 8 * 1024 * 1024 if self.path == '/api/simulator/library' else 1024 * 1024 if self.path == '/api/preferences' or self.path.startswith('/api/simulator/') else 16384
                 if length < 1 or length > limit or self.headers.get('Transfer-Encoding'):
                     raise ValueError('Request body size is invalid.')
                 from reference_data import strict_json
                 body = strict_json(self.rfile.read(length))
                 if not isinstance(body, dict):
                     raise ValueError('JSON object required.')
-                if self.path == '/api/exports':
+                if self.path == '/api/simulator/library':
+                    self.send(200, service.sandbox.save(body))
+                elif self.path == '/api/simulator/from-race':
+                    self.send(200, service.sandbox.from_race(body))
+                elif self.path == '/api/simulator/run':
+                    self.send(202, service.sandbox.submit(body))
+                elif self.path == '/api/simulator/auto-impacts':
+                    self.send(200, service.sandbox.auto_skills.ensure(body.get('jobId'), body.get('enabled')))
+                elif self.path == '/api/simulator/cancel':
+                    self.send(200, service.sandbox.cancel(body.get('jobId')))
+                elif self.path == '/api/simulator/open':
+                    self.send(202, service.sandbox.open_run(body))
+                elif self.path == '/api/exports':
                     self.send(200, service.export_json(body))
                 elif self.path == '/api/update/check':
                     self.send(200, service.updater.check())
@@ -1162,13 +1232,19 @@ def main():
     server.daemon_threads = True
     service.server = server
     service.updater.start()
+    service.catalog.start()
     worker = threading.Thread(target=service.supervise, daemon=True)
     worker.start()
     try:
         server.serve_forever(poll_interval=0.25)
     finally:
         service.updater.close()
+        service.catalog.close()
+        service.sandbox.close()
         service.closed.set()
+        service.library_watcher.join(timeout=1)
+        service.analysis_service.close()
+        service.simulation.close()
         worker.join(timeout=15)
         service.status_socket.close()
         server.server_close()

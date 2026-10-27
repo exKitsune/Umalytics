@@ -24,6 +24,11 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
   const powerReleases=new Map(race.runners.map(r=>[r.id,powerSummary(trace.events.filter(e=>e.horseIndex===r.index),undefined,r.finishTimeRaw??race.duration).releases]));
   const basePhysics=new Map<string,ReturnType<typeof formulas.physics>>();
   const physics=(id:string,t:number)=>{const key=`${id}/${t}`;let value=basePhysics.get(key);if(!value){value=formulas.physics(id,t);basePhysics.set(key,value);}return value;};
+  const effectsByRunner=new Map(race.runners.map(runner=>[runner.id,race.runners.flatMap(source=>analysis.runners[source.id].skillActivations.flatMap(a=>
+    (source.id===runner.id?a.effects.filter(e=>(e.targetType??1)===1):a.simulatedRecipients?.[runner.id]??[]).map(e=>({
+      key:activationMotionKey(source.id,a),type:e.type,start:e.appliedStart??a.start,end:e.appliedEnd??a.effectiveEnd??a.start,
+      value:effectValue(source,a.referenceSkillId??a.skillId,e),
+    }))))]));
   function build(options:RaceMotionOptions={}){
     const runners:Record<string,RunnerMotion>={};
     const excluded=new Set([...(options.excludeActivationKeys??[]),...(options.excludeActivationKey?[options.excludeActivationKey]:[])]);
@@ -31,14 +36,14 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
       const key=JSON.stringify([runner.id,[...excluded].sort(),options.excludeEffectTypes,options.excludeStatusKey,options.excludePowerRelease]);
       const cached=cache.get(key);if(cached){runners[runner.id]=cached;continue;}
       const detail=analysis.runners[runner.id],ticks=rows.get(runner.id)!,stop=runner.finishTimeRaw??race.duration;
-      const effects=race.runners.flatMap(source=>analysis.runners[source.id].skillActivations.flatMap(a=>
-        (source.id===runner.id?a.effects.filter(e=>(e.targetType??1)===1):a.simulatedRecipients?.[runner.id]??[]).map(e=>({
-          key:activationMotionKey(source.id,a),type:e.type,start:e.appliedStart??a.start,end:e.appliedEnd??a.effectiveEnd??a.start,
-          value:effectValue(source,a.referenceSkillId??a.skillId,e),
-        }))));
+      const effects=effectsByRunner.get(runner.id)!;
       const releases=powerReleases.get(runner.id)!;
       const selected=effects.filter(e=>excluded.has(e.key)&&(!options.excludeEffectTypes||options.excludeEffectTypes.includes(e.type)));
       const laneEffects=effects.filter(e=>e.type===28);
+      const positiveEffects=effects.filter(e=>e.type===27&&e.value!==null&&e.value>0&&!excluded.has(e.key)).sort((a,b)=>a.start-b.start||a.key.localeCompare(b.key));
+      const modeKind=options.excludeStatusKey?.startsWith('kind:')?options.excludeStatusKey.slice(5):null;
+      const localMode=modeKind!=null&&['pace-up','pace-down','speed-up','overtake','downhill-mode','extra-pace-up','dueling','spot-struggle','rushed','rushed-boost'].includes(modeKind);
+      const modeWindows=localMode?detail.intervals.filter(i=>i.kind.replace(/-model$/,'')===modeKind):[];
       // HP, lane position and other decisions are held fixed in this comparison.
       // Only stat effects need the formula difference; a speed + heal skill is
       // still a direct removal of its known speed modifier.
@@ -52,11 +57,12 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
         let target=r[m.target]-sum(27),acceleration=r[m.acceleration]-sum(31),current=r[m.skillSpeed]-r[m.selfSpeed]-sum(21)-sum(22);
         let healthyTarget=r[m.target],healthyAccel=r[m.acceleration];
         const reasons=active.some(e=>e.value===null)?['Skill effect magnitude unavailable.']:[];
+        const removeMode=!!options.excludeStatusKey&&(!localMode||modeWindows.some(i=>time>=i.start&&time<(i.end??i.estimatedEnd??i.observedUntil??i.start)));
         const useFormula=complicated||!!options.excludeStatusKey||r[m.hp]<=0;
         if(useFormula){
           const full=physics(runner.id,time);
           if(complicated||options.excludeStatusKey){
-            const reduced=formulas.physics(runner.id,time,options);
+            const reduced=complicated||removeMode?formulas.physics(runner.id,time,options):full;
             if(full.target&&reduced.target&&full.accel&&reduced.accel){
               target=r[m.target]+reduced.target.mid-full.target.mid;
               acceleration=r[m.acceleration]+reduced.accel.mid-full.accel.mid;
@@ -113,7 +119,7 @@ export function createTraceMotionEngine(race:Race,reference:ReferenceData,analys
         previousRaw=r[m.selfSpeed];
         distance+=Math.max(0,free-constrained)*dt;timeLoss+=Math.max(0,free-constrained)/Math.max(.001,constrained)*dt;
         const prior=samples.at(-1);
-        const positives=effects.filter(e=>e.type===27&&e.value!==null&&e.value>0&&time>=e.start&&time<e.end&&!excluded.has(e.key)).sort((a,b)=>a.start-b.start||a.key.localeCompare(b.key));
+        const positives=positiveEffects.filter(e=>time>=e.start&&time<e.end);
         const stack={baseline:exact(target-positives.reduce((n,e)=>n+e.value!,0)),floors:{} as Record<string,MotionBand>,ceilings:{} as Record<string,MotionBand>};
         let cumulative=stack.baseline.mid;
         for(let p=0;p<positives.length;){let q=p;while(q<positives.length&&positives[q].start===positives[p].start)q++;

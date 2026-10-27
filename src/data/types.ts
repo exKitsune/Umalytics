@@ -14,7 +14,7 @@ export interface RunnerSample {
 export interface Frame { time: number; runners: RunnerSample[] }
 export interface RunnerStats { speed: number | null; stamina: number | null; power: number | null; guts: number | null; wisdom: number | null }
 export interface RunnerSkill { id: number; level: number | null }
-export type RaceCategory = 'career' | 'team-trials' | 'practice' | 'champions-meeting' | 'other';
+export type RaceCategory = 'career' | 'team-trials' | 'practice' | 'champions-meeting' | 'league-of-heroes' | 'other';
 export interface RunnerAptitudes {
   turf?: number | string | null; dirt?: number | string | null;
   short?: number | string | null; mile?: number | string | null; middle?: number | string | null; long?: number | string | null;
@@ -25,6 +25,7 @@ export interface Runner {
   index: number;
   gate: number | null;
   name: string;
+  buildName?: string;
   charaId: number | null;
   cardId: number | null;
   trainer: string | null;
@@ -74,6 +75,8 @@ export interface RaceEvent {
   params: number[];
 }
 export interface Race {
+  /** User-created simulation; never evidence of agreement with a capture. */
+  sandbox?: {jobId:string;runIndex:number;seed:number;engineVersion:string};
   /** View projection only. Original captures never acquire this marker. */
   analysisSource?: 'simulation'|'recorded';
   id: string;

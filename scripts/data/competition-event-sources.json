@@ -1,0 +1,754 @@
+{
+  "checkedAt": "2026-10-26",
+  "source": "https://uma.moe/timeline",
+  "collection": "All 64 competition event cards in the rendered Global timeline; target-race text from linked JP announcements where cards omit conditions.",
+  "events": [
+    {
+      "id": "champions-meeting-0",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-242.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Taurus Cup",
+      "predicted": false,
+      "race": "Tokyo · Turf2400m · Medium · CounterclockwiseFirm · Spring · Sunny",
+      "time": "Aug 17, 2025 – Aug 24, 2025"
+    },
+    {
+      "id": "champions-meeting-1",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-282.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Gemini Cup",
+      "predicted": false,
+      "race": "Kyoto · Turf3200m · Long · ClockwiseFirm · Spring · Sunny",
+      "time": "Sep 7, 2025 – Sep 14, 2025"
+    },
+    {
+      "id": "champions-meeting-2",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-326.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Cancer Cup",
+      "predicted": false,
+      "race": "Tokyo · Turf1600m · Mile · CounterclockwiseGood · Summer · Sunny",
+      "time": "Oct 7, 2025 – Oct 14, 2025"
+    },
+    {
+      "id": "champions-meeting-3",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-369.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Leo Cup",
+      "predicted": false,
+      "race": "Hanshin · Turf2200m · Medium · ClockwiseFirm · Summer · Sunny",
+      "time": "Oct 30, 2025 – Nov 8, 2025"
+    },
+    {
+      "id": "champions-meeting-4",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-416.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Virgo Cup",
+      "predicted": false,
+      "race": "Hanshin · Turf1600m · Mile · ClockwiseFirm · Autumn · Sunny",
+      "time": "Nov 16, 2025 – Nov 25, 2025"
+    },
+    {
+      "id": "champions-meeting-5",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-450.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Libra Cup",
+      "predicted": false,
+      "race": "Kyoto · Turf3000m · Long · ClockwiseFirm · Autumn · Sunny",
+      "time": "Dec 8, 2025 – Dec 17, 2025"
+    },
+    {
+      "id": "champions-meeting-6",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-494.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Scorpio Cup",
+      "predicted": false,
+      "race": "Tokyo · Turf2000m · Medium · CounterclockwiseSoft · Autumn · Rain",
+      "time": "Dec 28, 2025 – Jan 6, 2026"
+    },
+    {
+      "id": "champions-meeting-7",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-525.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Sagittarius Cup",
+      "predicted": false,
+      "race": "Nakayama · Turf2500m · Long · ClockwiseFirm · Winter · Sunny",
+      "time": "Jan 19, 2026 – Jan 28, 2026"
+    },
+    {
+      "id": "champions-meeting-8",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-569.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Capricorn Cup",
+      "predicted": false,
+      "race": "Chukyo · Turf1200m · Short · CounterclockwiseSoft · Winter · Snow",
+      "time": "Feb 9, 2026 – Feb 18, 2026"
+    },
+    {
+      "id": "champions-meeting-9",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-612.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Aquarius Cup",
+      "predicted": false,
+      "race": "Tokyo · Dirt1600m · Mile · CounterclockwiseFirm · Winter · Sunny",
+      "time": "Mar 2, 2026 – Mar 11, 2026"
+    },
+    {
+      "id": "champions-meeting-10",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-678.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Pisces Cup",
+      "predicted": false,
+      "race": "Hanshin · Turf3200m · Long · ClockwiseHeavy · Spring · Rain",
+      "time": "Mar 26, 2026 – Apr 4, 2026"
+    },
+    {
+      "id": "champions-meeting-11",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-747.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Aries Cup",
+      "predicted": false,
+      "race": "Nakayama · Turf2000m · Medium · ClockwiseFirm · Spring · Sunny",
+      "time": "Apr 20, 2026 – Apr 27, 2026"
+    },
+    {
+      "id": "champions-meeting-12",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-788.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Taurus Cup",
+      "predicted": false,
+      "race": "Tokyo · Turf2400m · Medium · CounterclockwiseFirm · Spring · Sunny",
+      "time": "May 10, 2026 – May 17, 2026"
+    },
+    {
+      "id": "champions-meeting-13",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-811.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Gemini Cup",
+      "predicted": false,
+      "race": "Tokyo · Turf1600m · Mile · CounterclockwiseFirm · Spring · Sunny",
+      "time": "May 31, 2026 – Jun 7, 2026"
+    },
+    {
+      "id": "champions-meeting-14",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-845.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Cancer Cup",
+      "predicted": false,
+      "race": "Hanshin · Turf2200m · Medium · ClockwiseGood · Summer · Cloudy",
+      "time": "Jun 21, 2026 – Jun 28, 2026"
+    },
+    {
+      "id": "champions-meeting-15",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-881.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Leo Cup",
+      "predicted": false,
+      "race": "Nakayama · Turf1200m · Short · ClockwiseFirm · Summer · Sunny",
+      "time": "Jul 12, 2026 – Jul 19, 2026"
+    },
+    {
+      "id": "champions-meeting-16",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-936.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Virgo Cup",
+      "predicted": false,
+      "race": "Ooi · Dirt2000m · Medium · ClockwiseGood · Autumn · Sunny",
+      "time": "Aug 5, 2026 – Aug 12, 2026"
+    },
+    {
+      "id": "champions-meeting-17",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/global-992.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Libra Cup",
+      "predicted": false,
+      "race": "Hanshin · Turf1600m · Mile · ClockwiseFirm · Autumn · Cloudy",
+      "time": "Aug 25, 2026 – Sep 1, 2026"
+    },
+    {
+      "id": "champions-meeting-18",
+      "image": "https://assets-webview-\u0075mamusume-en.akamaized.net/contents/assets/images/uploads/Thumbnail/banner_30311102_L1789855200.png?c=20260820105405",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Scorpio Cup",
+      "predicted": false,
+      "race": "Kyoto · Turf2200m · Medium · ClockwiseFirm · Autumn · Sunny",
+      "time": "Sep 15, 2026 – Sep 22, 2026"
+    },
+    {
+      "id": "champions-meeting-19",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/1087.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Sagittarius Cup",
+      "predicted": false,
+      "race": "Nakayama · Turf2500m · Long · ClockwiseGood · Winter · Cloudy",
+      "time": "Oct 7, 2026 – Oct 14, 2026"
+    },
+    {
+      "id": "champions-meeting-20",
+      "image": "https://uma.moe/assets/timeline-images/en/events/champions-meeting/1135.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Capricorn Cup",
+      "predicted": false,
+      "race": "Chukyo · Turf1200m · Short · CounterclockwiseFirm · Winter · Sunny",
+      "time": "Oct 27, 2026 – Nov 5, 2026"
+    },
+    {
+      "id": "champions-meeting-21",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1179.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Aquarius Cup",
+      "predicted": true,
+      "race": "Tokyo · Dirt1600m · Mile · CounterclockwiseSoft · Winter · Snow",
+      "time": "Nov 18, 2026 – Nov 27, 2026"
+    },
+    {
+      "id": "champions-meeting-22",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1214.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Pisces Cup",
+      "predicted": true,
+      "race": "Nakayama · Turf2000m · Medium · ClockwiseFirm · Spring · Sunny",
+      "time": "Dec 5, 2026 – Dec 14, 2026"
+    },
+    {
+      "id": "champions-meeting-23",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1271.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: Aries Cup",
+      "predicted": true,
+      "race": "Kyoto · Turf3200m · Long · ClockwiseFirm · Spring · Sunny",
+      "time": "Dec 25, 2026 – Jan 3, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2023-05-12",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/1334.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Jan 16, 2027 – Jan 22, 2027"
+    },
+    {
+      "id": "champions-meeting-24",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1372.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: MILE",
+      "predicted": true,
+      "race": "Tokyo · Turf1600m · Mile · CounterclockwiseHeavy · Spring · Rain",
+      "time": "Feb 3, 2027 – Feb 12, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2023-07-13",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/1409.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Feb 25, 2027 – Mar 3, 2027"
+    },
+    {
+      "id": "champions-meeting-25",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1453.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: DIRT",
+      "predicted": true,
+      "race": "Funabashi · Dirt1600m · Mile · CounterclockwiseFirm · Summer · Sunny",
+      "time": "Mar 18, 2027 – Mar 27, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2023-09-13",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/1514.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Apr 7, 2027 – Apr 13, 2027"
+    },
+    {
+      "id": "champions-meeting-26",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1561.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": "Longchamp · Turf2400m · Medium · ClockwiseSoft · Autumn · Rain",
+      "time": "Apr 24, 2027 – May 1, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2023-11-12",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/1617.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "May 17, 2027 – May 23, 2027"
+    },
+    {
+      "id": "champions-meeting-27",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1670.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: LONG",
+      "predicted": true,
+      "race": "Nakayama · Turf2500m · Long · ClockwiseSoft · Winter · Snow",
+      "time": "Jun 5, 2027 – Jun 12, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2024-01-12",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/1715.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Jun 26, 2027 – Jul 2, 2027"
+    },
+    {
+      "id": "champions-meeting-28",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1770.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: SPRINT",
+      "predicted": true,
+      "race": "Hanshin · Turf1400m · Short · ClockwiseGood · Winter · Cloudy",
+      "time": "Jul 19, 2027 – Jul 26, 2027"
+    },
+    {
+      "id": "champions-meeting-29",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1886.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: MILE",
+      "predicted": true,
+      "race": "Hanshin · Turf1600m · Mile · ClockwiseFirm · Spring · Sunny",
+      "time": "Aug 24, 2027 – Aug 31, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2024-05-14",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/1934.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Sep 15, 2027 – Sep 21, 2027"
+    },
+    {
+      "id": "news-event-champions-meeting-2024-06-20",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/1987.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Oct 8, 2027 – Oct 14, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2024-07-22",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/2029.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Oct 31, 2027 – Nov 6, 2027"
+    },
+    {
+      "id": "news-event-champions-meeting-2024-08-25",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2068.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting",
+      "predicted": true,
+      "race": null,
+      "time": "Nov 19, 2027 – Nov 25, 2027"
+    },
+    {
+      "id": "news-event-league-of-heroes-2024-09-23",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/2137.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Dec 11, 2027 – Dec 17, 2027"
+    },
+    {
+      "id": "news-event-champions-meeting-2024-10-23",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2180.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Dec 29, 2027 – Jan 4, 2028"
+    },
+    {
+      "id": "news-event-league-of-heroes-2024-11-21",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/2230.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Jan 19, 2028 – Jan 25, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2024-12-22",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2290.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting",
+      "predicted": true,
+      "race": null,
+      "time": "Feb 7, 2028 – Feb 13, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-01-24",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2343.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Feb 29, 2028 – Mar 6, 2028"
+    },
+    {
+      "id": "news-event-league-of-heroes-2025-02-16",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/2366.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Mar 17, 2028 – Mar 23, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-03-25",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2449.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting",
+      "predicted": true,
+      "race": null,
+      "time": "Apr 8, 2028 – Apr 14, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-04-23",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2497.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting",
+      "predicted": true,
+      "race": null,
+      "time": "Apr 25, 2028 – May 1, 2028"
+    },
+    {
+      "id": "news-event-league-of-heroes-2025-05-24",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/2566.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "May 20, 2028 – May 26, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-06-21",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2595.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Jun 5, 2028 – Jun 11, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-07-25",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2660.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Jun 28, 2028 – Jul 4, 2028"
+    },
+    {
+      "id": "news-event-league-of-heroes-2025-08-15",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/2691.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Jul 14, 2028 – Jul 20, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-09-22",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2777.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Aug 6, 2028 – Aug 12, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-10-23",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2842.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: SPRINT",
+      "predicted": true,
+      "race": null,
+      "time": "Aug 26, 2028 – Sep 1, 2028"
+    },
+    {
+      "id": "news-event-league-of-heroes-2025-11-21",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/2901.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Sep 16, 2028 – Sep 22, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2025-12-21",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/2956.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: MILE",
+      "predicted": true,
+      "race": null,
+      "time": "Oct 4, 2028 – Oct 10, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2026-01-22",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/3014.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: LONG",
+      "predicted": true,
+      "race": null,
+      "time": "Oct 25, 2028 – Oct 31, 2028"
+    },
+    {
+      "id": "news-event-league-of-heroes-2026-02-15",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/3057.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Nov 12, 2028 – Nov 18, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2026-03-22",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/3143.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Dec 3, 2028 – Dec 9, 2028"
+    },
+    {
+      "id": "news-event-champions-meeting-2026-04-23",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/3199.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting",
+      "predicted": true,
+      "race": null,
+      "time": "Dec 24, 2028 – Dec 30, 2028"
+    },
+    {
+      "id": "news-event-league-of-heroes-2026-05-22",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/league-of-heroes/3239.webp",
+      "kind": "league_of_heroes",
+      "name": "League of Heroes",
+      "predicted": true,
+      "race": null,
+      "time": "Jan 14, 2029 – Jan 20, 2029"
+    },
+    {
+      "id": "news-event-champions-meeting-2026-06-23",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/3282.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Feb 2, 2029 – Feb 8, 2029"
+    },
+    {
+      "id": "news-event-champions-meeting-2026-07-24",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/3339.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: LONG",
+      "predicted": true,
+      "race": null,
+      "time": "Feb 23, 2029 – Mar 1, 2029"
+    },
+    {
+      "id": "news-event-champions-meeting-2026-09-09",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/3444.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: CLASSIC",
+      "predicted": true,
+      "race": null,
+      "time": "Mar 26, 2029 – Apr 1, 2029"
+    },
+    {
+      "id": "news-event-champions-meeting-2026-09-18",
+      "image": "https://uma.moe/assets/timeline-images/jp/events/champions-meeting/3453.webp",
+      "kind": "champions_meeting",
+      "name": "Champions Meeting: MILE",
+      "predicted": true,
+      "race": null,
+      "time": "Apr 1, 2029 – Apr 7, 2029"
+    }
+  ],
+  "announcements": {
+    "1334": {
+      "url": "https://umapyoi.net/news/1334?lang=jp",
+      "condition": "東京 芝 2400m（中距離） 左 春 昼",
+      "variableConditions": true
+    },
+    "1409": {
+      "url": "https://umapyoi.net/news/1409?lang=jp",
+      "condition": "中山 芝 1200m（短距離）右・外 夏 昼",
+      "variableConditions": true
+    },
+    "1514": {
+      "url": "https://umapyoi.net/news/1514?lang=jp",
+      "condition": "京都 芝 3000m（長距離）右・外 秋 昼",
+      "variableConditions": true
+    },
+    "1617": {
+      "url": "https://umapyoi.net/news/1617?lang=jp",
+      "condition": "京都 芝 1600m（マイル）右・外 秋 昼",
+      "variableConditions": true
+    },
+    "1715": {
+      "url": "https://umapyoi.net/news/1715?lang=jp",
+      "condition": "川崎 ダート 2100m（中距離） 左 冬 夕",
+      "variableConditions": true
+    },
+    "1934": {
+      "url": "https://umapyoi.net/news/1934?lang=jp",
+      "condition": "京都 芝 3200m（長距離）右・外 春 昼",
+      "variableConditions": true
+    },
+    "1987": {
+      "url": "https://umapyoi.net/news/1987?lang=jp",
+      "condition": "東京 芝 2400m（中距離） 左 春 曇 重 昼 ",
+      "variableConditions": false
+    },
+    "2029": {
+      "url": "https://umapyoi.net/news/2029?lang=jp",
+      "condition": "新潟 芝 1000m（短距離）直線 夏 昼",
+      "variableConditions": true
+    },
+    "2068": {
+      "url": "https://umapyoi.net/news/2068?lang=jp",
+      "condition": "中京 ダート 1800m（マイル） 左 夏 晴 良 昼",
+      "variableConditions": false
+    },
+    "2137": {
+      "url": "https://umapyoi.net/news/2137?lang=jp",
+      "condition": "京都 芝 1600m（マイル）右・外 秋 昼",
+      "variableConditions": true
+    },
+    "2180": {
+      "url": "https://umapyoi.net/news/2180?lang=jp",
+      "condition": "東京 芝 2000m（中距離） 左 秋 晴 良 昼",
+      "variableConditions": false
+    },
+    "2230": {
+      "url": "https://umapyoi.net/news/2230?lang=jp",
+      "condition": "京都 芝 2200m（中距離）右・外 秋 昼",
+      "variableConditions": true
+    },
+    "2290": {
+      "url": "https://umapyoi.net/news/2290?lang=jp",
+      "condition": "中山 芝 2500m（長距離） 右・内 冬 曇 稍重 昼",
+      "variableConditions": false
+    },
+    "2343": {
+      "url": "https://umapyoi.net/news/2343?lang=jp",
+      "condition": "阪神 芝 2400m（中距離） 右・外 冬 雨 重 昼",
+      "variableConditions": false
+    },
+    "2366": {
+      "url": "https://umapyoi.net/news/2366?lang=jp",
+      "condition": "中山 芝 1200m（短距離）右・外 冬 昼",
+      "variableConditions": true
+    },
+    "2449": {
+      "url": "https://umapyoi.net/news/2449?lang=jp",
+      "condition": "阪神 芝 1600m（マイル） 右・外 春 晴 良 昼",
+      "variableConditions": false
+    },
+    "2497": {
+      "url": "https://umapyoi.net/news/2497?lang=jp",
+      "condition": "京都 芝 3200m（長距離） 右・外 春 晴 良 昼",
+      "variableConditions": false
+    },
+    "2566": {
+      "url": "https://umapyoi.net/news/2566?lang=jp",
+      "condition": "大井 ダート 2000m（中距離）右 春 夜",
+      "variableConditions": true
+    },
+    "2595": {
+      "url": "https://umapyoi.net/news/2595?lang=jp",
+      "condition": "東京 芝 2400m（中距離） 左 春 晴 良 昼 ",
+      "variableConditions": false
+    },
+    "2660": {
+      "url": "https://umapyoi.net/news/2660?lang=jp",
+      "condition": "阪神 芝 2200m （中距離）右・内 夏 曇 稍重 昼",
+      "variableConditions": false
+    },
+    "2691": {
+      "url": "https://umapyoi.net/news/2691?lang=jp",
+      "condition": "札幌 芝 2600m（長距離）右 夏 昼",
+      "variableConditions": true
+    },
+    "2777": {
+      "url": "https://umapyoi.net/news/2777?lang=jp",
+      "condition": "京都 芝 2000m（中距離） 右・内 秋 晴 良 昼 ",
+      "variableConditions": false
+    },
+    "2842": {
+      "url": "https://umapyoi.net/news/2842?lang=jp",
+      "condition": "新潟 芝 1200m（短距離）左・内 秋 曇 良 昼",
+      "variableConditions": false
+    },
+    "2901": {
+      "url": "https://umapyoi.net/news/2901?lang=jp",
+      "condition": "盛岡 ダート 1600m（マイル）左 秋 昼",
+      "variableConditions": true
+    },
+    "2956": {
+      "url": "https://umapyoi.net/news/2956?lang=jp",
+      "condition": "阪神 芝 1600m（マイル）右・外 冬 晴 良 昼",
+      "variableConditions": false
+    },
+    "3014": {
+      "url": "https://umapyoi.net/news/3014?lang=jp",
+      "condition": "中山 芝 2500m（長距離） 右・内 冬 晴 良 昼 ",
+      "variableConditions": false
+    },
+    "3057": {
+      "url": "https://umapyoi.net/news/3057?lang=jp",
+      "condition": "東京 芝 1600m（マイル）左 冬 昼",
+      "variableConditions": true
+    },
+    "3143": {
+      "url": "https://umapyoi.net/news/3143?lang=jp",
+      "condition": "デルマー 芝 2200m（中距離） 左 春 晴 良 昼",
+      "variableConditions": false
+    },
+    "3199": {
+      "url": "https://umapyoi.net/news/3199?lang=jp",
+      "condition": "デルマー ダート 2000m 左 春 晴 良 昼",
+      "variableConditions": false
+    },
+    "3239": {
+      "url": "https://umapyoi.net/news/3239?lang=jp",
+      "condition": "京都 芝 1200m（短距離） 右・内 春 昼",
+      "variableConditions": true
+    },
+    "3282": {
+      "url": "https://umapyoi.net/news/3282?lang=jp",
+      "condition": "東京 芝 2400m（中距離） 左 春 曇 重 昼",
+      "variableConditions": false
+    },
+    "3339": {
+      "url": "https://umapyoi.net/news/3339?lang=jp",
+      "condition": "中山 芝 3600m（長距離） 右・内 夏 晴 良 昼",
+      "variableConditions": false
+    },
+    "3444": {
+      "url": "https://umapyoi.net/news/3444?lang=jp",
+      "condition": "ロンシャン 芝 2400m（中距離） 右 秋 晴 不良 昼",
+      "variableConditions": false
+    },
+    "3453": {
+      "url": "https://umapyoi.net/news/3453?lang=jp",
+      "condition": "東京 芝 1800m（マイル） 左 秋 晴 良 昼"
+    }
+  }
+}

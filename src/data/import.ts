@@ -48,7 +48,7 @@ function teamGroups(members: RecordValue[], fieldCount: number, normalized = fal
   }
   return result;
 }
-const categories: RaceCategory[] = ['career', 'team-trials', 'practice', 'champions-meeting', 'other'];
+const categories: RaceCategory[] = ['career', 'team-trials', 'practice', 'champions-meeting', 'league-of-heroes', 'other'];
 const category = (value: unknown): RaceCategory | undefined => categories.includes(value as RaceCategory) ? value as RaceCategory : undefined;
 const aptitudeFields: Record<keyof RunnerAptitudes, string> = {
   turf: 'proper_ground_turf', dirt: 'proper_ground_dirt', short: 'proper_distance_short',
@@ -111,7 +111,7 @@ function importCategory(obj: RecordValue, endpoint?: unknown): RaceCategory | un
   if (explicit) return explicit;
   const groups: Record<string, RaceCategory> = { single_mode: 'career', single_mode_free: 'career',
     team_stadium: 'team-trials', team_race: 'team-trials', room_match: 'practice', practice: 'practice',
-    practice_race: 'practice', champions: 'champions-meeting', champions_meeting: 'champions-meeting' };
+    practice_race: 'practice', champions: 'champions-meeting', champions_meeting: 'champions-meeting', heroes: 'league-of-heroes', league_of_heroes: 'league-of-heroes', LeagueOfHeroes: 'league-of-heroes' };
   const path = typeof endpoint === 'string' ? endpoint.split('?')[0].replace(/^\/\x75mamusume\//, '').replace(/^\//, '') : '';
   return groups[path.split('/')[0]] ?? (typeof obj.race_type === 'string' ? category(obj.race_type) ?? groups[obj.race_type] : undefined);
 }

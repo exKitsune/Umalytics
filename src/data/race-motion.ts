@@ -103,6 +103,8 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
   const course = reference?.courses[courseIdOverride ?? race.courseId ?? ''] ?? null;
   const compiled = new Map<string,Effect[]>(), statCache = new Map<string,StatBands>(), calibration = new Map<string,SectionCalibration[]>();
   const runnerBuildCache=new Map<string,RunnerMotion>();
+  const laneHistory=new Map<string,ReturnType<typeof trace>>();
+  const copyStats=(source:StatBands):StatBands=>Object.fromEntries(keys.map(key=>[key,source[key]?{...source[key]}:null])) as unknown as StatBands;
   const spurtDecisions=new Map(race.runners.map(r=>[r.id,createLastSpurtCondition(race,r,course,reference,conditionStaticValues(race,r,course))]));
   const spurtFloorCache=new Map<string,{time:number;decisionTime:number|null;floor:MotionBand}[]>();
   const spurtPlateauCache=new Map<string,number|null>();
@@ -146,8 +148,11 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
   }
   /** The move-lane target bonus needs a lane-speed skill and a lane change on the previous frame. Retained samples stand in for that frame. */
   function laneChanged(runnerId:string,time:number,lane:number){
-    let previous:number|null=null;
-    for(const frame of race.frames){if(frame.time>=time-1e-9)break;const recorded=frame.runners.find(r=>r.runnerId===runnerId)?.lane;if(recorded!=null)previous=recorded;}
+    let rows=laneHistory.get(runnerId);
+    if(!rows){rows=trace(race,runnerId).filter(r=>r.sample.lane!=null);laneHistory.set(runnerId,rows);}
+    let lo=0,hi=rows.length;
+    while(lo<hi){const mid=(lo+hi)>>>1;if(rows[mid].time<time-1e-9)lo=mid+1;else hi=mid;}
+    const previous=lo?rows[lo-1].sample.lane:null;
     return previous!=null&&Math.abs(lane-previous)>1e-4;
   }
   function resolvedValue(effect:Effect,time:number,excluded:EffectExclusion){
@@ -167,7 +172,7 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
     return band(Math.min(value,alternative,...(effect.unknownTeam?[0]:[])),Math.max(value,alternative,...(effect.unknownTeam?[0]:[])),value);
   }
   function stateAt(runner:Runner,time:number,excluded:EffectExclusion,sections?:SectionCalibration[],healthy=false,useSpurtEvidence=true,excludedStatus:string|null=null,applyInferredModes=false):State {
-    const sample=atTime(race,runner.id,time),detail=analysis.runners[runner.id],stats=structuredClone(initialStats(runner)),reasons:string[]=[],assumptions:string[]=[];
+    const sample=atTime(race,runner.id,time),detail=analysis.runners[runner.id],stats=copyStats(initialStats(runner)),reasons:string[]=[],assumptions:string[]=[];
     const empty:State={base:null,target:null,trafficTarget:null,accel:null,current:0,currentRange:zero(),minimum:null,terrain:zero(),decisionTime:null,downhill:zero(),pace:'unknown',paceDown:false,hpEmpty:null,reasons,assumptions,calibrated:false};
     if(!course||race.distance!==course.distance||!sample||sample.distance===null){reasons.push('Course or recorded progress unavailable.');return empty;}
     const distance=sample.distance,total=course.distance,base=20-(total-2000)/1000,phase=distance>=total*2/3?2:distance>=total/6?1:0,style=effectiveStrategyCode(runner,detail.skillRows);
@@ -494,7 +499,7 @@ export function createRaceMotionEngine(race: Race, reference: ReferenceData | nu
       runners[runner.id]={samples,sections,coverage:{target:stop>0?targetDuration/stop:0,free:stop>0?freeDuration/stop:0,constrained:stop>0?constrainedDuration/stop:0,calibrated:stop>0?calibratedDuration/stop:0,assessedDuration:constrainedDuration,duration:stop},
         distanceLoss:complete?{...distanceDeficit}:null,timeLoss:complete?{...timeDeficit}:null,assessedDistanceLoss:assessed?{...distanceDeficit}:null,assessedTimeLoss:assessed?{...timeDeficit}:null,
         observedTrafficDeficit:losses.trafficLoss.distanceLoss,observedTrafficTime:losses.trafficLoss.timeLoss,
-        observedTrafficDuration:losses.trafficLoss.duration,observedTrafficAssessedDuration:losses.trafficLoss.assessedDuration,observedTrafficCoverage:losses.trafficLoss.coverage,...losses,initialStats:structuredClone(initialStats(runner)),
+        observedTrafficDuration:losses.trafficLoss.duration,observedTrafficAssessedDuration:losses.trafficLoss.assessedDuration,observedTrafficCoverage:losses.trafficLoss.coverage,...losses,initialStats:copyStats(initialStats(runner)),
         paceStarts:analysis.runners[runner.id].intervals.filter(i=>i.kind.endsWith('-model')&&['pace-up','pace-down','speed-up','overtake'].includes(modelKind(i))).map(i=>({time:i.start,kind:modelKind(i),detail:i.detail})),detail:notes};
       runnerBuildCache.set(buildKey,runners[runner.id]);
     }

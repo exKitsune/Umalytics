@@ -61,8 +61,15 @@ class RuntimeConfig:
     decision_trace_schema: str | None = None
     # Service-owned installation secret; never supplied by a capture or browser.
     cache_auth_key: bytes | None = field(default=None, repr=False)
+    worker_pool: Any = field(default=None, repr=False, compare=False)
+    worker_protocol: str = 'json'
+    low_priority: bool = False
+    skill_catalog: dict | None = field(default=None, repr=False, compare=False)
+    decode_frames: bool = True
 
     def __post_init__(self):
+        if self.worker_protocol not in ('json', 'binary-v1'):
+            raise ValueError('Unsupported worker protocol')
         for name in ("engine_path", "umalytics_root", "globalsim_root", "work_root", "cache_root"):
             value = getattr(self, name)
             if value is not None:
@@ -110,6 +117,7 @@ def _code_identities() -> tuple[dict, bool]:
         "adapter": Path(adapter.__file__),
         "comparator": Path(__file__).with_name("comparator.py"),
         "decisionTrace": Path(__file__).with_name("decision_trace.py"),
+        "transport": Path(__file__).with_name("worker_pool.py"),
     }
     hashes = {}
     complete = True
@@ -184,6 +192,8 @@ def _run_worker(config: RuntimeConfig, payload: bytes) -> tuple[dict, float, str
     terminate it before unbounded captured output accumulates. The optional
     upstream helper is disabled; the shipped worker creates no child workers.
     """
+    if config.worker_pool is not None:
+        return config.worker_pool.run(config, payload)
     if len(payload) > config.max_input_bytes:
         raise _WorkerFailure("INPUT_LIMIT", "Prepared engine request exceeds the configured byte limit")
     if not config.engine_path.is_file():
@@ -334,7 +344,9 @@ def _write_cache(path: Path | None, key: str, modeled: dict, byte_limit: int, au
                 "modeledSha256": _digest(model_bytes), "modeled": modeled}
     if auth_key is not None:
         metadata["authentication"] = _cache_mac(auth_key, key, metadata["modeledSha256"])
-    entry = _canonical(metadata)
+    # Reuse the exact bytes already hashed instead of encoding a large trace twice.
+    entry = b'{' + b','.join(_canonical(name) + b':' + (model_bytes if name == 'modeled' else _canonical(metadata[name]))
+                              for name in sorted(metadata)) + b'}'
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -439,6 +451,8 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
 
     try:
         references = adapter.ReferenceData.load(config.umalytics_root, config.globalsim_root)
+        if config.skill_catalog:
+            references = references.with_skill_catalog(config.skill_catalog)
         initial, audit = adapter.prepare_capture(capture, references, context=context)
         report["inputAudit"] = audit
     except ValueError as error:

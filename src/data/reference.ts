@@ -13,7 +13,7 @@ export interface CourseReference {
   gameGeometry?: CourseGeometry;
 }
 export interface SkillReference {
-  name: string; rarity: number; groupId?: number; dataRegion?: 'Global' | 'JP';
+  name: string; rarity: number; groupId?: number; dataRegion?: 'Global' | 'JP'; unreleasedGlobal?:boolean;
   activateLot?: number; iconId?: number; tagId?:number; tagIds?:number[]; description?: string | null;
   branches: { condition: string; rawDuration: number; durationUsage: number;
     branchIndex?: number; precondition?: string; rawCooldown?: number;
@@ -32,7 +32,7 @@ export interface ReferenceMetadata {
 }
 export interface ReferenceData {
   metadata: ReferenceMetadata; courses: Record<string, CourseReference>;
-  simulatorSkillIds: Set<string>; source: ReferenceSource;
+  simulatorSkillIds: Set<string>; engineSkillIds?: Set<string>; source: ReferenceSource;
 }
 export interface CourseBand { start: number; end: number; label: string; kind: string }
 interface RawCourse extends Omit<CourseReference, 'id' | 'name' | 'trackName' | 'source' | 'geometry' | 'gameGeometry' | 'slopes'> {
@@ -104,6 +104,7 @@ export function skillName(data: ReferenceData | null, id: number | null): string
   return `Skill ${id}`;
 }
 export function runnerName(data: ReferenceData | null, runner: Runner): string {
+  if(runner.buildName)return runner.buildName;
   const known = runner.charaId === null ? null : data?.metadata.characters[runner.charaId];
   return known || runner.name || `Runner ${runner.index + 1}`;
 }
