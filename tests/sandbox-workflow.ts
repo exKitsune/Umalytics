@@ -1,4 +1,5 @@
 import {mergeJobProgress} from '../src/sandbox/progress';
+import {decodeSimulatorFrames} from '../src/sandbox/binary-frames';
 import {STAT_PAIRS,STAT_STEP,nextStatOffset,statMeasurementBatch,statTrend} from '../src/sandbox/stat-trend';
 import {metricDisplay,metricComparison} from '../src/sandbox/metric-display';
 import {checkpointPositions,positionCheckpoints} from '../src/sandbox/position-checkpoints';
@@ -19,6 +20,11 @@ import {impactSetup,impactTarget,winImpacts,impactJobsByTarget,statRange,statCur
 import type {Job} from '../src/sandbox/model';
 import {skillTotals} from '../src/data/skill-totals';
 import type {RaceAnalysis} from '../src/data/analytics';
+const binary=Buffer.alloc(12+8+48);binary.write('UMAF');binary.writeUInt32LE(1,4);binary.writeUInt32LE(1,8);
+for(const [i,n] of [1.25,42.125,20.5,0,2.75,1,-1].entries())binary.writeDoubleLE(n,12+i*8);
+assert.deepEqual(decodeSimulatorFrames(binary,['runner']),[{time:1.25,runners:[{runnerId:'runner',distance:42.125,speed:20.5,hp:0,lane:2.75,temptationMode:1,blockFrontRunnerIndex:-1}]}]);
+assert.throws(()=>decodeSimulatorFrames(binary,[]),/layout/);assert.throws(()=>decodeSimulatorFrames(binary.subarray(0,20),['runner']),/layout/);
+const invalidBinary=Buffer.from(binary);invalidBinary.writeDoubleLE(NaN,20);assert.throws(()=>decodeSimulatorFrames(invalidBinary,['runner']),/Non-finite/);
 const json=(p:string)=>JSON.parse(readFileSync(p,'utf8'));
 const dates=['2026-09-01','2026-10-26','2026-11-01','2026-12-01','2027-01-01'].map(date=>({kind:'cm',date}));
 assert.deepEqual(upcomingEvents(dates,'cm','2026-10-26').map(e=>e.date),['2026-10-26','2026-11-01','2026-12-01']);
@@ -106,10 +112,12 @@ const build=blankUma(),setup=blankSetup();setup.courseId=10101;setup.participant
 assert.equal(setup.shuffleGates,true);assert.equal(setup.keepSeed,false);
 assert.equal(setup.participants[0].randomizeMood,false);
 setup.participants[0].uma.stats.speed=999;assert.equal(build.stats.speed,1200);assert.equal(setup.participants[1].uma.stats.speed,1200);
+setup.participants[0].trainer='Sample trainer';
 assert(!('mood' in build));assert(!('aptitudes' in build));assert(!('strategy' in build));
 const race=initialRace(setup,{index:0,seed:321,moods:[1,5],gates:[2,1]},'job','test',reference);
 assert.equal(race.runners[0].mood,1);assert.equal(race.runners[0].gate,2);assert.equal(race.sandbox?.seed,321);
 const copied=fromRace(race,reference);assert.equal(copied.setup.seed,321);assert.equal(copied.setup.participants[0].uma.stats.speed,999);assert.equal(copied.setup.shuffleGates,false);
+assert.equal(race.runners[0].trainer,'Sample trainer');assert.equal(copied.setup.participants[0].trainer,'Sample trainer','Trainer names survive race/setup round trips');
 assert(skillSearch(reference,'tokai teio').some(s=>s.name.toLowerCase().includes('victory')),'Character search resolves explicit unique ownership');
 assert(skillSearch(reference,'certn victry').some(s=>s.name.toLowerCase().includes('victory')),'Fuzzy skill spelling');
 const future=Object.entries(reference.metadata.skills).find(([,s])=>s.dataRegion==='JP'&&!nativeUnique(s))!;

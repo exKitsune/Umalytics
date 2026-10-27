@@ -75,6 +75,10 @@ for line in sys.stdin:
         value = _run_worker(self.program(source, worker_protocol='binary-v1'), b'{}\n')[0]
         self.assertEqual(value['frames'], [{'t': .0666, 'horses': [{'pos': 1.25, 'speed': 20.5, 'hp': 999.125, 'lane': -0., 'temptationMode': 4., 'blockFrontHorseIndex': -1.}]}])
         compact=_run_worker(self.program(source,worker_protocol='binary-v1',decode_frames=False),b'{}\n')[0]
+        retained=_run_worker(self.program(source,worker_protocol='binary-v1',retain_binary_frames=True),b'{}\n')[0]
+        self.assertNotIn('frames',retained)
+        self.assertEqual(retained['_binary_frames'][:2],(1,1))
+        self.assertEqual(len(retained['_binary_frames'][2]),56)
         self.assertEqual(compact,{'seed':7},'Outcome callers omit decoding, not protocol validation')
         bad = 'import sys,struct\nfor line in sys.stdin: sys.stdout.buffer.write(struct.pack("<8sQIIQ",b"GSIMRP01",2**40,0,0,0));sys.stdout.buffer.flush()'
         with self.assertRaises(_WorkerFailure):

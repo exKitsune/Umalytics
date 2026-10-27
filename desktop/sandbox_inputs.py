@@ -103,6 +103,8 @@ def setup(value):
             if row.get(key) not in list('GFEDCBAS'):
                 raise ValueError(f'Choose a valid {key} aptitude.')
             p[key] = row[key]
+        if row.get('trainer') is not None:
+            p['trainer'] = text(row['trainer'], 'Trainer name')
         if 'aptitudeOverrides' in row:
             overrides = row['aptitudeOverrides']
             if not isinstance(overrides, dict) or set(overrides) - {'surface', 'distance', 'strategyAptitude'} or any(
@@ -203,15 +205,10 @@ def skill_issue(definitions, skill_id):
 DIRT_GRADE_TRACK_IDS = frozenset((10101, 10103, 10104, 10105))
 
 
-def prepare(value, refs, index=0, seed_schedule=None):
-    """Seed schedules are independent of batch size, mood and gate settings."""
+def run_draws(value, index=0, seed_schedule=None):
     variant_index=index//value['count'] if value.get('variations') else 0
     seed_index=index%value['count'] if value.get('variations') else index
-    value=variant_setup(value,index)
     seed = seed_schedule[seed_index] if seed_schedule is not None else scheduled_seed(value, seed_index)
-    course = refs.course_data.get(str(value['courseId']))
-    if not isinstance(course, dict):
-        raise ValueError('This course is not supported by the installed simulator.')
     gates = [p['gate'] for p in value['participants']]
     if value['shuffleGates']:
         random.Random(seed ^ 0x67617465).shuffle(gates)
@@ -219,6 +216,18 @@ def prepare(value, refs, index=0, seed_schedule=None):
     moods = [override['mood'] if override.get('mode') == 'fixed' else
         random.Random(f'{seed}:mood:{i}').randint(1, 5) if override.get('mode') == 'random' or p['randomizeMood'] else p['mood']
         for i,p in enumerate(value['participants'])]
+    label=value['variations']['builds'][variant_index-1]['name'] if variant_index else 'Baseline'
+    return {'index':index, 'seed':seed, 'moods':moods, 'gates':gates, 'variantIndex':variant_index, 'variantLabel':label}
+
+
+def prepare(value, refs, index=0, seed_schedule=None):
+    """Seed schedules are independent of batch size, mood and gate settings."""
+    run = run_draws(value,index,seed_schedule)
+    value=variant_setup(value,index)
+    seed, moods, gates = run['seed'], run['moods'], run['gates']
+    course = refs.course_data.get(str(value['courseId']))
+    if not isinstance(course, dict):
+        raise ValueError('This course is not supported by the installed simulator.')
     horses = []
     used_teams = {p['team'] for p in value['participants'] if p['team'] is not None}
     next_solo_team = 0
@@ -250,5 +259,32 @@ def prepare(value, refs, index=0, seed_schedule=None):
         'singleMode':False, 'wisdomChecks':True, 'playerHorseIndex':0, 'experimentalRetailStartup':False,
         'experimentalLaterStaminaMechanics':False, 'retainAllFrames':True, 'decisionTrace':True, 'traceConservePower':True,
         'horses':horses, 'skillData':refs.skill_data})
-    label=value['variations']['builds'][variant_index-1]['name'] if variant_index else 'Baseline'
-    return spec, {'index':index, 'seed':seed, 'moods':moods, 'gates':gates, 'variantIndex':variant_index, 'variantLabel':label}
+    return spec, run
+
+
+class PreparedInputs:
+    """Job-local immutable templates; only seed, mood and gate draws vary.
+
+    Returned horse dictionaries are new. Skill definitions and static skill
+    inventories are read-only and shared only inside the owning worker.
+    """
+    def __init__(self, value, refs, seed_schedule=None):
+        self.value, self.refs = deepcopy(value), refs
+        self.seed_schedule = tuple(seed_schedule) if seed_schedule is not None else None
+        self.templates, self.views = {}, {}
+
+    def setup_for(self, index):
+        variant=index//self.value['count'] if self.value.get('variations') else 0
+        if variant not in self.views:
+            self.views[variant]=variant_setup(self.value,index)
+        return self.views[variant]
+
+    def prepare(self, index):
+        run=run_draws(self.value,index,self.seed_schedule)
+        variant=run['variantIndex']
+        if variant not in self.templates:
+            self.templates[variant]=prepare(self.value,self.refs,index,self.seed_schedule)[0]
+        template=self.templates[variant]
+        return {**template, 'seed':run['seed'], 'horses':[
+            {**horse, 'mood':run['moods'][i]-3, 'gateIndex':run['gates'][i]-1}
+            for i,horse in enumerate(template['horses'])]}, run

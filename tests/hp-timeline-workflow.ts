@@ -10,6 +10,15 @@ import { hpTimeline, hpAt, hpSampledBridges, hpHitEvidence } from '../src/data/h
 import { sampleAt } from '../src/data/sample';
 import { metricPaths, timedPlotPath } from '../src/telemetry';
 import { analyzeRace } from '../src/data/analytics';
+import type {StatusInterval} from '../src/data/analytics';
+import {statusHpFactor} from '../src/data/mechanics-effects';
+const combinedModes=['spot-struggle-model','rushed','pace-down-model','downhill-mode-model'].map(kind=>({kind,start:1,end:3})) as StatusInterval[];
+assert.equal(statusHpFactor(combinedModes,2,5),7.7*.6*.4);
+assert.equal(statusHpFactor(combinedModes,2,2),3.6*.6*.4);
+assert.equal(statusHpFactor(combinedModes,2,5,'rushed'),3.5*.6*.4);
+assert.equal(statusHpFactor(combinedModes,2,5,'downhill-mode'),7.7*.6);
+assert.equal(statusHpFactor(combinedModes,3,5),1,'Status end boundaries are exclusive.');
+assert.equal(statusHpFactor(combinedModes,NaN,5),1);
 const run=promisify(execFile),root=resolve(import.meta.dirname,'..'),folder=resolve(process.argv[2]);
 await mkdir(folder,{recursive:true});
 const metadata=JSON.parse(await readFile(join(root,'public/data/metadata.json'),'utf8'));

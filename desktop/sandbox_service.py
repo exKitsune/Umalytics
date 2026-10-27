@@ -10,6 +10,7 @@ import math
 import os
 from pathlib import Path
 import sqlite3
+import struct
 import tempfile
 import threading
 import time
@@ -52,9 +53,12 @@ class SandboxService:
         self.lock = threading.RLock()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='custom-simulator')
         self.render_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='simulator-dashboard')
-        self.impact_concurrency = min(4, max(1, (os.cpu_count() or 2)//2))
+        self.impact_concurrency = min(8, max(1, (os.cpu_count() or 2)//2))
         self.impact_executor = ThreadPoolExecutor(max_workers=self.impact_concurrency, thread_name_prefix='win-impact')
         self.impact_local, self.impact_workers = threading.local(), []
+        self.batch_concurrency = min(4, self.impact_concurrency)
+        self.batch_executor = ThreadPoolExecutor(max_workers=self.batch_concurrency, thread_name_prefix='batch-analysis')
+        self.batch_local, self.batch_workers = threading.local(), []
         self.engine_pool, self.node_pool = WorkerPool(), WorkerPool()
         self.cancelled, self.opening, self.errors = set(), set(), {}
         self.closed = False
@@ -146,9 +150,16 @@ class SandboxService:
                     "WHERE json_extract(j.value,'$.impactSourceId') IS NULL OR json_extract(j.value,'$.phase') IN ('queued','running') "
                     "ORDER BY rowid DESC LIMIT 50")]
 
-    def impacts(self, job_id):
+    def impacts(self, job_id, include_runs=True):
         self.job(job_id, include_runs=False)
         with self.connect() as db:
+            if not include_runs:
+                # One snapshot for coverage/resume metadata; never decode the
+                # thousands of finished runner summaries merely to count them.
+                return [{**json.loads(raw), 'runs':[], 'completed':completed, 'runCursor':cursor, 'runsPartial':False}
+                    for raw,completed,cursor in db.execute(
+                        "SELECT j.value,count(r.n),coalesce(max(r.rowid),0) FROM jobs j LEFT JOIN runs r ON r.job=j.id "
+                        "WHERE json_extract(j.value,'$.impactSourceId')=? GROUP BY j.rowid ORDER BY j.rowid", (job_id,))]
             ids = [row[0] for row in db.execute("SELECT id FROM jobs WHERE json_extract(value,'$.impactSourceId')=? ORDER BY rowid", (job_id,))]
         return [self.job(key) for key in ids]
 
@@ -230,8 +241,22 @@ class SandboxService:
         with self.lock: self.cancelled.add(job_id)
         return {'ok':True}
 
-    def execute(self, job, config, refs, index, summary_only, skill_payload=None):
-        spec, run = inputs.prepare(job['setup'], refs, index, job.get('seedSchedule'))
+    def display_context(self, job, config):
+        analysis = self.service.analysis_service
+        if not analysis.available: raise ValueError('Dashboard analysis runtime is unavailable.')
+        _, manifest = self.service.simulation.config()
+        reference = next((r for r in reversed(manifest['bundles']) if r['kind']=='inference' and (not job.get('referenceKey') or r['data_sha256']==job['referenceKey'])), None)
+        if reference is None:raise ValueError('The saved display reference is no longer installed.')
+        reference_path, reference_key = self.service.simulation.skill_catalog.display_reference(analysis.reference_path(reference['data_sha256']), config.skill_catalog)
+        folder = self.service.data_dir / 'cache/sandbox-work'
+        node_config = RuntimeConfig(Path(analysis.node), analysis.root, analysis.root, work_root=folder,
+            engine_args=('--max-old-space-size=2048', str(analysis.worker), '--serve'),
+            expected_engine_sha256=hashlib.sha256(Path(analysis.node).read_bytes()).hexdigest(),
+            timeout_seconds=180, max_input_bytes=128*1024*1024, max_output_bytes=16384, low_priority=True)
+        return reference_path, reference_key, node_config
+
+    def execute(self, job, config, refs, index, summary_only, skill_payload=None, batch_context=None, prepared_inputs=None):
+        spec, run = prepared_inputs.prepare(index) if prepared_inputs is not None else inputs.prepare(job['setup'], refs, index, job.get('seedSchedule'))
         saved = next((r for r in job.get('runs', []) if r['index'] == index), None)
         if saved is not None:
             # Replays preserve actual draws even if a future Python version
@@ -243,7 +268,11 @@ class SandboxService:
         outcome_only = summary_only and inputs.outcome_only(job, index)
         if outcome_only:
             spec.update(retainAllFrames=False, decisionTrace=False, traceConservePower=False)
-        if outcome_only and skill_payload is not None:
+        if batch_context is not None:
+            if 'skill_payload' not in batch_context:
+                batch_context['skill_payload'] = _canonical(refs.skill_data)
+            skill_payload = batch_context['skill_payload']
+        if skill_payload is not None:
             # This immutable reference snapshot is pinned when the job starts.
             # Encode its large catalog once per worker instead of once per seed.
             if spec.pop('skillData') is not refs.skill_data:
@@ -251,18 +280,23 @@ class SandboxService:
             payload = _canonical(spec)[:-1] + b',"skillData":' + skill_payload + b'}\n'
         else:
             payload = _canonical(spec)+b'\n'
+        # The analysis worker consumes binary replay frames directly for single
+        # races too; avoid expanding them into Python dictionaries and JSON.
+        if not outcome_only and config.worker_protocol == 'binary-v1':
+            config = replace(config, retain_binary_frames=True)
         modeled, _, _ = _run_worker(config, payload)
         if 'error' in modeled: raise ValueError(str(modeled['error']))
+        binary_frames = modeled.pop('_binary_frames', None)
         if outcome_only:
-            return outcome_summary(inputs.variant_setup(job['setup'], index), run, modeled), None
+            return outcome_summary(prepared_inputs.setup_for(index) if prepared_inputs is not None else inputs.variant_setup(job['setup'], index), run, modeled), None
         invalid = validate_trace(modeled.get('decisionTrace'), len(spec['horses']))
         if invalid: raise ValueError(invalid)
-        analysis = self.service.analysis_service
-        if not analysis.available: raise ValueError('Dashboard analysis runtime is unavailable.')
-        _, manifest = self.service.simulation.config()
-        reference = next((r for r in reversed(manifest['bundles']) if r['kind']=='inference' and (not job.get('referenceKey') or r['data_sha256']==job['referenceKey'])), None)
-        if reference is None:raise ValueError('The saved display reference is no longer installed.')
-        reference_path, reference_key = self.service.simulation.skill_catalog.display_reference(analysis.reference_path(reference['data_sha256']), config.skill_catalog)
+        if batch_context is None:
+            reference_path, reference_key, node_config = self.display_context(job, config)
+        else:
+            if 'display' not in batch_context:
+                batch_context['display'] = self.display_context(job, config)
+            reference_path, reference_key, node_config = batch_context['display']
         folder = self.service.data_dir / 'cache/sandbox-work'
         folder.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='run-', dir=folder) as temporary:
@@ -270,11 +304,15 @@ class SandboxService:
             payload = {'kind':'sandbox', 'setup':inputs.variant_setup(job['setup'],index), 'run':run, 'modeled':modeled, 'jobId':job['id'],
                 'engineVersion':job['engine']['version'], 'referencePath':str(reference_path), 'referenceKey':reference_key,
                 'summaryOnly':summary_only, 'summaryOutput':str(summary), 'output':str(output)}
-            node_config = RuntimeConfig(Path(analysis.node), analysis.root, analysis.root, work_root=folder,
-                engine_args=('--max-old-space-size=2048', str(analysis.worker), '--serve'),
-                expected_engine_sha256=hashlib.sha256(Path(analysis.node).read_bytes()).hexdigest(),
-                timeout_seconds=180, max_input_bytes=128*1024*1024, max_output_bytes=16384, low_priority=True)
-            reply, _, _ = self.node_pool.run(node_config, _canonical(payload)+b'\n')
+            if binary_frames is not None:
+                count, horses, raw = binary_frames
+                frame_path = Path(temporary)/'frames.bin'
+                with frame_path.open('wb') as stream:
+                    stream.write(struct.pack('<4sII', b'UMAF', count, horses))
+                    stream.write(raw)
+                payload['framesPath'] = str(frame_path)
+            node_pool = batch_context.get('node_pool', self.node_pool) if batch_context is not None else self.node_pool
+            reply, _, _ = node_pool.run(node_config, _canonical(payload)+b'\n')
             if reply.get('ok') is not True: raise ValueError(str(reply.get('error', 'Analysis failed.')))
             return read_json(summary), output.read_bytes() if output.exists() else None
 
@@ -289,7 +327,29 @@ class SandboxService:
         if getattr(self.impact_local, 'refs', None) is not refs:
             self.impact_local.skill_payload = _canonical(refs.skill_data)
             self.impact_local.refs = refs
-        return self.execute(job, replace(config, worker_pool=self.impact_local.pool, decode_frames=False), refs, index, True, self.impact_local.skill_payload)
+            self.impact_local.job_id = None
+        if getattr(self.impact_local, 'job_id', None) != job['id']:
+            self.impact_local.inputs = inputs.PreparedInputs(job['setup'], refs, job.get('seedSchedule'))
+            self.impact_local.job_id = job['id']
+        return self.execute(job, replace(config, worker_pool=self.impact_local.pool, decode_frames=False), refs, index, True, self.impact_local.skill_payload, prepared_inputs=self.impact_local.inputs)
+
+    def execute_batch(self, job, config, refs, index):
+        """Bounded full-analysis workers keep both engine and Node state private."""
+        with self.lock:
+            if self.closed:
+                raise ValueError('The service is shutting down.')
+            if not hasattr(self.batch_local, 'engine_pool'):
+                self.batch_local.engine_pool, self.batch_local.node_pool = WorkerPool(), WorkerPool()
+                self.batch_workers.extend((self.batch_local.engine_pool, self.batch_local.node_pool))
+        if getattr(self.batch_local, 'job_id', None) != job['id']:
+            self.batch_local.job_id = job['id']
+            self.batch_local.context = {'node_pool': self.batch_local.node_pool}
+        return self.execute(job, replace(config, worker_pool=self.batch_local.engine_pool, retain_binary_frames=True), refs, index, True,
+                            batch_context=self.batch_local.context)
+
+    def run_batch(self, job, config, refs):
+        with self.connect() as db:
+            self._run_outcomes(job, config, refs, db, self.batch_executor, self.execute_batch, self.batch_concurrency)
 
     def save_run(self, job_id, index, result, connection=None):
         summary, packed = result
@@ -305,20 +365,22 @@ class SandboxService:
         with self.connect() as db:
             self._run_outcomes(job, config, refs, db)
 
-    def _run_outcomes(self, job, config, refs, db):
+    def _run_outcomes(self, job, config, refs, db, executor=None, execute=None, concurrency=None):
+        executor, execute = executor or self.impact_executor, execute or self.execute_outcome
+        concurrency = concurrency or self.impact_concurrency
         saved = {r[0] for r in db.execute('SELECT n FROM runs WHERE job=?', (job['id'],))}
         order, pending = iter(i for i in inputs.execution_order(job) if i not in saved), {}
         exhausted = False
         def fill():
             nonlocal exhausted
-            while not self.closed and job['id'] not in self.cancelled and len(pending)<self.impact_concurrency:
+            while not self.closed and job['id'] not in self.cancelled and len(pending)<concurrency:
                 if job.get('autoImpact') and (not self.foreground_idle.is_set() or self.opening):
                     break
                 index = next(order, None)
                 if index is None:
                     exhausted = True
                     break
-                pending[self.impact_executor.submit(self.execute_outcome,job,config,refs,index)] = index
+                pending[executor.submit(execute,job,config,refs,index)] = index
         try:
             fill()
             while pending or not exhausted and not self.closed and job['id'] not in self.cancelled:
@@ -353,10 +415,16 @@ class SandboxService:
             job['phase']='running'; self.write_job(job)
             if job['total']>1 and inputs.outcome_only(job,0):
                 self.run_outcomes(job,config,refs)
+            elif job['total']>1 and not job['setup'].get('variations'):
+                self.run_batch(job,config,refs)
             else:
-                for index in inputs.execution_order(job):
-                    if self.closed or job['id'] in self.cancelled: break
-                    self.save_run(job['id'], index, self.execute(job, config, refs, index, job['total']>1))
+                batch_context = {}
+                # Keep the WAL open rather than checkpointing after every race.
+                with self.connect() as db:
+                    for index in inputs.execution_order(job):
+                        if self.closed or job['id'] in self.cancelled: break
+                        self.save_run(job['id'], index, self.execute(job, config, refs, index, job['total']>1, batch_context=batch_context), db)
+                        db.commit()  # Preserve live progress and completed races on failure.
             job['phase']='interrupted' if self.closed else 'cancelled' if job['id'] in self.cancelled else 'complete'
         except Exception as error:
             job.update(phase='interrupted' if self.closed else 'failed', error=str(error)[:1000])
@@ -412,6 +480,9 @@ class SandboxService:
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.render_executor.shutdown(wait=False, cancel_futures=True)
         self.impact_executor.shutdown(wait=False, cancel_futures=True)
+        self.batch_executor.shutdown(wait=False, cancel_futures=True)
         for pool in self.impact_workers:
+            pool.close()
+        for pool in self.batch_workers:
             pool.close()
         self.engine_pool.close(); self.node_pool.close()

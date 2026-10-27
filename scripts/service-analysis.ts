@@ -9,6 +9,7 @@ import {assembleReferenceData} from '../src/data/reference';
 import {readGeometry} from '../src/data/geometry';
 import {projectSimulation,projectModeledRace} from '../src/simulation/project';
 import {initialRace,summarize} from '../src/sandbox/results';
+import {decodeSimulatorFrames} from '../src/sandbox/binary-frames';
 import {decisionTrace} from '../src/simulation/trace';
 import {packDashboard} from '../src/analysis/dashboard-codec';
 import {enrichSimulation} from '../src/simulation/enrich';
@@ -34,7 +35,8 @@ const {data,reference}=cached;
 let value:any;
 if(input.kind==='sandbox'){
   const race=initialRace(input.setup,input.run,input.jobId,input.engineVersion,reference);
-  value=projectModeledRace(race,input.modeled,input.modeled.decisionTrace,reference,input.summaryOnly);
+  const frames=input.framesPath?decodeSimulatorFrames(readFileSync(input.framesPath),race.runners.map(r=>r.id)):undefined;
+  value=projectModeledRace(race,input.modeled,input.modeled.decisionTrace,reference,input.summaryOnly,frames);
   await enrichSimulation(value,input.modeled.decisionTrace,reference,undefined,input.summaryOnly);
   writeFileSync(input.summaryOutput,JSON.stringify(summarize(value,input.run)));
   if(input.summaryOnly)return;

@@ -24,6 +24,29 @@ def source():
 
 
 class AutomaticSkills(unittest.TestCase):
+    def test_cached_coverage_reloads_changed_jobs_and_keeps_pair_deduplication(self):
+        original=source();planned=next_setup(original,{})
+        def run(index,variant,seed):
+            return {'index':index,'variantIndex':variant,'seed':seed,'moods':[3,3],'gates':[1,2],
+                'runners':[{'id':'0','place':1,'time':50},{'id':'1','place':2,'time':51}]}
+        with tempfile.TemporaryDirectory() as folder:
+            store=SandboxService(SimpleNamespace(data_dir=Path(folder)))
+            try:
+                store.write_job(original)
+                for key,seed in [('a',42),('b',-42)]:
+                    store.write_job({**original,'id':key,'setup':planned,'impactSourceId':'source','total':300})
+                    for item in [run(0,0,seed),run(100,1,seed)]:store.save_run(key,item['index'],(item,None))
+                expected=coverage(original,store.impacts('source'))
+                self.assertEqual(store.auto_skills.sample_counts(original)[0],expected)
+                with patch.object(store,'job',wraps=store.job) as read:
+                    self.assertEqual(store.auto_skills.sample_counts(original)[0][('0',11)],1)
+                    self.assertFalse(any(call.kwargs.get('include_runs',True) for call in read.call_args_list),'Unchanged jobs do not reread outcome rows')
+                store.save_run('a',200,(run(200,2,42),None))
+                self.assertEqual(store.auto_skills.sample_counts(original)[0],coverage(original,store.impacts('source')))
+                changed=deepcopy(original);changed['engine']['artifact_sha256']='different'
+                self.assertTrue(all(n==0 for n in store.auto_skills.sample_counts(changed)[0].values()))
+            finally:store.close()
+
     def test_plan_shares_baseline_but_never_changes_stats_or_race_context(self):
         original = source()
         planned = next_setup(original, {('0',11):500})

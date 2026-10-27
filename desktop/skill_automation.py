@@ -1,5 +1,6 @@
 """Durable, bounded skill-only work; ordinary simulations always take priority."""
 from copy import deepcopy
+from collections import OrderedDict
 import json
 import math
 import threading
@@ -34,7 +35,7 @@ def removed_skills(setup):
     return result
 
 
-def coverage(source, jobs):
+def coverage_pairs(source, jobs):
     """Count distinct complete pairs in the same engine, field and conditions."""
     found = {key: set() for key in skill_targets(source['setup'])}
     def pair(run):
@@ -57,7 +58,11 @@ def coverage(source, jobs):
                 key = pair(run)
                 if key in baseline and valid(run, runner) and valid(baseline[key], runner):
                     found[(runner, skill)].add(key)
-    return {key: len(pairs) for key, pairs in found.items()}
+    return found
+
+
+def coverage(source, jobs):
+    return {key: len(pairs) for key, pairs in coverage_pairs(source, jobs).items()}
 
 
 def next_setup(source, counts):
@@ -94,6 +99,7 @@ class SkillAutomation:
         self.store = store
         self.wake = threading.Event()
         self.thread = None
+        self.coverage_cache = OrderedDict()
         with store.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS skill_automation (source TEXT PRIMARY KEY, value TEXT)')
 
@@ -172,8 +178,7 @@ class SkillAutomation:
         source = self.store.job(source_id, include_runs=False)
         if source['phase'] != 'complete':
             return
-        jobs = self.store.impacts(source_id)
-        counts = coverage(source, jobs)
+        counts, jobs = self.sample_counts(source)
         self.write(source_id, completeSkills=sum(n >= DEFAULT_PAIRS for n in counts.values()))
         setup = next_setup(source, counts)
         if setup is None:
@@ -200,6 +205,27 @@ class SkillAutomation:
         self.store.run(job, config, refs)
         if job['phase'] == 'failed':
             raise ValueError(job.get('error', 'Skill-impact simulation failed.'))
-        counts = coverage(source, self.store.impacts(source_id))
+        counts, _ = self.sample_counts(source)
         self.write(source_id, completeSkills=sum(n >= DEFAULT_PAIRS for n in counts.values()))
         self.wake.set()
+
+    def sample_counts(self, source):
+        """Reuse completed job coverage, preserving cross-job pair deduplication."""
+        jobs = self.store.impacts(source['id'], include_runs=False)
+        found = {key:set() for key in skill_targets(source['setup'])}
+        for job in jobs:
+            key = source['id'], job['id']
+            signature = json.dumps([source['setup'], source.get('engine'), source.get('referenceKey'),
+                job['setup'], job.get('engine'), job.get('referenceKey'), job.get('runCursor')], sort_keys=True)
+            cached = self.coverage_cache.get(key)
+            if cached is None or cached[0] != signature:
+                pairs = coverage_pairs(source, [self.store.job(job['id'])])
+                cached = signature, {k:v for k,v in pairs.items() if v}
+                self.coverage_cache[key] = cached
+            self.coverage_cache.move_to_end(key)
+            while len(self.coverage_cache) > 64:
+                self.coverage_cache.popitem(last=False)
+            for target, pairs in cached[1].items():
+                if target in found:
+                    found[target].update(pairs)
+        return {key:len(pairs) for key,pairs in found.items()}, jobs

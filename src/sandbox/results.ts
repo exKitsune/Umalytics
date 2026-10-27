@@ -15,7 +15,7 @@ export function initialRace(setup:Setup,run:Omit<RunSummary,'runners'>,jobId:str
     sandbox:{jobId,runIndex:run.index,seed:run.seed,engineVersion},randomSeed:run.seed,category:'practice',
     distance:course.distance,courseId:setup.courseId,laneDistanceMax:course.laneMax,duration:0,frames:[],events:[],warnings:[],
     conditions:{weather:String(setup.weather),ground:String(setup.ground),season:String(setup.season),timeOfDay:String(setup.time)},grade:setup.grade,
-    runners:setup.participants.map((p,index)=>({id:p.id,index,gate:run.gates[index],name:p.uma.name,buildName:p.uma.name,charaId:p.uma.charaId,cardId:p.uma.cardId,trainer:null,
+    runners:setup.participants.map((p,index)=>({id:p.id,index,gate:run.gates[index],name:p.uma.name,buildName:p.uma.name,charaId:p.uma.charaId,cardId:p.uma.cardId,trainer:p.trainer??null,
       stats:p.uma.stats,skills:p.uma.skills,mood:run.moods[index],strategy:strategyNames[p.strategy],strategyCode:p.strategy,teamGroup:engineTeams(setup.participants)[index],
       popularity:p.popularity,fanCount:p.uma.fans,raceWinCount:p.uma.careerWins,finishOrder:null,finishTime:null,
       aptitudes:runnerAptitudes(p,course)}))};

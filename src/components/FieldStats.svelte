@@ -30,7 +30,7 @@
   let comparingStats=false;
   $: comparisonCourse=reference?.courses[race.courseId??0];
   $: comparisonProfiles=comparisonCourse?race.runners.map(r=>({...rawProfile(r,comparisonCourse),name:`#${r.index+1} ${runnerName(reference,r)}`})):[];
-  $: comparisonGround=({firm:1,good:1,yielding:2,soft:3,heavy:4} as Record<string,number>)[String(race.conditions?.ground).toLowerCase()]??Number(race.conditions?.ground);
+  $: comparisonGround=({firm:1,good:2,yielding:2,soft:3,heavy:4} as Record<string,number>)[String(race.conditions?.ground).toLowerCase()]??Number(race.conditions?.ground);
   const f=(n:number|null|undefined,d=1)=>n==null?'—':n.toFixed(d);
   const mood=(m:number|null|undefined)=>m==null?'—':({1:'Awful',2:'Bad',3:'Normal',4:'Good',5:'Great'} as Record<number,string>)[m]??String(m);
   const range=(v:MotionBand,d=2)=>Math.abs(v.max-v.min)<10**-d?v.mid.toFixed(d):`${Math.min(v.min,v.mid,v.max).toFixed(d)} – ${Math.max(v.min,v.mid,v.max).toFixed(d)}`;

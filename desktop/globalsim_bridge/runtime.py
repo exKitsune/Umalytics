@@ -66,6 +66,8 @@ class RuntimeConfig:
     low_priority: bool = False
     skill_catalog: dict | None = field(default=None, repr=False, compare=False)
     decode_frames: bool = True
+    # Internal analysis IPC: the consumer validates and decodes retained frames.
+    retain_binary_frames: bool = False
 
     def __post_init__(self):
         if self.worker_protocol not in ('json', 'binary-v1'):

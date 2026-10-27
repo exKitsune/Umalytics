@@ -7,6 +7,7 @@
   export let reference: ReferenceData | null;
   export let selected: string;
   export let onSelect: (id: string) => void;
+  export let runnerLabels:Record<string,string>|null=null;
   $: teams = raceTeams(race);
   function medal(order: number | null | undefined) {
     return order === 1 ? 'gold' : order === 2 ? 'silver' : order === 3 ? 'bronze' : null;
@@ -23,7 +24,7 @@
           <button type="button" class="uma-card" class:chosen={runner.id === selected} onclick={() => onSelect(runner.id)} title={runnerName(reference, runner)}>
             <UmaPortrait {runner} size={40} alt={runnerName(reference, runner)}/>
             <span class="uma-name">{runnerName(reference, runner)}</span>
-            <span class="uma-meta"><span>Gate {runner.gate ?? runner.index + 1}</span><span class="place">{#if medal(runner.finishOrder)}<i class="medal {medal(runner.finishOrder)}" aria-hidden="true"></i>{/if}{finishPlace(runner.finishOrder) ?? '—'}</span></span>
+            <span class="uma-meta">{#if runnerLabels}<span>{runnerLabels[runner.id]??'—'}</span>{:else}<span>Gate {runner.gate ?? runner.index + 1}</span><span class="place">{#if medal(runner.finishOrder)}<i class="medal {medal(runner.finishOrder)}" aria-hidden="true"></i>{/if}{finishPlace(runner.finishOrder) ?? '—'}</span>{/if}</span>
           </button>
         {/each}
       </div>

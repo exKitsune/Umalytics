@@ -12,7 +12,7 @@
   function changeVenue(id:number){const options=courses.filter(c=>c.raceTrackId===id);setup.courseId=(options.find(c=>c.distance===course?.distance&&c.surface===course?.surface)??options[0]).id;}
   const groups=[
     {key:'weather',label:'Weather',options:['Sunny','Cloudy','Rainy','Snowy'],colors:['#edc35d','#a9bacd','#73b4ee','#b8d9ef']},
-    {key:'ground',label:'Ground',options:['Firm','Yielding','Soft','Heavy'],colors:['#94c979','#b4ba72','#ba9e76','#b58d80']},
+    {key:'ground',label:'Ground',options:['Firm','Good','Soft','Heavy'],colors:['#94c979','#b4ba72','#ba9e76','#b58d80']},
     {key:'season',label:'Season',options:['Spring','Summer','Autumn','Winter','Sakura'],colors:['#e6a2c4','#8bce87','#eba567','#a3cbef','#ee8fbf']},
   ] as const;
 </script>

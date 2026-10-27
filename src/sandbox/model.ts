@@ -6,7 +6,7 @@ import {buildAptitudes,syncParticipantAptitudes,type UmaAptitudes,type RaceAptit
 export type Aptitude='G'|'F'|'E'|'D'|'C'|'B'|'A'|'S';
 export interface UmaBuild {id:string;name:string;memo:string;charaId:number;cardId:number;stats:RunnerStats;aptitudes?:UmaAptitudes;skills:RunnerSkill[];fans:number;careerWins:number;folderId?:string;tags?:string[];favorite?:boolean;archived?:boolean;createdAt?:string;updatedAt?:string;variantOf?:string}
 export interface UmaFolder {id:string;name:string;color:string;icon:string}
-export interface Participant {id:string;uma:UmaBuild;surface:Aptitude;distance:Aptitude;strategyAptitude:Aptitude;aptitudeOverrides?:Partial<Record<RaceAptitude,Aptitude>>;strategy:number;mood:number;randomizeMood:boolean;gate:number;team:number|null;popularity:number}
+export interface Participant {id:string;trainer?:string|null;uma:UmaBuild;surface:Aptitude;distance:Aptitude;strategyAptitude:Aptitude;aptitudeOverrides?:Partial<Record<RaceAptitude,Aptitude>>;strategy:number;mood:number;randomizeMood:boolean;gate:number;team:number|null;popularity:number}
 export interface Setup {schemaVersion:1;id:string;name:string;courseId:number;weather:number;ground:number;season:number;time:number;grade:number;seed:number;keepSeed:boolean;shuffleGates:boolean;moodOverride?:{mode:'fixed';mood:number}|{mode:'random'};count:number;participants:Participant[];variations?:{participantId:string;builds:UmaBuild[]}}
 export interface Library {umas:UmaBuild[];folders?:UmaFolder[];setups:Setup[];conditions:{id:string;name:string;courseId:number;weather:number;ground:number;season:number;time:number;grade:number}[];templates:{id:string;name:string;skills:RunnerSkill[]}[]}
 export interface SkillSample {id:number;activated:boolean;checks:number;passed:number;effectiveness:number|null;gain:number|null;time:number|null;cost:number|null;carryover?:number|null;carryoverTime?:number|null}
@@ -24,7 +24,7 @@ export function fromRace(race:Race,reference:ReferenceData):{setup:Setup;warning
   Object.assign(setup,{name:race.title||'Imported race',courseId:race.courseId??0,seed:race.randomSeed??race.raw?.randomSeed??setup.seed,keepSeed:true,shuffleGates:false});
   if(!course)warnings.push('Choose a course; it was not recorded.');
   for(const [key,raw,max] of [['weather',race.conditions?.weather,4],['ground',race.conditions?.ground,4],['season',race.conditions?.season,5],['time',race.conditions?.timeOfDay,4],['grade',race.grade,1000]] as const){
-    const aliases:Record<string,number>={sunny:1,cloudy:2,rainy:3,snowy:4,good:1,firm:1,yielding:2,soft:3,heavy:4,spring:1,summer:2,autumn:3,winter:4,sakura:5,none:0,morning:1,midday:2,evening:3,night:4,g1:100,g2:200,g3:300,op:400};
+    const aliases:Record<string,number>={sunny:1,cloudy:2,rainy:3,snowy:4,good:2,firm:1,yielding:2,soft:3,heavy:4,spring:1,summer:2,autumn:3,winter:4,sakura:5,none:0,morning:1,midday:2,evening:3,night:4,g1:100,g2:200,g3:300,op:400};
     const n=raw==null?NaN:aliases[String(raw).toLowerCase()]??Number(raw);
     if(Number.isFinite(n)&&n>=0&&n<=max)setup[key]=n;else warnings.push(`${key}: using the displayed default; confirm before running.`);
   }
@@ -36,7 +36,7 @@ export function fromRace(race:Race,reference:ReferenceData):{setup:Setup;warning
     const p=participant(uma,index),distance=course?.distance??race.distance??0;
     const surface=course?.surface===2?'dirt':'turf',length=distance<=1400?'short':distance<=1800?'mile':distance<=2400?'middle':'long';
     const strategy=r.strategyCode??2,style=({1:'front',2:'pace',3:'late',4:'end',5:'front'} as const)[strategy as 1]??'pace';
-    Object.assign(p,{strategy,mood:r.mood??3,gate:r.gate??index+1,team:r.teamGroup??index,popularity:r.popularity??index+1});
+    Object.assign(p,{trainer:r.trainer?.trim()||null,strategy,mood:r.mood??3,gate:r.gate??index+1,team:r.teamGroup??index,popularity:r.popularity??index+1});
     for(const [key,value] of [['surface',r.aptitudes?.[surface]],['distance',r.aptitudes?.[length]],['strategyAptitude',r.aptitudes?.[style]]] as const){const v=rank(value);if(v)p[key]=v;else warnings.push(`${r.name}: ${key} missing; using the outfit default.`);}
     if(r.mood==null)warnings.push(`${r.name}: mood missing; using Normal.`);
     if(r.strategyCode==null)warnings.push(`${r.name}: strategy missing; using Pace.`);

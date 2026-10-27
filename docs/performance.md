@@ -80,3 +80,62 @@ recorded zero native worker executions after restarting with saved baselines;
 both the persistent restore and warm reopen performed fresh comparisons.
 Cold opens and persistent
 restores after restarting still pay validation, transfer and projection costs.
+
+
+## Full simulator batches (2026-10-27)
+
+Ordinary multi-race analysis uses up to four isolated simulator/Node worker pairs,
+capped at half the logical CPU count. Workers reuse the pinned skill JSON and
+analysis reference for each job. A shared WAL connection avoids checkpointing
+at every race; each completed race is committed for polling and interruption
+recovery. Skill-impact jobs retain their separate outcome-only execution path.
+
+Binary simulator frames stay binary through Python and are decoded directly into
+analysis frames in Node. Frame dimensions, byte counts, runner mapping and finite
+values are validated before analysis. JSON-protocol simulators retain the existing
+path. Single-race dashboards and capture verification retain their current path.
+
+An isolated nine-runner, 2,500 m benchmark ran the same 12 seeds twice per version.
+The original path took 32.17 seconds including worker startup, then 29.82 seconds
+with warm workers. Two optimized workers took 18.44 and 15.46 seconds; four took
+14.31 and 11.39 seconds. Every saved per-race summary was identical, including
+skill metrics and carryover. These local measurements are not a general latency
+guarantee. A proposed browser aggregation index was discarded after measuring
+slightly worse performance on 1,000 races.
+
+## Single-race analysis and native trace output (2026-10-27)
+
+The single-race sandbox path now hands binary replay frames directly to Node,
+as full batches already do. Trace validation uses C-level numeric scans while
+still rejecting booleans, strings and non-finite cells. Start-dash state uses
+an upper-bound binary search, preserving duplicate timestamps and interpolated
+exit boundaries. Current-speed checks avoid temporary filtered effect arrays;
+HP multipliers scan active status windows once rather than four times.
+
+For the same nine-runner Nakayama 2,500 m race, warm Node analysis median fell
+from 1.830 s to 1.635 s (eight requests, first two excluded). Full single-race
+execution, including the existing native engine, validation, analysis and packed
+dashboard, fell from 3.449 s to 3.232 s warm median (five seeds, first excluded).
+Cold execution stayed around 4.9 s. Every saved summary and unpacked dashboard
+value matched. A proposed per-tick effect-window/target-stack cache was discarded
+after it increased runtime on the longer race.
+
+The GlobalSim native optimization compares repeated
+decision payloads by exact value before serializing fingerprints; numeric
+matrix columns reuse their exact serialized text, and small integers use static
+text. Schema, observation limits, coalescing, mechanics and RNG ordering remain
+unchanged. Twelve traced runs fell from 15.219 s to 13.892 s in the isolated
+worker benchmark, including Python response decoding. All twelve complete traces
+and 100 untraced outcomes matched. An additional direct JSON comparison matched
+byte for byte, including the 12,438,685-byte traced reply. Startup-plan caching
+was discarded because it did not improve outcome-only runtime.
+
+The reviewed native source is pinned at
+`b8cd8842259cc90f90be6d8640e057b98f17ec42` in `simulation/source-lock.json`.
+Both added native serialization tests pass. The native debug suite reports the
+same eleven existing failures on the untouched baseline (135 passed / 11 failed)
+and modified source (137 passed / 11 failed): HP/spurt and movement/geometry
+reference-vector assertions, including duel partner selection. These failures
+were reproduced using separate Cargo target directories. No mechanics or test
+expectations were changed to hide them. These local benchmarks are not general
+latency guarantees or proof for every possible input.

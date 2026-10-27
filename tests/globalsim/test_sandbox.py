@@ -22,6 +22,74 @@ def setup():
             'strategy':2, 'mood':3, 'randomizeMood':True, 'gate':i+1, 'team':i, 'popularity':i+1} for i in range(9)]}
 
 class CustomInputs(unittest.TestCase):
+    def test_outcome_input_cache_is_scoped_to_job_and_reference(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store=SandboxService(SimpleNamespace(data_dir=Path(folder)))
+            config=RuntimeConfig(Path(folder)/'engine',Path(folder),Path(folder));refs=references()
+            value=inputs.setup(setup());value['count']=2
+            first={'id':'first','setup':value,'seedSchedule':[10,20]}
+            second={**first,'id':'second','seedSchedule':[30,40]}
+            def execute(job,config,refs,index,summary_only,skill_payload=None,**kwargs):
+                return kwargs['prepared_inputs'].prepare(index),None
+            try:
+                with patch.object(store,'execute',side_effect=execute):
+                    self.assertEqual(store.execute_outcome(first,config,refs,0)[0][1]['seed'],10)
+                    self.assertEqual(store.execute_outcome(second,config,refs,0)[0][1]['seed'],30)
+                    changed=deepcopy(refs);changed.settings['changedReference']=True
+                    self.assertTrue(store.execute_outcome(second,config,changed,0)[0][0]['changedReference'])
+            finally:store.close()
+
+    def test_prepared_impact_inputs_match_uncached_variants_and_draws(self):
+        value=inputs.setup(setup());value['count']=3;value['shuffleGates']=True
+        value['participants'][0]['randomizeMood']=True
+        original=value['participants'][0]['uma'];alternate=deepcopy(original)
+        alternate['stats']['speed']+=25
+        without=deepcopy(original);without['skills']=without['skills'][:1]
+        value['variations']={'participantId':'0','builds':[alternate,without]}
+        refs=references()
+        for mood in (None,{'mode':'fixed','mood':1},{'mode':'random'}):
+            if mood:value['moodOverride']=mood
+            else:value.pop('moodOverride',None)
+            for schedule in (None,[-7,53,2147483647]):
+                prepared=inputs.PreparedInputs(value,refs,schedule)
+                for index in inputs.execution_order({'setup':value,'total':9,'seedSchedule':schedule}):
+                    spec,run=prepared.prepare(index)
+                    self.assertEqual((spec,run),inputs.prepare(value,refs,index,schedule))
+                    self.assertIs(spec['skillData'],refs.skill_data)
+                    self.assertEqual(prepared.setup_for(index),inputs.variant_setup(value,index))
+                    spec['horses'][0]['speed']=1
+                    self.assertNotEqual(prepared.prepare(index)[0]['horses'][0]['speed'],1)
+
+    def test_full_batch_workers_are_bounded_and_save_stable_run_indices(self):
+        import time
+        with tempfile.TemporaryDirectory() as folder:
+            store=SandboxService(SimpleNamespace(data_dir=Path(folder)))
+            value=inputs.setup(setup());value['count']=6
+            job={'id':'full-batch','phase':'queued','total':6,'setup':value,'engine':{}}
+            active=0;maximum=0;lock=threading.Lock()
+            def execute(j,config,refs,index):
+                nonlocal active,maximum
+                with lock:active+=1;maximum=max(maximum,active)
+                time.sleep(.02 if index%2==0 else .005)
+                with lock:active-=1
+                return {'index':index,'seed':100+index,'runners':[]},None
+            try:
+                store.write_job(job)
+                with patch.object(store,'execute_batch',side_effect=execute),patch.object(store.auto_skills,'ensure'):
+                    store.run(job,None,None)
+                saved=store.job(job['id'])
+                self.assertEqual(saved['phase'],'complete')
+                self.assertEqual([r['index'] for r in saved['runs']],list(range(6)))
+                self.assertEqual(maximum,store.batch_concurrency)
+                self.assertEqual(saved['completed'],6)
+            finally:store.close()
+
+    def test_trainer_names_survive_setup_validation(self):
+        value=setup();value['participants'][0]['trainer']='Sample trainer'
+        self.assertEqual(inputs.setup(value)['participants'][0]['trainer'],'Sample trainer')
+        value['participants'][0]['trainer']=['Invalid']
+        with self.assertRaises(ValueError):inputs.setup(value)
+
     def test_saved_aptitudes_and_race_overrides_are_independent(self):
         value=setup();grades=dict(zip(inputs.APTITUDE_KEYS,['A','F','B','S','A','E','C','A','B','G']))
         for p in value['participants']:
@@ -185,7 +253,7 @@ class CustomInputs(unittest.TestCase):
             with patch('sandbox_service.os.cpu_count',return_value=8):
                 store=SandboxService(SimpleNamespace(data_dir=Path(folder)))
             arrived,release=threading.Event(),threading.Event();pools=set();guard=threading.Lock()
-            def execute(j,config,refs,index,summary_only,skill_payload=None):
+            def execute(j,config,refs,index,summary_only,skill_payload=None,**kwargs):
                 with guard:
                     pools.add(id(config.worker_pool))
                     if len(pools)==4:arrived.set()
@@ -280,7 +348,7 @@ class CustomInputs(unittest.TestCase):
             value['variations']={'participantId':'0','builds':[alternate]}
             job={'id':'curve','phase':'queued','total':4,'setup':value,'seedSchedule':[123,456],'engine':{}}
             store.write_job(job)
-            def execute(j,config,refs,index,summary_only):
+            def execute(j,config,refs,index,summary_only,**kwargs):
                 if index==2:store.cancelled.add(j['id'])
                 return {'index':index,'seed':123,'runners':[{'id':'0','place':1,'time':50+index}]},None
             try:

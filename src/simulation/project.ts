@@ -161,13 +161,13 @@ export function projectSimulation(recorded:Race,report:AnalysisGateReport,refere
 
 /** Called only with a service-validated execution trace. This projection does
  * not compare a capture or grant recorded-race compatibility authorization. */
-export function projectModeledRace(recorded:Race,modeled:JsonObject,trace:NonNullable<ReturnType<typeof decisionTrace>>,reference:ReferenceData|null,summaryOnly=false):PreparedRace {
+export function projectModeledRace(recorded:Race,modeled:JsonObject,trace:NonNullable<ReturnType<typeof decisionTrace>>,reference:ReferenceData|null,summaryOnly=false,decodedFrames?:Frame[]):PreparedRace {
   const results=objects(modeled.results);
   if(results.length!==recorded.runners.length)throw new Error('Simulator runner results are incomplete.');
   const runners=recorded.runners.map(r=>{const result=results[r.index];if(!result)throw new Error('Simulator runner mapping is incomplete.');return {...r,
     finishTimeRaw:num(result.finishTimeRaw),finishTime:num(result.finishTime),finishOrder:num(result.finishOrder)===null?null:Number(result.finishOrder)+1,
     startDelay:num(result.startDelayTime),lastSpurtDistance:num(result.actualLastSpurtStartDistance),strategyCode:num(result.runningStyle)??r.strategyCode};});
-  const frames:Frame[]=objects(modeled.frames).map(f=>({time:Number(f.t),runners:runners.map(r=>{const row=objects(f.horses)[r.index];if(!row)throw new Error('Simulator frame is incomplete.');return {runnerId:r.id,distance:num(row.pos),speed:num(row.speed),hp:num(row.hp),lane:num(row.lane),temptationMode:num(row.temptationMode),blockFrontRunnerIndex:num(row.blockFrontHorseIndex)};})}));
+  const frames:Frame[]=decodedFrames??objects(modeled.frames).map(f=>({time:Number(f.t),runners:runners.map(r=>{const row=objects(f.horses)[r.index];if(!row)throw new Error('Simulator frame is incomplete.');return {runnerId:r.id,distance:num(row.pos),speed:num(row.speed),hp:num(row.hp),lane:num(row.lane),temptationMode:num(row.temptationMode),blockFrontRunnerIndex:num(row.blockFrontHorseIndex)};})}));
   const race:Race={...recorded,analysisSource:'simulation',runners,frames,events:[],raw:undefined,duration:frames.at(-1)?.time??recorded.duration};
   const analysis:RaceAnalysis={source:'simulation',runners:{},debuffs:[],warnings:[]},prepared:PreparedRace={race,analysis,runners:{}};
   const sampleRanks=new Map(frames.map(f=>[f,rankSamples(race,f.runners,f.time)]));

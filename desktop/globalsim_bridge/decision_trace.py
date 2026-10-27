@@ -47,13 +47,17 @@ def validate_trace(trace, runners):
             return 'Invalid decision fields.'
     seen = set()
     previous_ticks = {}
+    numeric_types = {float, int}
+    width = len(MOTION_COLUMNS)
     for row in motion:
-        if not isinstance(row, list) or len(row) != len(MOTION_COLUMNS) or not all(finite(v) for v in row):
+        # C-level type/finite scans avoid a Python callback for every numeric cell.
+        # Exact types still reject booleans and numeric-looking strings.
+        if not isinstance(row, list) or len(row) != width or not set(map(type, row)) <= numeric_types or not all(map(math.isfinite, row)):
             return 'Invalid motion row.'
         tick, _, horse = row[:3]
         if not index(horse) or row[15] != -1 and not index(row[15]):
             return 'Invalid motion runner or blocker.'
-        if tick <= previous_ticks.get(horse, -1) or row[3] <= 0 or min(row[20:22]) < 0:
+        if tick <= previous_ticks.get(horse, -1) or row[3] <= 0 or row[20] < 0 or row[21] < 0:
             return 'Invalid motion timing or speed loss.'
         previous_ticks[horse] = tick
         seen.add(horse)

@@ -59,7 +59,11 @@ class WorkerPool:
                 modeled = _strict_json(metadata)
                 if not isinstance(modeled, dict):
                     raise ValueError('Simulator reply is not an object')
-                if frames is not None and config.decode_frames:
+                if frames is not None and config.retain_binary_frames:
+                    if 'frames' in modeled or '_binary_frames' in modeled:
+                        raise ValueError('Duplicate binary frames')
+                    modeled['_binary_frames'] = frames
+                elif frames is not None and config.decode_frames:
                     count, horses, raw = frames
                     if 'frames' in modeled:
                         raise ValueError('Duplicate binary frames')

@@ -83,6 +83,9 @@ class TraceValidationTests(unittest.TestCase):
         mutations = [lambda t:t.update(complete=False), lambda t:t.update(dropped=1),
             lambda t:t.update(observations=3), lambda t:t['motion'][0].__setitem__(15,1),
             lambda t:t['motion'][0].__setitem__(19,float('nan')),
+            lambda t:t['motion'][0].__setitem__(19,float('inf')),
+            lambda t:t['motion'][0].__setitem__(19,True),
+            lambda t:t['motion'][0].__setitem__(19,'1'),
             lambda t:t['events'][0].update(count=2), lambda t:t['events'][0].update(horseIndex=1),
             lambda t:t['events'][0].update(horseIndex=float('inf')),
             lambda t:t.update(motion=[]), lambda t:t.update(schema='unknown')]

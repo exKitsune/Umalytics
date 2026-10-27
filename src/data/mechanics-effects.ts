@@ -14,7 +14,8 @@ export function startDashStateAt(race:Race,analysis:Pick<RaceAnalysis,'runners'>
     if(i===0&&p.time===0&&self!==null&&self<=3.1)state=true;
     if(state!==false){if(self===null)state=null;else if(self>=threshold)state=false;}
     return {time:p.time,state,speed:self};});ids.set(runnerId,states);}
-  let index=0;while(index<states.length&&states[index].time<=time)index++;
+  let index=0,high=states.length;
+  while(index<high){const middle=(index+high)>>>1;if(states[middle].time<=time)index=middle+1;else high=middle;}
   const here=states[index-1];if(!here)return null;
   const next=states[index];
   if(here.state===true&&next?.state===false&&here.speed!=null&&next.speed!=null&&next.speed>here.speed){
@@ -30,7 +31,8 @@ export function selfSpeedAt(race:Race,analysis:Pick<RaceAnalysis,'runners'>,runn
   const runner=race.runners.find(r=>r.id===runnerId);if(!runner)return null;let modifier=0;
   for(const source of race.runners)for(const activation of analysis.runners[source.id].skillActivations){
     if(time<activation.start||activation.effectiveEnd!==null&&time>=activation.effectiveEnd)continue;
-    for(const effect of activation.effects.filter(e=>[21,22].includes(e.type))){
+    for(const effect of activation.effects){
+      if(effect.type!==21&&effect.type!==22)continue;
       const foreign=(effect.targetType??1)!==1;
       if(!foreign&&source.id!==runnerId)continue;
       if(foreign){
@@ -46,8 +48,18 @@ export function selfSpeedAt(race:Race,analysis:Pick<RaceAnalysis,'runners'>,runn
   return Math.max(0,actual-modifier);
 }
 export function statusHpFactor(intervals:StatusInterval[],time:number,style:number|null,excluded:string|null=null):number {
-  const active=(kind:string)=>kind!==excluded&&intervals.some(i=>i.kind.replace(/-model$/,'')===kind&&time>=i.start&&time<(i.end??i.estimatedEnd??i.observedUntil??i.start));
-  const spot=active('spot-struggle'),rushed=active('rushed');
+  let spot=false,rushed=false,paceDown=false,downhill=false;
+  // Scan active windows once instead of normalizing every interval four times.
+  for(const interval of intervals){
+    if(!(time>=interval.start&&time<(interval.end??interval.estimatedEnd??interval.observedUntil??interval.start)))continue;
+    switch(interval.kind){
+      case 'spot-struggle':case 'spot-struggle-model':spot=true;break;
+      case 'rushed':case 'rushed-model':rushed=true;break;
+      case 'pace-down':case 'pace-down-model':paceDown=true;break;
+      case 'downhill-mode':case 'downhill-mode-model':downhill=true;break;
+    }
+  }
+  spot=spot&&excluded!=='spot-struggle';rushed=rushed&&excluded!=='rushed';
   let factor=spot&&rushed?style===5?7.7:3.6:spot?style===5?3.5:1.4:rushed?1.6:1;
-  if(active('pace-down'))factor*=.6;if(active('downhill-mode'))factor*=.4;return factor;
+  if(paceDown&&excluded!=='pace-down')factor*=.6;if(downhill&&excluded!=='downhill-mode')factor*=.4;return factor;
 }
