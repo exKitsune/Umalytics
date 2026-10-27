@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {fuzzyScore} from '../sandbox/search';
   import {tick} from 'svelte';
   import {outfitUniques} from '../sandbox/editor';
   import {isOutfitReleased} from '../sandbox/outfit-release';
@@ -9,7 +10,7 @@
   export let onSelect:(cardId:number)=>void;
   let open=false,query='',showUnreleased=false,search:HTMLInputElement;
   $: charaId=Math.floor(cardId/100);
-  $: choices=Object.entries(reference.metadata.outfits).map(([id,outfit])=>({id:Number(id),outfit,name:reference.metadata.characters[Math.floor(Number(id)/100)]??'Unknown Uma'})).filter(c=>(showUnreleased||isOutfitReleased(c.id))&&outfitUniques(reference,c.id).length>0).filter(c=>`${c.name} ${c.outfit}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name)||a.id-b.id);
+  $: choices=Object.entries(reference.metadata.outfits).map(([id,outfit])=>({id:Number(id),outfit,name:reference.metadata.characters[Math.floor(Number(id)/100)]??'Unknown Uma'})).filter(c=>(showUnreleased||isOutfitReleased(c.id))&&outfitUniques(reference,c.id).length>0).map(c=>({...c,score:fuzzyScore(query,`${c.name} ${c.outfit}`)})).filter(c=>c.score>0).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name)||a.id-b.id);
   async function toggle(){open=!open;if(open){query='';await tick();search?.focus();}}
 </script>
 <div class="outfit-picker">

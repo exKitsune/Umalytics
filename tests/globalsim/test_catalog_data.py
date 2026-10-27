@@ -22,7 +22,8 @@ class FakeCatalog:
         self.rows = {
             'characters': [{'char_id': 1099, 'name_en': 'Hokko Tarumae'}],
             'character-cards': [{'card_id': 109901, 'title_en_gl': '[Starry Lightship]',
-                                 'release_en': '2026-10-24', 'url_name': '109901-hokko-tarumae'}],
+                                 'release_en': '2026-10-24', 'url_name': '109901-hokko-tarumae',
+                                 'aptitude':['A','G','C','A','A','F','D','A','B','G']}],
             'support-cards': [{'support_id': 30172, 'char_id': 1044, 'rarity': 3,
                                'type': 'intelligence', 'char_name': 'Sweep Tosho', 'url_name': '30172-sweep-tosho'}],
             'skills': [{'id': 100991, 'rarity': 3, 'name_en': 'Test unique', 'loc': {'en': {}},
@@ -57,6 +58,7 @@ class CatalogRefresh(unittest.TestCase):
         self.assertTrue(self.catalog.check())
         value = self.catalog.snapshot()
         self.assertEqual(value['career']['outfitGlobalReleases']['109901'], '2026-10-24')
+        self.assertEqual(value['career']['aptitudes']['109901'], self.remote.rows['character-cards'][0]['aptitude'])
         self.assertEqual(value['career']['skillOwners']['100991'], [109901])
         self.assertEqual(len(self.remote.calls), 5)
         self.assertFalse(self.catalog.check())

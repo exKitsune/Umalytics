@@ -6,6 +6,7 @@ import {careerReference,factorGroups,rating} from '../data/career-display';
 import {aptitudeLetter} from '../data/game-icons';
 import {raceTimestamp} from '../data/race-time';
 import {fuzzyScore} from './search';
+import {defaultAptitudes,aptitudeKeys} from './aptitudes';
 
 export interface VeteranSnapshot {schemaVersion:1|2;capturedAt:string|null;count:number;veterans:Record<string,unknown>[];favorites?:Record<string,unknown>[]|null;unchanged?:boolean}
 export const veteranMarkers=['No marker','Carrot','Rice','Drink','Chocolate','Cake','Diamond','Spade','Heart','Club','Pink shoe','Green shoe','Orange shoe','Blue shoe','Red shoe','Handshake'];
@@ -98,7 +99,8 @@ export function veteranCopyMemo(row:ReturnType<typeof veteranRows>[number]):stri
   return [source,row.memo].filter(Boolean).join(' · ');
 }
 export function veteranBuild(row:ReturnType<typeof veteranRows>[number]):UmaBuild {
+  const aptitudes=defaultAptitudes(row.runner.cardId!);for(const key of aptitudeKeys){const value=aptitudeLetter(row.career.aptitudes[key]);if(value)aptitudes[key]=value as typeof aptitudes[typeof key];}
   return {id:uid(),name:row.name,memo:veteranCopyMemo(row),charaId:row.runner.charaId!,cardId:row.runner.cardId!,
-    stats:{...row.career.stats},skills:structuredClone(row.career.skills??[]),fans:row.career.fans??0,
+    stats:{...row.career.stats},aptitudes,skills:structuredClone(row.career.skills??[]),fans:row.career.fans??0,
     careerWins:row.career.wins??0,folderId:'',favorite:false};
 }

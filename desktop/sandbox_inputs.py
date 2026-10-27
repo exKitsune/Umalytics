@@ -3,6 +3,26 @@ from copy import deepcopy
 import random
 from globalsim_bridge.adapter import WEATHER, GROUND, SEASON, TIME, GRADE, STYLE
 
+APTITUDE_KEYS = ('turf', 'dirt', 'short', 'mile', 'middle', 'long', 'front', 'pace', 'late', 'end')
+
+
+def aptitudes(value):
+    if not isinstance(value, dict) or set(value) != set(APTITUDE_KEYS) or any(
+            not isinstance(g, str) or len(g) != 1 or g not in 'GFEDCBAS' for g in value.values()):
+        raise ValueError('Choose all ten valid build aptitudes.')
+    return {key: value[key] for key in APTITUDE_KEYS}
+
+
+def race_aptitudes(participant, course):
+    if 'aptitudes' not in participant['uma'] or 'aptitudeOverrides' not in participant:
+        return {key: participant[key] for key in ('surface', 'distance', 'strategyAptitude')}
+    grades = participant['uma']['aptitudes']
+    distance = course.get('distance', 2000)
+    keys = {'surface': 'dirt' if course.get('surface') == 2 else 'turf',
+            'distance': 'short' if distance <= 1400 else 'mile' if distance <= 1800 else 'middle' if distance <= 2400 else 'long',
+            'strategyAptitude': {1:'front', 2:'pace', 3:'late', 4:'end', 5:'front'}[participant['strategy']]}
+    return {**{key: grades[value] for key, value in keys.items()}, **participant['aptitudeOverrides']}
+
 def integer(value, name, low, high):
     if type(value) is not int or not low <= value <= high:
         raise ValueError(f'{name} must be an integer from {low} to {high}.')
@@ -37,12 +57,15 @@ def build(value):
     if not isinstance(value.get('stats'),dict):raise ValueError('Base stats are required.')
     if not isinstance(memo, str) or len(memo) > 10000:
         raise ValueError('Memo is too long.')
-    return {'id': text(value.get('id'), 'Build ID', 80), 'name': text(value.get('name'), 'Build name'),
+    result = {'id': text(value.get('id'), 'Build ID', 80), 'name': text(value.get('name'), 'Build name'),
         'memo': memo, 'charaId': integer(value.get('charaId'), 'Character', 1, 2**31-1),
         'cardId': integer(value.get('cardId'), 'Outfit', 1, 2**31-1),
         'stats': {key: integer(value.get('stats', {}).get(key), key, 1, 2000) for key in ('speed','stamina','power','guts','wisdom')},
         'skills': skills(value.get('skills')), 'fans': integer(value.get('fans', 0), 'Fans', 0, 2**53-1),
         'careerWins': integer(value.get('careerWins', 0), 'Career wins', 0, 1000)}
+    if 'aptitudes' in value:
+        result['aptitudes'] = aptitudes(value['aptitudes'])
+    return result
 
 def conditions(value):
     result = {'courseId': integer(value.get('courseId'), 'Course', 1, 2**31-1)}
@@ -80,6 +103,12 @@ def setup(value):
             if row.get(key) not in list('GFEDCBAS'):
                 raise ValueError(f'Choose a valid {key} aptitude.')
             p[key] = row[key]
+        if 'aptitudeOverrides' in row:
+            overrides = row['aptitudeOverrides']
+            if not isinstance(overrides, dict) or set(overrides) - {'surface', 'distance', 'strategyAptitude'} or any(
+                    not isinstance(g, str) or len(g) != 1 or g not in 'GFEDCBAS' for g in overrides.values()):
+                raise ValueError('Choose valid race aptitude overrides.')
+            p['aptitudeOverrides'] = dict(overrides)
         result['participants'].append(p)
     if len({p['id'] for p in result['participants']}) != len(roster):
         raise ValueError('Participant IDs must be unique.')
@@ -195,6 +224,7 @@ def prepare(value, refs, index=0, seed_schedule=None):
     next_solo_team = 0
     for i,p in enumerate(value['participants']):
         uma = p['uma']; inventory = []
+        grades = race_aptitudes(p, course)
         for s in uma['skills']:
             definition = refs.skill_data.get(str(s['id']))
             issue = skill_issue(refs.skill_data, s['id'])
@@ -212,7 +242,7 @@ def prepare(value, refs, index=0, seed_schedule=None):
         horses.append({**uma['stats'], 'strategy':STYLE[p['strategy']][0], 'gateIndex':gates[i]-1, 'teamRank':0,
             'mood':moods[i]-3, 'teamId':team, 'popularity':p['popularity'], 'charaId':uma['charaId'],
             'fans':uma['fans'], 'careerWins':uma['careerWins'], 'skills':inventory,
-            'distanceAptitude':p['distance'], 'surfaceAptitude':p['surface'], 'strategyAptitude':p['strategyAptitude']})
+            'distanceAptitude':grades['distance'], 'surfaceAptitude':grades['surface'], 'strategyAptitude':grades['strategyAptitude']})
     spec = deepcopy(refs.settings)
     spec.update({'seed':seed, 'courseId':value['courseId'], 'weather':WEATHER[value['weather']],
         'groundCondition':GROUND[value['ground']], 'season':SEASON[value['season']], 'time':TIME[value['time']], 'grade':GRADE[value['grade']],

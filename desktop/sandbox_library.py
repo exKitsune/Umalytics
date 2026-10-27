@@ -42,6 +42,8 @@ def put(db, kind, value):
 def save_uma(db, value, now):
     cleaned = inputs.build(value)
     old = read(db, 'umas', cleaned['id']) or {}
+    if 'aptitudes' not in cleaned and 'aptitudes' in old:
+        cleaned['aptitudes'] = inputs.aptitudes(old['aptitudes'])
     # An editor opened from an older setup must not discard library organization.
     meta = {**old, **value}
     folder_id = meta.get('folderId', '')

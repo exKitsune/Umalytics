@@ -69,7 +69,7 @@ class CatalogData:
             raise ValueError('Linked catalog directory refused.')
         self.directory.mkdir(parents=True, exist_ok=True)
         self.metadata = metadata
-        self.base_digest = hashlib.sha256(encoded([metadata, 'engine-skills-v1'])).hexdigest()
+        self.base_digest = hashlib.sha256(encoded([metadata, 'engine-skills-v2-aptitudes'])).hexdigest()
         self.fetch, self.clock = fetch, clock
         self.closed = closed if closed is not None else threading.Event()
         self.lock, self.refresh_lock = threading.RLock(), threading.Lock()

@@ -17,3 +17,7 @@ Missing names and skill definitions use GameTora's public reference catalogs.
 Global definitions take priority over JP fallbacks. GameTora and its
 contributors are credited for community names and translations. Source URLs,
 revisions and hashes are recorded in the JSON provenance fields.
+
+Offline screenshot OCR uses Tesseract.js and Tesseract.js-core (Apache-2.0),
+with English trained data from naptha/tessdata. Runtime/core licenses ship
+in ocr/. Source and packaging details are in docs/screenshot-import.md.

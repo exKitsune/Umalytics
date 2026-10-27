@@ -143,4 +143,7 @@ def career_fallback(catalogs, source):
             if row.get('gene_version'):
                 owners[str(row['gene_version']['id'])] = cards
     return {'source': source, 'prices': prices, 'supports': supports, 'characters': characters, 'skillOwners': owners,
-            'outfitGlobalReleases': outfit_releases}
+            'outfitGlobalReleases': outfit_releases,
+            'aptitudes': {str(row['card_id']): row['aptitude'] for row in catalogs['character-cards']
+                          if isinstance(row.get('aptitude'), list) and len(row['aptitude']) == 10
+                          and all(isinstance(g, str) and g in 'GFEDCBAS' and len(g) == 1 for g in row['aptitude'])}}

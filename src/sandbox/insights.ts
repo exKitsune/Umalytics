@@ -1,6 +1,7 @@
 import type {Job,Setup,UmaBuild,RunSummary} from './model';
 import {distribution} from './results';
 import {STAT_STEP,STAT_RANGE} from './stat-trend';
+import {aptitudeKeys,buildAptitudes} from './aptitudes';
 
 export const statKeys=['speed','stamina','power','guts','wisdom'] as const;
 export type StatKey=typeof statKeys[number];
@@ -13,6 +14,7 @@ const skills=(b:UmaBuild)=>b.skills.map(s=>`${s.id}:${s.level??1}`).sort().join(
  * measurement of any one skill or stat. Names and memos are cosmetic. */
 export function impactTarget(base:UmaBuild,other:UmaBuild):ImpactTarget|null {
   if(['charaId','cardId','fans','careerWins'].some(k=>base[k as keyof UmaBuild]!==other[k as keyof UmaBuild]))return null;
+  const before=buildAptitudes(base),after=buildAptitudes(other);if(aptitudeKeys.some(k=>before[k]!==after[k]))return null;
   const changed=statKeys.filter(k=>base.stats[k]!==other.stats[k]);
   if(changed.length===1&&skills(base)===skills(other)){
     const stat=changed[0],a=base.stats[stat],b=other.stats[stat];
@@ -69,7 +71,8 @@ export function impactContext(job:Job){
   return JSON.stringify({engine:e?[e.version,e.profile,e.artifact_sha256,e.data_sha256,e.decisionTraceSchema,e.instrumentationSha256]:null,reference:job.referenceKey,
     conditions:[s.courseId,s.weather,s.ground,s.season,s.time,s.grade,s.shuffleGates,s.moodOverride??null],
     participants:s.participants.map(p=>({id:p.id,race:[p.surface,p.distance,p.strategyAptitude,p.strategy,p.mood,p.randomizeMood,p.gate,p.team,p.popularity],
-      uma:[p.uma.charaId,p.uma.cardId,p.uma.fans,p.uma.careerWins,statKeys.map(k=>p.uma.stats[k]),skills(p.uma)]}))});
+      uma:[p.uma.charaId,p.uma.cardId,p.uma.fans,p.uma.careerWins,statKeys.map(k=>p.uma.stats[k]),skills(p.uma),aptitudeKeys.map(k=>buildAptitudes(p.uma)[k])],
+      aptitudeOverrides:['surface','distance','strategyAptitude'].map(k=>p.aptitudeOverrides?.[k as 'surface']??null)}))});
 }
 // Two 97.5% Wilson intervals give a conservative, approximate 95% bound on
 // the difference of gained-win and lost-win proportions (Bonferroni).

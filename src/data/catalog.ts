@@ -1,11 +1,13 @@
 import bundled from './career-fallback.json';
+import aptitudeDefaults from '../sandbox/outfit-aptitudes.json';
 import type {ReferenceData,ReferenceMetadata} from './reference';
 
 /** Presentation catalog can refresh without changing a recorded analysis snapshot. */
 export const catalog=structuredClone(bundled);
+export const outfitAptitudes:Record<string,string[]>=structuredClone(aptitudeDefaults.cards);
 export let catalogRevision=bundled.source.revision;
 let latest:ReferenceMetadata['fallback'];
-export interface CatalogSnapshot {schemaVersion:1;revision:string|null;checkedAt:string|null;updatedAt:string|null;nextCheckAt?:string|null;error:string|null;career:typeof bundled|null;fallback:ReferenceMetadata['fallback']|null}
+export interface CatalogSnapshot {schemaVersion:1;revision:string|null;checkedAt:string|null;updatedAt:string|null;nextCheckAt?:string|null;error:string|null;career:(typeof bundled&{aptitudes?:Record<string,string[]>})|null;fallback:ReferenceMetadata['fallback']|null}
 export function installCatalog(value:CatalogSnapshot):boolean {
   if(value.schemaVersion!==1||!value.revision||!value.career||!value.fallback)return false;
   if(value.revision===catalogRevision&&latest)return false;
@@ -18,6 +20,7 @@ export function installCatalog(value:CatalogSnapshot):boolean {
     for(const id of Object.keys(target))delete target[id];
     Object.assign(target,value.career[key]);
   }
+  for(const [id,grades] of Object.entries(value.career.aptitudes??{}))if(Array.isArray(grades)&&grades.length===10&&grades.every(g=>typeof g==='string'&&/^[GFEDCBAS]$/.test(g)))outfitAptitudes[id]=[...grades];
   catalog.source=value.career.source;latest=value.fallback;catalogRevision=value.revision;return true;
 }
 export function catalogReference(base:ReferenceData,_revision=catalogRevision,engineSkillIds?:Set<string>):ReferenceData {

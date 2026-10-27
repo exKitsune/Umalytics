@@ -13,6 +13,8 @@
   import UmaLibrary from './UmaLibrary.svelte';
   import {parseTags} from '../sandbox/library';
   import {skillIconKey} from '../data/game-icons';
+  import {buildAptitudes,defaultAptitudes} from '../sandbox/aptitudes';
+  import UmaAptitudes from './UmaAptitudes.svelte';
   export let value:UmaBuild;
   export let reference:ReferenceData;
   export let library:Library;
@@ -22,12 +24,13 @@
   export let onClose:()=>void;
   export let applyLabel='Use build';
   let draft=withOwnUnique(structuredClone(value),reference),query='',loadOpen=false,tagText=(value.tags??[]).join(', '),template='',templateName='',failure='',showUnreleased=false;
+  draft.aptitudes=buildAptitudes(draft);
   if(draft.name==='New Uma')draft.name=reference.metadata.characters[draft.charaId]||'Uma';
-  let filters=emptySkillFilters(),saveAs=false,closeAfterSave=false;
+  let filters=emptySkillFilters(),saveAs=false,closeAfterSave=false,savingBuild=false;
   const skillName=(ref:ReferenceData,id:number)=>editorSkillName(ref,id);
   $: ownUnique=outfitUniques(reference,draft.cardId).find(id=>draft.skills.some(s=>s.id===id));
-  function snapshot(){const normalized=withOwnUnique(structuredClone(draft),reference);return {...normalized,tags:parseTags(tagText),skills:normalized.skills.map(s=>({...s,level:hasLevel(s.id)?s.level:1}))};}
-  function chooseOutfit(cardId:number){const automatic=draft.name===reference.metadata.characters[draft.charaId];draft=withOwnUnique({...draft,cardId,charaId:Math.floor(cardId/100)},reference);if(automatic)draft.name=reference.metadata.characters[draft.charaId]||'Uma';}
+  function snapshot(){const normalized=withOwnUnique(structuredClone(draft),reference);return {...normalized,aptitudes:buildAptitudes(normalized),tags:parseTags(tagText),skills:normalized.skills.map(s=>({...s,level:hasLevel(s.id)?s.level:1}))};}
+  function chooseOutfit(cardId:number){if(cardId===draft.cardId)return;const automatic=draft.name===reference.metadata.characters[draft.charaId];draft=withOwnUnique({...draft,cardId,charaId:Math.floor(cardId/100),aptitudes:defaultAptitudes(cardId)},reference);if(automatic)draft.name=reference.metadata.characters[draft.charaId]||'Uma';}
   let search:HTMLInputElement;
   let visibleSkills=120;
   $: visibleSkills=(results,120);
@@ -38,9 +41,9 @@
   const stats=['speed','stamina','power','guts','wisdom'] as const;
 
   async function add(id:number){if(draft.skills.some(s=>s.id===id))return;draft.skills=[...draft.skills,{id,level:1}];query='';await tick();search.focus();}
-  function save(close=false){closeAfterSave=close;saveAs=true;}
+  async function save(close=false){if(savingBuild)return;if(close&&library.umas.some(u=>u.id===draft.id)){savingBuild=true;failure='';try{const value=snapshot();await onSave(value);onApply(value);}catch(e){failure=String(e);}finally{savingBuild=false;}return;}closeAfterSave=close;saveAs=true;}
   async function saveNamed(name:string,id:string){const value={...snapshot(),name,id};await onSave(value);draft=value;if(closeAfterSave)onApply(value);}
-  function load(saved:UmaBuild){draft=withOwnUnique(structuredClone(saved),reference);tagText=(saved.tags??[]).join(', ');loadOpen=false;}
+  function load(saved:UmaBuild){draft=withOwnUnique({...structuredClone(saved),aptitudes:buildAptitudes(saved)},reference);tagText=(saved.tags??[]).join(', ');loadOpen=false;}
   async function saveTemplate(){try{await onTemplate(templateName,draft.skills);templateName='';}catch(e){failure=String(e);}}
   function focus(node:HTMLElement){
     const previous=document.activeElement as HTMLElement;node.focus();
@@ -65,14 +68,15 @@
       <UmaOutfitPicker {reference} cardId={draft.cardId} onSelect={chooseOutfit}/>
 
       <div class="build-stats">{#each stats as stat}<label style={`--stat:${statColors[stat]}`}><span><GameIcon name={`stat-${stat}`} size={25}/>{stat==='wisdom'?'Wit':stat.charAt(0).toUpperCase()+stat.slice(1)}</span><input type="number" min="1" max="2000" step="1" bind:value={draft.stats[stat]} aria-label={`Base ${stat}`}/><i aria-hidden="true"><b style:width={`${Math.min(100,Math.max(0,(draft.stats[stat]??0)/20))}%`}></b></i></label>{/each}</div>
+      <UmaAptitudes value={draft.aptitudes!} onChange={(key,grade)=>{draft.aptitudes={...draft.aptitudes!,[key]:grade};}}/>
       <section class="equipped-panel" aria-label="Equipped skills">
       <div class="skill-editor-heading"><h3>Equipped skills <small>{draft.skills.length}</small></h3><span>{cost.total.toLocaleString()} SP{cost.unknown?' + unknown costs':''}</span></div>
       <div class="owned-skills">{#each draft.skills as s (s.id)}<div class="owned-skill" class:unique={s.id===ownUnique} class:unsupported={reference.engineSkillIds?.has(String(s.id))===false}><GameIcon name={skillIconKey(reference,s.id)} size={24}/><span>{skillName(reference,s.id)}{#if reference.engineSkillIds?.has(String(s.id))===false}<small>Unsupported by installed engine</small>{/if}</span>{#if hasLevel(s.id)}<label>Lv<input type="number" min="1" max="6" bind:value={s.level} aria-label={`${skillName(reference,s.id)} level`}/></label>{/if}{#if s.id===ownUnique}<span class="unique-lock" title="This outfit’s unique skill" aria-label="Unique skill locked">◆</span>{:else}<button aria-label={`Remove ${skillName(reference,s.id)}`} onclick={()=>draft.skills=draft.skills.filter(x=>x.id!==s.id)}>×</button>{/if}</div>{/each}</div>
       </section>
+      </section><section class="skills-column" aria-label="Uma skills">
       <label>Memo<textarea rows="2" maxlength="10000" placeholder="Build notes, intended races, comparisons…" bind:value={draft.memo}></textarea></label>
       <div class="organization"><label>Folder<select aria-label="Save Uma in folder" bind:value={draft.folderId}><option value="">Dorm</option>{#each library.folders??[] as folder}<option value={folder.id}>{folder.name}</option>{/each}</select></label><label>Tags<input aria-label="Uma tags" placeholder="Sprint, Ready…" bind:value={tagText}/></label><label class="favorite-check" class:on={draft.favorite}><input type="checkbox" bind:checked={draft.favorite}/>★ Favorite</label></div>
       <details><summary>Skill condition inputs</summary><div class="editor-grid"><label>Fans<input type="number" min="0" max="9007199254740991" bind:value={draft.fans}/></label><label>Career wins<input type="number" min="0" max="1000" bind:value={draft.careerWins}/></label></div></details>
-      </section><section class="skills-column" aria-label="Uma skills">
       <SkillFilters bind:filters bind:showUnreleased/>
       {#if !ownUnique}<p class="notice error">Unique skill data is unavailable for this outfit. Choose another outfit before saving or running.</p>{/if}
       <div class="skill-search"><input bind:this={search} type="search" bind:value={query} placeholder="Find skill or unique skill’s Uma…" title="Enter adds the first result; Tab returns to search after adding." aria-label="Search skills" onkeydown={e=>{if(e.key==='Enter'&&results[0]){e.preventDefault();void add(results[0].id);}}}/><small>{results.length} skills</small></div>
@@ -80,10 +84,10 @@
       <details><summary>Skill templates</summary><div class="editor-load"><select aria-label="Skill template" bind:value={template}><option value="">Choose a template…</option>{#each library.templates as t}<option value={t.id}>{t.name}</option>{/each}</select><button disabled={!template} onclick={()=>{const t=library.templates.find(t=>t.id===template);if(t)draft=withOwnUnique({...draft,skills:structuredClone(t.skills)},reference);}}>Replace skills</button></div><div class="editor-load"><input placeholder="Template name" aria-label="New skill template name" bind:value={templateName}/><button disabled={!templateName.trim()} onclick={saveTemplate}>Save template</button></div></details>
       </section></div>
     </div>
-    <footer><span class="muted">Aptitudes, strategy, mood and gates are set in the race.</span><div><button disabled={!ownUnique} onclick={()=>save()}>Save As</button><button class="primary" disabled={!ownUnique} onclick={()=>applyLabel==='Save & close'?save(true):onApply(snapshot())}>{applyLabel}</button></div></footer>
+    <footer><span class="muted">Race settings can override saved aptitudes.</span><div><button disabled={!ownUnique||savingBuild} onclick={()=>save()}>Save As</button><button class="primary" disabled={!ownUnique||savingBuild} onclick={()=>applyLabel==='Save & close'?save(true):onApply(snapshot())}>{applyLabel}</button></div></footer>
   </div>
 </div>
-{#if saveAs}<SaveAsDialog kind="Uma" current={draft} records={library.umas} onSave={saveNamed} onClose={()=>saveAs=false}/>{/if}
+{#if saveAs}<SaveAsDialog kind="Uma" allowDuplicateNames current={draft} records={library.umas} onSave={saveNamed} onClose={()=>saveAs=false}/>{/if}
 <style>
   .uma-editor{width:min(2100px,97vw);height:min(1500px,94dvh);max-height:94dvh;background:var(--panel);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 24px 100px #0008}
   .uma-editor header,.uma-editor footer{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;gap:12px;flex:none;height:auto;max-height:none}

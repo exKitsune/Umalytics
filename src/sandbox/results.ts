@@ -1,4 +1,5 @@
 import {checkpointPositions} from './position-checkpoints';
+import {runnerAptitudes} from './aptitudes';
 import {engineTeams} from './editor';
 import type {PreparedRace} from '../analysis/prepared';
 import type {Race} from '../data/types';
@@ -17,7 +18,7 @@ export function initialRace(setup:Setup,run:Omit<RunSummary,'runners'>,jobId:str
     runners:setup.participants.map((p,index)=>({id:p.id,index,gate:run.gates[index],name:p.uma.name,buildName:p.uma.name,charaId:p.uma.charaId,cardId:p.uma.cardId,trainer:null,
       stats:p.uma.stats,skills:p.uma.skills,mood:run.moods[index],strategy:strategyNames[p.strategy],strategyCode:p.strategy,teamGroup:engineTeams(setup.participants)[index],
       popularity:p.popularity,fanCount:p.uma.fans,raceWinCount:p.uma.careerWins,finishOrder:null,finishTime:null,
-      aptitudes:{turf:p.surface,dirt:p.surface,short:p.distance,mile:p.distance,middle:p.distance,long:p.distance,front:p.strategyAptitude,pace:p.strategyAptitude,late:p.strategyAptitude,end:p.strategyAptitude}}))};
+      aptitudes:runnerAptitudes(p,course)}))};
 }
 export function summarize(value:PreparedRace,run:Omit<RunSummary,'runners'>):RunSummary {
   return {...run,runners:value.race.runners.map(r=>{

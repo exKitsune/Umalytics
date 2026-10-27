@@ -42,6 +42,12 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+test('screenshot imports merge one Uma and reject UI text and ambiguous skill tiers',async()=>{
+  await run(process.execPath,['--import','tsx','tests/ocr-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
+});
+test('saved Uma aptitudes remain separate from race participant overrides',async()=>{
+  await run(process.execPath,['--import','tsx','tests/build-aptitudes-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
+});
 test('local diagnostics retain safe exceptions and distinguish process exits',async()=>{
   await run('python',[join(root,'tests/diagnostics-workflow.py')],{cwd:root,windowsHide:true,timeout:30000});
   await run('python',[join(root,'tests/development-capture-workflow.py')],{cwd:root,windowsHide:true,timeout:30000});

@@ -22,6 +22,33 @@ def setup():
             'strategy':2, 'mood':3, 'randomizeMood':True, 'gate':i+1, 'team':i, 'popularity':i+1} for i in range(9)]}
 
 class CustomInputs(unittest.TestCase):
+    def test_saved_aptitudes_and_race_overrides_are_independent(self):
+        value=setup();grades=dict(zip(inputs.APTITUDE_KEYS,['A','F','B','S','A','E','C','A','B','G']))
+        for p in value['participants']:
+            p['uma']['aptitudes']=deepcopy(grades);p['aptitudeOverrides']={}
+        value['participants'][0]['aptitudeOverrides']={'distance':'B'}
+        cleaned=inputs.setup(value);spec,_=inputs.prepare(cleaned,references())
+        self.assertEqual(spec['horses'][0]['distanceAptitude'],'B')
+        self.assertEqual(spec['horses'][1]['distanceAptitude'],'S')
+        self.assertTrue(all(p['uma']['aptitudes']['mile']=='S' for p in cleaned['participants']))
+        changed=references();changed.course_data['101'].update(surface=2,distance=2500)
+        spec,_=inputs.prepare(cleaned,changed)
+        self.assertEqual(spec['horses'][0]['distanceAptitude'],'B')
+        self.assertEqual(spec['horses'][1]['distanceAptitude'],'E')
+        self.assertEqual(spec['horses'][1]['surfaceAptitude'],'F')
+        with tempfile.TemporaryDirectory() as folder:
+            store=SandboxService(SimpleNamespace(data_dir=Path(folder)))
+            try:
+                store.save({'collection':'umas','record':cleaned['participants'][0]['uma']})
+                store.save({'collection':'setups','record':cleaned})
+                library=store.library();self.assertEqual(library['umas'][0]['aptitudes'],grades)
+                self.assertEqual(library['setups'][0]['participants'][0]['aptitudeOverrides'],{'distance':'B'})
+            finally:store.close()
+        bad=deepcopy(value);bad['participants'][0]['uma']['aptitudes']['mile']='SS'
+        with self.assertRaises(ValueError):inputs.setup(bad)
+        bad=deepcopy(value);bad['participants'][0]['aptitudeOverrides']={'unknown':'S'}
+        with self.assertRaises(ValueError):inputs.setup(bad)
+
     def test_outcome_payload_reuses_only_its_pinned_catalog(self):
         import json
         from globalsim_bridge.runtime import _canonical
@@ -396,12 +423,14 @@ class CustomInputs(unittest.TestCase):
             store=SandboxService(service)
             try:
                 value=inputs.setup(setup());uma=value['participants'][0]['uma']
-                store.save({'collection':'umas','record':{**uma,'mood':5,'strategy':4,'aptitudes':{'turf':'S'}}})
+                grades=dict(zip(inputs.APTITUDE_KEYS,['A','F','B','S','A','E','C','A','B','G']))
+                store.save({'collection':'umas','record':{**uma,'mood':5,'strategy':4,'aptitudes':grades}})
                 store.save({'collection':'setups','record':value})
                 uma['stats']['speed']=500
                 store.save({'collection':'umas','record':uma})
                 saved=store.library()
-                self.assertNotIn('mood',saved['umas'][0]);self.assertNotIn('aptitudes',saved['umas'][0])
+                self.assertNotIn('mood',saved['umas'][0]);self.assertNotIn('strategy',saved['umas'][0])
+                self.assertEqual(saved['umas'][0]['aptitudes'],grades,'Older editor payloads must preserve saved aptitudes')
                 self.assertEqual(saved['setups'][0]['participants'][0]['uma']['stats']['speed'],1200)
                 store.write_job({'id':'job','phase':'running','total':3,'setup':value})
                 store.write_job({'id':'impact','phase':'complete','total':6,'setup':value,'impactSourceId':'job'})

@@ -1,11 +1,12 @@
 import type {Race,Runner,RunnerStats,RunnerSkill} from '../data/types';
 import {runnerName,type ReferenceData} from '../data/reference';
 import {normalizePopularity,normalizeTeams} from './editor';
+import {buildAptitudes,syncParticipantAptitudes,type UmaAptitudes,type RaceAptitude} from './aptitudes';
 
 export type Aptitude='G'|'F'|'E'|'D'|'C'|'B'|'A'|'S';
-export interface UmaBuild {id:string;name:string;memo:string;charaId:number;cardId:number;stats:RunnerStats;skills:RunnerSkill[];fans:number;careerWins:number;folderId?:string;tags?:string[];favorite?:boolean;archived?:boolean;createdAt?:string;updatedAt?:string;variantOf?:string}
+export interface UmaBuild {id:string;name:string;memo:string;charaId:number;cardId:number;stats:RunnerStats;aptitudes?:UmaAptitudes;skills:RunnerSkill[];fans:number;careerWins:number;folderId?:string;tags?:string[];favorite?:boolean;archived?:boolean;createdAt?:string;updatedAt?:string;variantOf?:string}
 export interface UmaFolder {id:string;name:string;color:string;icon:string}
-export interface Participant {id:string;uma:UmaBuild;surface:Aptitude;distance:Aptitude;strategyAptitude:Aptitude;strategy:number;mood:number;randomizeMood:boolean;gate:number;team:number|null;popularity:number}
+export interface Participant {id:string;uma:UmaBuild;surface:Aptitude;distance:Aptitude;strategyAptitude:Aptitude;aptitudeOverrides?:Partial<Record<RaceAptitude,Aptitude>>;strategy:number;mood:number;randomizeMood:boolean;gate:number;team:number|null;popularity:number}
 export interface Setup {schemaVersion:1;id:string;name:string;courseId:number;weather:number;ground:number;season:number;time:number;grade:number;seed:number;keepSeed:boolean;shuffleGates:boolean;moodOverride?:{mode:'fixed';mood:number}|{mode:'random'};count:number;participants:Participant[];variations?:{participantId:string;builds:UmaBuild[]}}
 export interface Library {umas:UmaBuild[];folders?:UmaFolder[];setups:Setup[];conditions:{id:string;name:string;courseId:number;weather:number;ground:number;season:number;time:number;grade:number}[];templates:{id:string;name:string;skills:RunnerSkill[]}[]}
 export interface SkillSample {id:number;activated:boolean;checks:number;passed:number;effectiveness:number|null;gain:number|null;time:number|null;cost:number|null;carryover?:number|null;carryoverTime?:number|null}
@@ -16,7 +17,7 @@ export const uid=()=>crypto.randomUUID();
 export const randomSeed=()=>(crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff) || 1;
 export const blankUma=():UmaBuild=>({id:uid(),name:'New Uma',memo:'',charaId:1001,cardId:100101,stats:{speed:1200,stamina:800,power:1000,guts:600,wisdom:1000},skills:[],fans:0,careerWins:0,favorite:false});
 export const blankSetup=():Setup=>({schemaVersion:1,id:uid(),name:'New race',courseId:0,weather:1,ground:1,season:1,time:2,grade:100,seed:randomSeed(),keepSeed:false,shuffleGates:true,count:1,participants:[]});
-export const participant=(uma:UmaBuild,index:number):Participant=>({id:uid(),uma:structuredClone(uma),surface:'A',distance:'A',strategyAptitude:'A',strategy:2,mood:3,randomizeMood:false,gate:index+1,team:null,popularity:index+1});
+export const participant=(uma:UmaBuild,index:number):Participant=>syncParticipantAptitudes({id:uid(),uma:structuredClone(uma),surface:'A',distance:'A',strategyAptitude:'A',aptitudeOverrides:{},strategy:2,mood:3,randomizeMood:false,gate:index+1,team:null,popularity:index+1},undefined);
 export function rank(value:unknown):Aptitude|null {if(typeof value==='string'&&/^[GFEDCBAS]$/.test(value))return value as Aptitude;return typeof value==='number'&&value>=1&&value<=8?'GFEDCBAS'[value-1] as Aptitude:null;}
 export function fromRace(race:Race,reference:ReferenceData):{setup:Setup;warnings:string[]}{
   const setup=blankSetup(),warnings:string[]=[];const course=reference.courses[race.courseId??0];
@@ -31,14 +32,15 @@ export function fromRace(race:Race,reference:ReferenceData):{setup:Setup;warning
   setup.participants=race.runners.map((r,index)=>{
     const uma=blankUma();Object.assign(uma,{name:runnerName(reference,r),charaId:r.charaId??1001,cardId:r.cardId??100101,skills:structuredClone(r.skills??[]),fans:r.fanCount??0,careerWins:r.raceWinCount??0});
     for(const k of ['speed','stamina','power','guts','wisdom'] as const){uma.stats[k]=r.stats?.[k]??null;if(uma.stats[k]==null)warnings.push(`${r.name}: enter missing ${k}.`);}
+    uma.aptitudes=buildAptitudes(uma);for(const key of Object.keys(uma.aptitudes) as (keyof UmaAptitudes)[]){const value=rank(r.aptitudes?.[key]);if(value)uma.aptitudes[key]=value;}
     const p=participant(uma,index),distance=course?.distance??race.distance??0;
     const surface=course?.surface===2?'dirt':'turf',length=distance<=1400?'short':distance<=1800?'mile':distance<=2400?'middle':'long';
     const strategy=r.strategyCode??2,style=({1:'front',2:'pace',3:'late',4:'end',5:'front'} as const)[strategy as 1]??'pace';
     Object.assign(p,{strategy,mood:r.mood??3,gate:r.gate??index+1,team:r.teamGroup??index,popularity:r.popularity??index+1});
-    for(const [key,value] of [['surface',r.aptitudes?.[surface]],['distance',r.aptitudes?.[length]],['strategyAptitude',r.aptitudes?.[style]]] as const){const v=rank(value);if(v)p[key]=v;else warnings.push(`${r.name}: ${key} missing; using A.`);}
+    for(const [key,value] of [['surface',r.aptitudes?.[surface]],['distance',r.aptitudes?.[length]],['strategyAptitude',r.aptitudes?.[style]]] as const){const v=rank(value);if(v)p[key]=v;else warnings.push(`${r.name}: ${key} missing; using the outfit default.`);}
     if(r.mood==null)warnings.push(`${r.name}: mood missing; using Normal.`);
     if(r.strategyCode==null)warnings.push(`${r.name}: strategy missing; using Pace.`);
-    return p;
+    return syncParticipantAptitudes(p,course);
   });
   setup.participants=normalizeTeams(normalizePopularity(setup.participants));
   return {setup,warnings};

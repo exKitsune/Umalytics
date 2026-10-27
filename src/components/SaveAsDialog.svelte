@@ -7,8 +7,9 @@
   export let records:{id:string;name:string}[];
   export let onSave:(name:string,id:string)=>Promise<void>;
   export let onClose:()=>void;
+  export let allowDuplicateNames=false;
   let name=current.name,error='',saving=false,confirmed='';
-  $: target=saveTarget(records,name,current.id);
+  $: target=allowDuplicateNames?undefined:saveTarget(records,name,current.id);
   $: confirmation=`${target?.id??''}:${name.trim()}`;
   async function save(){
     if(!name.trim()||saving)return;
