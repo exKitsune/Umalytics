@@ -84,6 +84,30 @@ checked alongside the last heartbeat. Older builds have no lifecycle history to
 recover retroactively. `cache/api-trace.jsonl` and `cache/responses/` are separate
 game capture archives and are not crash reports.
 
+### Full development capture
+
+Create `cache/development-capture.json` inside the app's data directory with
+`{"enabled":true}` to retain raw game API requests, responses and transport
+failures in `development-captures/`. Change it to `{"enabled":false}` or remove
+the flag to stop. The collector reads the flag live; it is off for new installs.
+It operates independently of the race collection/category filters, including
+while race collection is paused. Only the already scoped game API host is
+included, not unrelated network traffic.
+
+Each compressed JSON record preserves request/response headers (including
+duplicates), method, URL, status, exact base64-encoded HTTP body bytes, timestamp
+and flow ID. Requests are saved before responses, so failed exchanges are
+visible. Encrypted/unsupported responses remain available for offline decoding.
+These files can contain credentials and account information: keep them local,
+outside Git, and never include them with shareable diagnostics. They are ignored
+by Git and are separate from `logs/` and exported race JSON.
+
+Capture is bounded: 64 MiB per stored body and 512 MiB of compressed records;
+oldest owned records are removed first. The collector normally streams bodies
+over 16 MiB, so these may be unavailable. Missing/streamed/oversized bodies are
+explicitly marked, never represented as a complete empty body. Raw capture adds
+disk/compression work and is intended for development, not normal collection.
+
 ## Certificate and game setup
 
 The first launch generates a local CA without installing it. The regular proxy
@@ -207,6 +231,14 @@ skips only the Explorer selection assertion on CI. It requires the normal app
 ports 4317/4327 to be free and refuses to stop an existing installation.
 
 ## Local API
+
+`GET /api/veterans` returns the most recent complete decoded in-game roster.
+The collector writes it atomically to `veterans/latest.json`, outside the response
+cache; failed, partial, and older responses cannot replace it. Existing decoded
+archives are recovered on first access. `?summary=1` returns just its count and
+capture timestamp; `?after=<capturedAt>` returns `unchanged: true` when current.
+The Umas page shows this snapshot under Veterans. Dorm contains independent,
+editable builds, including copies explicitly made from Veterans.
 
 `GET /api/health` returns readiness, sanitized proxy counters, certificate status,
 a per-process CSRF token, the Steam wrapper string, and actual data directory.

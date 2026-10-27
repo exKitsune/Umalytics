@@ -238,6 +238,12 @@ jobs:
         run: |
           .cache/proxy-venv/Scripts/python.exe tests/frozen-handoff-workflow.py
           if ($LASTEXITCODE -ne 0) { throw 'Frozen runtime restart test failed.' }
+      - name: Test API envelope and opt-in HTTPS capture
+        run: |
+          .cache/proxy-venv/Scripts/python.exe tests/proxy-envelope-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'API envelope regression tests failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/capture-inspection-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'HTTPS capture integration tests failed.' }
       - name: Stamp and build single executable from shared frontend
         id: desktop-build
         run: |

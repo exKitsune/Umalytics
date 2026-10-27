@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from storage import atomic_json, default_data_directory, prepare_storage, cleanup_legacy_notices
 from simulation_service import SimulationService, StaleAnalysis, QueueFull
 import diagnostics
+from veterans import VeteranStore
 
 PORT = 4317
 PROXY_PORT = 4327
@@ -235,6 +236,7 @@ class Service:
         self.analysis_service = BackgroundAnalysis(self, RESOURCE_ROOT)
         from sandbox_service import SandboxService
         self.sandbox = SandboxService(self)
+        self.veterans = VeteranStore(self.data_dir)
         self.sandbox.auto_skills.start()
         from analysis_events import watch_directory
         self.library_watcher = watch_directory(self.inbox, self.closed, self.library_changed)
@@ -918,6 +920,9 @@ def make_handler(service):
                     self.send(200, service.sandbox.capabilities())
                 elif path == '/api/simulator/library':
                     self.send(200, service.sandbox.library())
+                elif path == '/api/veterans':
+                    query = parse_qs(url.query)
+                    self.send(200, service.veterans.get(query.get('after', [None])[0], query.get('summary', ['0'])[0] == '1'))
                 elif path == '/api/simulator/jobs':
                     self.send(200, service.sandbox.jobs())
                 elif path == '/api/simulator/impacts':

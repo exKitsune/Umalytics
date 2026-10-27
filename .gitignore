@@ -4,6 +4,8 @@ artifacts/
 dist/
 research/
 captures/
+**/development-captures/
+**/development-capture.json
 *.pcap
 *.pcapng
 *.etl

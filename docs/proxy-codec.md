@@ -23,7 +23,7 @@ except EnvelopeDecodeError as error:
     status = error.code
 ```
 
-`decode_exchange(request_body, response_body)` is a convenience form. Returned response objects may still contain account fields; only the collector's explicit race-field allowlist should reach an export. Never persist entire decoded responses by default.
+`decode_exchange(request_body, response_body)` is a convenience form. Returned response objects may still contain account fields; only the collector's explicit race-field allowlist reaches exported race JSON. The local response archive retains decoded fields after removing authentication/session fields. Separately, the opt-in [full development capture](desktop-package.md#full-development-capture) preserves raw exchanges, including credentials, for local protocol diagnosis. Neither archive belongs in shared diagnostic logs.
 
 `RequestContext` contains only the sixteen-byte response IV derived from the request. It contains no SID, auth key, request payload, or complete UDID. Its representation is redacted and pickling is refused. Keep it local to one flow, discard it after decoding, and never put it in serialized flow metadata. Python immutable bytes are not guaranteed to be zeroized; this module does not claim secure-memory erasure. A caller can still accidentally retain bodies or decoded data, so the addon must avoid flow dumps and secret-bearing logs.
 
@@ -48,7 +48,7 @@ Evidence: `research/eden-source/uma_api/client.py:183–189` and `research/icaru
 
 The decoder requires base64 containing aligned AES-CBC ciphertext followed by a 32-byte application key. It decrypts using the same request's derived IV, validates PKCS#7 padding, and requires the four-byte little-endian plaintext length to exactly match the remaining MessagePack bytes. It accepts only one complete MessagePack value with a dictionary root and string root keys.
 
-Limits are 8 MiB after base64 decoding, 100,000 entries per collection, 200,000 traversed object nodes, and depth 64. Encoded-body size is checked before decoding. Leading/trailing HTTP whitespace is permitted; internal whitespace, noncanonical base64, malformed padding, trailing bytes, duplicate map keys, unsupported extensions/types, nonfinite floats, and unknown layouts are rejected. The selected format does not require decompression at this layer; inner `race_scenario` decompression belongs to the existing bounded replay parser.
+Limits are 8 MiB after base64 decoding, 100,000 entries per collection, 2,000,000 traversed object nodes, and depth 64. Traversal uses depth-bounded iterators. Encoded-body size is checked before decoding. Leading/trailing HTTP whitespace is permitted; internal whitespace, noncanonical base64, malformed padding, trailing bytes, duplicate map keys, unsupported extensions/types, nonfinite floats, and unknown layouts are rejected. The selected format does not require decompression at this layer; inner `race_scenario` decompression belongs to the existing bounded replay parser.
 
 `EnvelopeDecodeError` retains only a fixed code and generic text. Lower-level exceptions are not chained, because MessagePack errors such as `ExtraData` can retain plaintext values. Do not log exception tracebacks with local variables. Unsupported data fails closed; there is no algorithm, key, IV or header-offset guessing.
 

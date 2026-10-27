@@ -195,13 +195,18 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         if not args.headless:
             explorer_selection(export_path)
             explorer_selection(export_path, close=True)
-        before = {p:p.stat().st_mtime_ns for p in data.rglob('*') if p.is_file() and 'cache' not in p.relative_to(data).parts}
+        # Startup/forwarding events and heartbeats intentionally append logs.
+        # The second launch must still leave settings, races and runtime untouched.
+        before = {p:p.stat().st_mtime_ns for p in data.rglob('*')
+                  if p.is_file() and p.relative_to(data).parts[0] not in ('cache', 'logs')}
         legacy.mkdir()
         (legacy / 'ignore-after-migration.txt').write_text('stale folder must stay untouched')
         subprocess.run([str(executable), '--background'], creationflags=no_window, timeout=60, check=True, env=environment)
         assert own_health(data)['proxy']['listening']
         assert resident.poll() is None, 'A second background launch closed the resident tray.'
-        assert all(p.stat().st_mtime_ns == modified for p, modified in before.items())
+        changed = [str(p.relative_to(data)) for p, modified in before.items() if p.stat().st_mtime_ns != modified]
+        assert not changed, 'Second background launch changed persistent data: ' + ', '.join(changed)
+        assert list((data / 'logs').glob('desktop-*.jsonl')), 'Native lifecycle diagnostics missing.'
         assert (legacy / 'ignore-after-migration.txt').is_file()
         assert not (data / 'ignore-after-migration.txt').exists()
         assert not (data / 'collector-status.json').exists()
@@ -231,7 +236,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
                           'desktopExportExplorerSelection':'skipped (headless)' if args.headless else 'passed', 'courseSummary':'passed',
                           'residentTrayLifetime':'passed', 'singleInstanceBackground':'passed',
                           'nativeFrontendStorage':'passed', 'legacyProfileMigration':'passed',
-                          'repeatedBackgroundWrites':'none', 'ownedShutdown':'passed',
+                          'repeatedBackgroundDataWrites':'none', 'nativeDiagnostics':'passed', 'ownedShutdown':'passed',
                           'steamOwnedSessionShutdown':'passed',
                           'certificateTrustChanged':False, 'actualGameLaunched':False}))
     finally:

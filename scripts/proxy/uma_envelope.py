@@ -22,7 +22,9 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 MAX_DECODED_BYTES = 8 * 1024 * 1024
 MAX_WIRE_BYTES = 4 * ((MAX_DECODED_BYTES + 2) // 3) + 16
 MAX_COLLECTION_ENTRIES = 100_000
-MAX_OBJECT_NODES = 200_000
+# Full rosters exceed 200k nodes with only a few hundred Veterans. Keep a
+# separate bounded node budget with headroom; the 8 MiB wire limit still applies.
+MAX_OBJECT_NODES = 2_000_000
 MAX_OBJECT_DEPTH = 64
 
 # Field widths observed independently in the historical source. No fixed
@@ -158,17 +160,23 @@ def _reject_extension(_code: int, _data: bytes):
 def _check_structure(response: dict) -> None:
     if any(type(key) is not str for key in response):
         raise EnvelopeDecodeError("response_shape")
-    stack = [(response, 0)]
+    # Iterators keep traversal memory proportional to depth, not roster width.
+    stack = [iter((response,))]
     nodes = 0
     while stack:
-        current, depth = stack.pop()
+        try:
+            current = next(stack[-1])
+        except StopIteration:
+            stack.pop()
+            continue
+        depth = len(stack) - 1
         nodes += 1
         if nodes > MAX_OBJECT_NODES or depth > MAX_OBJECT_DEPTH:
             raise EnvelopeDecodeError("structure_limit")
         if type(current) is dict:
-            stack.extend((value, depth + 1) for value in current.values())
+            stack.append(iter(current.values()))
         elif type(current) is list:
-            stack.extend((value, depth + 1) for value in current)
+            stack.append(iter(current))
         elif type(current) is float:
             if not math.isfinite(current):
                 raise EnvelopeDecodeError("response_shape")

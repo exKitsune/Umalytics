@@ -48,7 +48,9 @@ def main():
         path = Path(name)
         if PUBLIC_NAME_PATTERN.search(name):
             issues.append((name, 'public naming in file path'))
-        if name.startswith(PRIVATE_PREFIXES) or path.suffix.lower() in PRIVATE_EXTENSIONS or 'target' in path.parts:
+        if (name.startswith(PRIVATE_PREFIXES) or path.suffix.lower() in PRIVATE_EXTENSIONS
+                or 'target' in path.parts or 'development-captures' in path.parts
+                or path.name == 'development-capture.json'):
             issues.append((name, 'private/generated file path'))
         if name.startswith('docs/') and name.endswith('-investigation.md'):
             issues.append((name, 'machine-specific investigation note'))

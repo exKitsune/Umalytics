@@ -1,0 +1,119 @@
+{
+  "source": "Installed game asset cache",
+  "copyright": "UM:PD rights holders",
+  "decoder": "UnityPy 1.25.4",
+  "records": [
+    {
+      "file": "marker-14.png",
+      "sprite": "utx_ico_favorite_03_14",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "aa9397e88db70427fd723fba1349e094be24533ffe4f99d95e094d8953ed3cd0"
+    },
+    {
+      "file": "marker-13.png",
+      "sprite": "utx_ico_favorite_03_13",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "2daa4eaddfc809fc88e23e2673cbc1a071b652b11ae39be3dac36dcdedec1dc8"
+    },
+    {
+      "file": "marker-1.png",
+      "sprite": "utx_ico_favorite_03_01",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "2ee83f5acc5de0ccdca6b716bce40bac12d998f70780c329fed2065554301926"
+    },
+    {
+      "file": "marker-12.png",
+      "sprite": "utx_ico_favorite_03_12",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "c2bc4b1341ede3fbff8a56d15dd2ff603cd3c8740707ea126962ef785beb433e"
+    },
+    {
+      "file": "marker-15.png",
+      "sprite": "utx_ico_favorite_03_15",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "315e4173b2ecc9275f9a313b846b043c1b0ab2daf0158d3831193ad869111829"
+    },
+    {
+      "file": "marker-9.png",
+      "sprite": "utx_ico_favorite_03_09",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "b9702f0257fbfd461bff91b3199497f595bde71af9b813466e1d84e2a5a5a626"
+    },
+    {
+      "file": "marker-7.png",
+      "sprite": "utx_ico_favorite_03_07",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "78c95daba8989dafeb459c428f15e176464747558715e005faf6c07b66aed289"
+    },
+    {
+      "file": "marker-3.png",
+      "sprite": "utx_ico_favorite_03_03",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "20140bb2d098191e17ae0dd0814cb55e0b19ce0421f14fd46813037a365036c7"
+    },
+    {
+      "file": "marker-0.png",
+      "sprite": "utx_ico_favorite_03_00",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "173ccf768a8d67431218401e430200a2031369a00a4c924f406f27ef55a4a0eb"
+    },
+    {
+      "file": "marker-11.png",
+      "sprite": "utx_ico_favorite_03_11",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "88cb098bc2163b45a0bc941e0a1c97fa15a616228f366bee2a45d4fc1f457155"
+    },
+    {
+      "file": "marker-10.png",
+      "sprite": "utx_ico_favorite_03_10",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "692129246cbc05a0f030c19e4686a7be9774e4985141271dd79476518620bb4e"
+    },
+    {
+      "file": "marker-2.png",
+      "sprite": "utx_ico_favorite_03_02",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "e57ec2896fad366a9bf5dc8d7fca21b987c95fa227248f8118f6577e9fcabcc3"
+    },
+    {
+      "file": "marker-4.png",
+      "sprite": "utx_ico_favorite_03_04",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "142e2e3bf43bf917a8159ba16118b833a3253fab6d90afb714d1f874266a2697"
+    },
+    {
+      "file": "marker-8.png",
+      "sprite": "utx_ico_favorite_03_08",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "2a878331b391245739e5da0e2dcfbc116a569d25ac92c6cdf2a68f48a9b72be4"
+    },
+    {
+      "file": "marker-5.png",
+      "sprite": "utx_ico_favorite_03_05",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "5b6e4a6da7f94c2bb9d2f9bae32d66b04c9f21f64f5b4fb491c42fb62e589f35"
+    },
+    {
+      "file": "marker-6.png",
+      "sprite": "utx_ico_favorite_03_06",
+      "catalogName": "atlas/common/common_tex",
+      "bundleSha256": "67dca13ca6875a048680716c2163edcdccc49c83e27a38072d5e116a16693152",
+      "sha256": "45c7eb9ea2416d3ebce1568db02d8121fe122900d294123112c07496e915416d"
+    }
+  ]
+}

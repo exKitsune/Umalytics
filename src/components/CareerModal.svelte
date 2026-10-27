@@ -3,7 +3,7 @@
 import {onMount} from 'svelte';import type {Race,Runner} from '../data/types';import type {ReferenceData} from '../data/reference';import {runnerName,runnerOutfit} from '../data/reference';import {careerReference,scenarioName,careerDate} from '../data/career-display';import {formatRaceTime} from '../data/race-time';
 import StarRating from './StarRating.svelte';import {totalSkillCost,skillCostHelp} from '../data/skill-cost';
 import UmaPortrait from './UmaPortrait.svelte';import RatingBadge from './RatingBadge.svelte';import CopyTrainer from './CopyTrainer.svelte';import CareerBuild from './CareerBuild.svelte';import CareerSupport from './CareerSupport.svelte';import CareerFactors from './CareerFactors.svelte';import LegacyFamily from './LegacyFamily.svelte';
-export let runner:Runner;export let race:Race;export let reference:ReferenceData|null;export let onClose:()=>void;
+export let runner:Runner;export let race:Pick<Race,'runners'>={runners:[]};export let reference:ReferenceData|null;export let onClose:()=>void;
 let dialog:HTMLDialogElement;onMount(()=>dialog.showModal());
 $: career=runner.career;
 $: sp=totalSkillCost(career?.skills??runner.skills);

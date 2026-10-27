@@ -44,6 +44,9 @@ if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw 
 describe('isolated functional workflows', {concurrency}, () => {
 test('local diagnostics retain safe exceptions and distinguish process exits',async()=>{
   await run('python',[join(root,'tests/diagnostics-workflow.py')],{cwd:root,windowsHide:true,timeout:30000});
+  await run('python',[join(root,'tests/development-capture-workflow.py')],{cwd:root,windowsHide:true,timeout:30000});
+  await run('python',[join(root,'tests/veterans-workflow.py')],{cwd:root,windowsHide:true,timeout:30000});
+  await run(process.execPath,['--import','tsx',join(root,'tests/veterans-workflow.ts')],{cwd:root,windowsHide:true,timeout:30000});
 });
 test('raw-stat course comparisons preserve hills, HP thresholds and uncertainty',async()=>{
   await run(process.execPath,['--import','tsx','tests/raw-stat-comparison-workflow.ts'],{cwd:root,timeout:30000});
@@ -251,7 +254,9 @@ test('whole-file rank conditions use the complete field and rounded percentage c
 
 test('imported race and game reference render a stable camera through course corners',async t=>{
   const folder=await workspace(t),imported=join(folder,'imported');await convert(fixture,imported);
-  const result=await run(process.execPath,['--import','tsx',join(root,'tests/replay-camera-workflow.ts'),imported],{cwd:root,windowsHide:true,timeout:30000});
+  // Sweeps every course plus crowded playback at multiple viewport sizes.
+  // This is functional coverage, not a 30-second CPU benchmark on shared CI.
+  const result=await run(process.execPath,['--import','tsx',join(root,'tests/replay-camera-workflow.ts'),imported],{cwd:root,windowsHide:true,timeout:90000});
   const report=JSON.parse(result.stdout.trim());
   assert.ok(report.gameCourses>=14);assert.ok(report.cornerBoundaries>20);assert.ok(report.renderedFrames>100);
   for(const field of ['smoothCamera','worldTicks','sharedCanvas','markerToggles'])assert.equal(report[field],'passed');

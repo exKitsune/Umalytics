@@ -11,5 +11,6 @@
   {:else if name==='edit'}<path d="m14 5 5 5M4 20l5-1L21 7l-5-5L4 14Z"/>
   {:else if name==='copy'}<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>
   {:else if name==='export'}<path d="M12 16V3m-5 5 5-5 5 5M4 13v8h16v-8"/>
+  {:else if name==='refresh'}<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 2l1 4M18 18a8 8 0 0 1-13-2l-1-4"/>
   {:else}<path d="M3 6V4h7l2 3h9v13H3Z"/>{/if}
 </svg>

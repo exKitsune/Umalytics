@@ -15,7 +15,7 @@ datas += [(str(root / '.cache' / 'desktop-licenses' / 'THIRD-PARTY-NOTICES.txt')
 datas += [(str(root / 'desktop' / name), 'desktop')
           for name in ('build-info.json', 'update-public-key.txt')]
 datas += [(str(root / 'scripts' / 'proxy' / name), 'scripts/proxy')
-          for name in ('observer.py', 'race_extract.py', 'uma_envelope.py')]
+          for name in ('observer.py', 'race_extract.py', 'uma_envelope.py', 'development_capture.py')]
 datas += [(str(root / 'simulation/analysis'), 'simulation/analysis')]
 datas += [(str(root / '.cache/analysis-runtime/LICENSE'), 'analysis-runtime')]
 binaries = [(str(root / '.cache/analysis-runtime/node.exe'), 'analysis-runtime')]

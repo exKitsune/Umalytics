@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import base64
+import gzip
 import ipaddress
 from pathlib import Path
 import socket
@@ -25,12 +27,14 @@ from storage import prepare_storage
 HOST = 'api.games.\x75mamusume.com'
 
 
-def workflow(folder):
+def workflow(folder, full_capture=False):
     data = folder / 'Umalytics-data'
     data.mkdir()
     CertStore.create_store(data / 'proxy', 'mitmproxy', 2048, organization='Preserved Fixture CA', cn='Preserved Fixture CA')
     original = {path.name: path.read_bytes() for path in (data / 'proxy').iterdir()}
     prepare_storage(data)
+    if full_capture:
+        (data / 'cache/development-capture.json').write_text('{"enabled":true}', encoding='utf-8')
     ca = x509.load_pem_x509_certificate((data / 'capture/umalytics-ca-cert.pem').read_bytes())
     upstream_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, HOST)])
@@ -150,6 +154,17 @@ response = requestheaders
         saved = json.loads(saved_raw)
         assert saved['race_scenario'] == 'SYNTHETIC_LOOPBACK_SCENARIO' and saved['race_category'] == 'practice'
         assert b'PRIVATE_LOOPBACK_FIXTURE' not in saved_raw and b'auth' not in saved_raw and b'trainer' not in saved_raw
+        captures = list((data / 'development-captures').glob('*.json.gz'))
+        assert stats['development_capture'] == int(full_capture)
+        if full_capture:
+            records = [json.loads(gzip.decompress(path.read_bytes())) for path in captures]
+            assert sorted(record['phase'] for record in records) == ['request', 'response']
+            result = next(record for record in records if record['phase'] == 'response')
+            assert base64.b64decode(result['request']['bodyBase64']) == request_body
+            assert base64.b64decode(result['response']['bodyBase64']) == payload
+            assert stats['development_captures_written'] == 2
+        else:
+            assert not captures and stats['development_captures_written'] == 0
         stop.touch()
         assert process.wait(timeout=10) == 0
         assert {path.name.replace('umalytics-', 'mitmproxy-', 1): path.read_bytes() for path in (data / 'capture').iterdir()} == original
@@ -164,6 +179,7 @@ response = requestheaders
 
 
 if __name__ == '__main__':
-    with tempfile.TemporaryDirectory(prefix='capture-inspection-', dir=ROOT / '.cache') as temporary:
-        workflow(Path(temporary))
-    print('HTTPS inspection passed: migrated CA signed and client-verified leaf; upstream TLS verified; observer captured and sanitized one synthetic loopback response; CA/key bytes unchanged.')
+    for full_capture in (False, True):
+        with tempfile.TemporaryDirectory(prefix='capture-inspection-', dir=ROOT / '.cache') as temporary:
+            workflow(Path(temporary), full_capture)
+    print('HTTPS inspection passed with development capture off/on: verified TLS, exact raw capture only when enabled, sanitized race export, CA/key bytes unchanged.')

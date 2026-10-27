@@ -1,0 +1,46 @@
+<script lang="ts">
+  import {onMount} from 'svelte';
+  import {dismissDialog} from '../ui/dismiss-dialog';
+  import {aptitudeTypes,emptyVeteranFilters,sparkColor,sparkTypes,veteranMarkers,type VeteranFilters,type veteranRows} from '../sandbox/veterans';
+  export let filter:VeteranFilters;
+  export let rows:ReturnType<typeof veteranRows>;
+  export let count:number;
+  export let onClose:()=>void;
+  let dialog:HTMLDialogElement,uniqueSearch='',commonSearch='';
+  $: options=[...new Map(rows.flatMap(r=>[...r.sparks,...r.originSparks]).map(f=>[f.group,f])).values()].sort((a,b)=>a.name.localeCompare(b.name));
+  $: markers=[...new Set([...veteranMarkers.map((_,i)=>i),...rows.flatMap(r=>r.marker===null?[]:[r.marker])])].sort((a,b)=>a-b);
+  const toggle=(values:string[],key:string)=>values.includes(key)?values.filter(v=>v!==key):[...values,key];
+  const originHelp='Includes this Veteran’s two parents. Each spark must meet the star threshold individually.';
+  function reset(){filter={...emptyVeteranFilters(),query:filter.query,character:filter.character,sort:filter.sort,direction:filter.direction,sortDetail:filter.sortDetail,sortParents:filter.sortParents};}
+  onMount(()=>dialog.showModal());
+</script>
+<dialog bind:this={dialog} use:dismissDialog aria-labelledby="veteran-filter-title" onclose={onClose} onkeydown={e=>{if(e.key==='Escape')e.stopPropagation();}}>
+  <header><h2 id="veteran-filter-title">Filter Veterans <small>{count} / {rows.length}</small></h2><button aria-label="Close Veteran filters" onclick={()=>dialog.close()}>×</button></header>
+  <div class="filter-columns">
+    <div>
+      {#each aptitudeTypes as [name,entries],i}
+        <section><div class="section-heading"><h3>{name}</h3><select aria-label={`${name} minimum grade`} bind:value={filter.aptitudeCategories[i].minGrade}>{#each ['S','A','B','C','D','E','F','G'] as grade}<option value={grade}>{grade}{grade==='S'?' only':' or higher'}</option>{/each}</select></div><div class="choices"><button class:chosen={!filter.aptitudeCategories[i].keys.length} aria-pressed={!filter.aptitudeCategories[i].keys.length} onclick={()=>filter.aptitudeCategories[i].keys=[]}>All</button>{#each entries as [key,label]}<button class:chosen={filter.aptitudeCategories[i].keys.includes(key)} aria-pressed={filter.aptitudeCategories[i].keys.includes(key)} onclick={()=>filter.aptitudeCategories[i].keys=toggle(filter.aptitudeCategories[i].keys,key)}>{label}</button>{/each}</div></section>
+      {/each}
+      <section><h3>Favorites</h3><div class="choices markers"><button class:chosen={!filter.markers.length} aria-pressed={!filter.markers.length} onclick={()=>filter.markers=[]}>All</button>{#each markers as id}{@const label=veteranMarkers[id]??`Marker ${id}`}<button class:chosen={filter.markers.includes(id)} aria-pressed={filter.markers.includes(id)} aria-label={`${label} (${rows.filter(r=>r.marker===id).length})`} title={label} onclick={()=>filter.markers=filter.markers.includes(id)?filter.markers.filter(v=>v!==id):[...filter.markers,id]}>{#if veteranMarkers[id]}<img src={`./veterans/marker-${id}.png`} alt=""/>{:else}{id}{/if}<small>{rows.filter(r=>r.marker===id).length}</small></button>{/each}</div></section>
+      <section><h3>Memo</h3><div class="choices">{#each [['any','All'],['yes','Has memo'],['no','No memo']] as [value,label]}<button class:chosen={filter.memo===value} aria-pressed={filter.memo===value} onclick={()=>filter.memo=value as VeteranFilters['memo']}>{label}</button>{/each}</div></section>
+      <p class="match-help">Selected options match any within a category; different categories must all match.</p>
+    </div>
+    <div>
+      {#each filter.sparkCategories as category,i}
+        <section style={`--spark:${sparkColor(category.type)}`}><div class="section-heading"><h3 class="spark-title">{['Attribute sparks','Aptitude sparks','Unique sparks'][i]}</h3><select aria-label={`${['Attribute','Aptitude','Unique'][i]} spark stars`} bind:value={category.minStars}><option value={1}>All stars</option><option value={2}>2★ or higher</option><option value={3}>3★ only</option></select></div>
+          {#if category.type===3}<input type="search" class="spark-search" aria-label="Search unique sparks" placeholder="Find unique spark…" bind:value={uniqueSearch}/>{/if}
+          <div class="choices" class:unique={category.type===3}><button class:chosen={!category.groups.length} aria-pressed={!category.groups.length} onclick={()=>category.groups=[]}>All</button>{#each options.filter(f=>f.type===category.type&&(category.type!==3||f.name.toLocaleLowerCase().includes(uniqueSearch.toLocaleLowerCase()))) as spark}<button class:chosen={category.groups.includes(spark.group)} aria-pressed={category.groups.includes(spark.group)} onclick={()=>category.groups=toggle(category.groups,spark.group)}>{spark.name}</button>{/each}</div>
+          <label class="origin" title={originHelp}><input type="checkbox" bind:checked={category.includeParents}/>Include sparks from origin legacies</label>
+        </section>
+      {/each}
+      <section><h3>Common sparks</h3><input type="search" class="spark-search" aria-label="Search common spark options" placeholder="Find common spark…" bind:value={commonSearch}/>
+        {#each filter.sparks as spark,i}<div class="common-rule"><div><select aria-label={`Common spark ${i+1}`} bind:value={spark.group}><option value="">Select spark</option>{#each sparkTypes.filter(([,type])=>type===0||type>=4) as [label,type]}<optgroup {label}>{#each options.filter(f=>(f.type===type||type===0&&![1,2,3,4,5,6].includes(f.type))&&(f.group===spark.group||f.name.toLocaleLowerCase().includes(commonSearch.toLocaleLowerCase()))) as option}<option value={option.group}>{option.name}</option>{/each}</optgroup>{/each}</select><select aria-label={`Common spark minimum stars ${i+1}`} bind:value={spark.minStars}>{#each [1,2,3] as n}<option value={n}>{n}★+</option>{/each}</select><button class="remove" aria-label={`Remove common spark ${i+1}`} onclick={()=>filter.sparks=filter.sparks.filter((_,j)=>i!==j)}>×</button></div><label class="origin" title={originHelp}><input type="checkbox" bind:checked={spark.includeParents}/>Include sparks from origin legacies</label></div>{/each}
+        <button class="add-rule" onclick={()=>filter.sparks=[...filter.sparks,{group:'',minStars:1,includeParents:false}]} disabled={filter.sparks.length>=12}>＋ Add spark filter</button>
+      </section>
+    </div>
+  </div>
+  <footer><button onclick={reset}>Reset filters</button><button class="primary" onclick={()=>dialog.close()}>Show {count} Veterans</button></footer>
+</dialog>
+<style>
+  dialog{width:min(860px,calc(100vw - 36px));max-width:none;max-height:90vh;padding:0;border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);box-shadow:var(--shadow)}dialog::backdrop{background:#0009}dialog[open]{display:flex;flex-direction:column}header,footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px 20px;flex:none}header{border-bottom:1px solid var(--border)}header h2{font-size:18px;margin:0}header small{color:var(--muted);font-size:12px;font-weight:400;margin-left:8px}header button{border:0;background:transparent;font-size:22px;padding:3px 9px}footer{border-top:1px solid var(--border)}footer button{font-size:12px}.filter-columns{display:grid;grid-template-columns:1fr 1.25fr;gap:25px;padding:0 20px;overflow:auto;min-height:0}.filter-columns>div{min-width:0}section{padding:16px 0;border-bottom:1px solid var(--border)}section:last-child{border:0}.section-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:9px}h3{font-size:12px;margin:0 0 10px;color:var(--muted)}.section-heading h3{margin:0}.spark-title{color:var(--spark)}.choices{display:flex;gap:5px;flex-wrap:wrap}.choices button{font-size:11px;padding:6px 9px;background:var(--bg);border:1px solid var(--border);font-weight:450}.choices button.chosen{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}.markers{display:grid;grid-template-columns:repeat(auto-fill,minmax(48px,1fr))}.markers button{display:flex;align-items:center;gap:3px;justify-content:center;padding:5px}.markers img{width:25px;height:25px;object-fit:contain}.markers small{font-size:9px;color:var(--muted)}input,select{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:6px;font-size:11px;min-width:0}input[type=checkbox]{accent-color:var(--accent);width:13px;height:13px;margin:0}.origin{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:10px;margin-top:10px}.spark-search{width:100%;margin-bottom:8px;box-sizing:border-box}.unique{max-height:160px;overflow:auto}.common-rule{border:1px solid var(--border);padding:8px;border-radius:6px;margin-bottom:8px}.common-rule>div{display:flex;gap:5px;align-items:center}.common-rule select:first-child{flex:1;min-width:0;width:0}.common-rule .remove{padding:2px 6px;border:0;background:transparent;color:var(--muted);font-size:18px}.add-rule{width:100%;font-size:11px;padding:8px}.match-help{font-size:10px;line-height:1.5;color:var(--muted);margin:14px 0}@media(max-width:650px){.filter-columns{grid-template-columns:1fr;gap:0}dialog{max-height:94vh}}
+</style>

@@ -1,7 +1,7 @@
 """Read-only mitmproxy addon. Probe tunnels TLS; inspect decodes selected responses.
 
-No login, request replay, header/body editing, game access, or credential persistence.
-Only sanitized race documents and numerical diagnostic counters are written.
+No login, request replay, or header/body editing. Normal archives redact credentials.
+An explicit development flag additionally retains local raw API exchanges.
 """
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -21,6 +21,9 @@ from mitmproxy import ctx, exceptions
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from race_extract import api_route, apply_race_times, apply_room_bindings, collect_race_times, collect_room_bindings, extract_races, remember_race_times, remember_room_bindings, saved_replay_route, stamp_race_clocks, trace_api_payload, classify_race
 from uma_envelope import extract_request_context, decode_response_body, EnvelopeDecodeError
+from development_capture import DevelopmentCapture
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'desktop'))
+from veterans import record_veterans
 
 API_HOST = 'api.games.\x75mamusume.com'
 PREFIXES = ('/\x75mamusume/',)
@@ -63,6 +66,7 @@ class RaceObserver:
         self.stop_path = ''
         self.settings_path = ''
         self.monitor = None
+        self.development_capture = None
         self.status = {'state': 'starting', 'client_connections': 0, 'api_tls_hellos': 0,
                        'api_tls_established': 0, 'api_tls_failed': 0, 'eligible_requests': 0,
                        'eligible_responses': 0, 'unsupported_requests': 0, 'decode_failed': 0,
@@ -70,6 +74,7 @@ class RaceObserver:
                        'write_failed': 0, 'races_filtered': 0, 'collection_paused': 0}
         self.status.update(api_http_requests=0, api_http_responses=0,
                            http_connect_requests=0, api_connect_requests=0,
+                           development_capture=0, development_captures_written=0,
                            activeGameConnections=0, lastGameTrafficAt=None)
 
     def load(self, loader):
@@ -92,6 +97,7 @@ class RaceObserver:
         if not 0 <= ctx.options.uma_duration <= 86400:
             raise exceptions.OptionsError('uma_duration must be between 0 and 86400')
         self.output_path = ctx.options.uma_output
+        self.development_capture = DevelopmentCapture(Path(self.output_path).parent) if self.output_path else None
         self.status_path = ctx.options.uma_status
         self.status_udp_port = ctx.options.uma_status_udp
         if not 0 <= self.status_udp_port <= 65535 or self.status_udp_port and not self.status_token:
@@ -130,7 +136,8 @@ class RaceObserver:
     def _write_status(self, force=False):
         with self.lock:
             now = time.monotonic()
-            data = dict(self.status, stage=self.stage)
+            data = dict(self.status, stage=self.stage,
+                        development_capture=int(bool(self.development_capture and self.development_capture.enabled())))
             if data == self.last_status:
                 return
             if not self.status_udp_port and not force and now - self.last_write < 0.25:
@@ -208,14 +215,26 @@ class RaceObserver:
                 and request.path.split('?', 1)[0].startswith(PREFIXES))
 
     def requestheaders(self, flow):
-        if not self._eligible(flow):
+        if not self._eligible(flow) and not self._full_capture(flow):
             flow.request.stream = True
 
     def responseheaders(self, flow):
-        if not self._eligible(flow):
+        if not self._eligible(flow) and not self._full_capture(flow):
             flow.response.stream = True
 
+    def _full_capture(self, flow):
+        return bool(self._api_flow(flow) and self.development_capture and self.development_capture.enabled())
+
+    def _record_full(self, flow, phase):
+        if self._full_capture(flow):
+            try:
+                self.development_capture.record(flow, phase)
+                self._count('development_captures_written')
+            except (OSError, ValueError, TypeError):
+                self._count('write_failed')
+
     def request(self, flow):
+        self._record_full(flow, 'request')
         if self._api_flow(flow):
             self._game_traffic(flow.client_conn)
             self._count('api_http_requests')
@@ -232,6 +251,7 @@ class RaceObserver:
             self._count('unsupported_requests')
 
     def response(self, flow):
+        self._record_full(flow, 'response')
         context = self.contexts.pop(flow.id, None)
         if self._api_flow(flow):
             self._game_traffic(flow.client_conn)
@@ -247,11 +267,12 @@ class RaceObserver:
         raw = flow.response.raw_content
         if not isinstance(raw, bytes) or len(raw) > MAX_BODY:
             self._count('decode_failed')
-            self._trace(route, flow.response.status_code, None)
+            self._trace(route, flow.response.status_code, None, 'body_limit' if isinstance(raw, bytes) else 'body_unavailable')
             return
         self.pending = {f for f in self.pending if not f.done()}
         if len(self.pending) >= 8:
             self._count('backlog_dropped')
+            self._trace(route, flow.response.status_code, None, 'export_backlog')
             return
         category, category_source = classify_race(flow.request.path)
         captured_at = datetime.now(timezone.utc).isoformat()
@@ -273,12 +294,14 @@ class RaceObserver:
             # Atomic settings replacement may briefly leave no file. Default on.
             return {}
 
-    def _trace(self, route, status, payload):
+    def _trace(self, route, status, payload, failure=None):
         """Local response archive. Auth and session envelopes are removed; every other field is kept."""
         if not self.output_path or not route:
             return
         captured = datetime.now(timezone.utc)
         record = {'at': captured.isoformat(), 'route': route, 'status': status}
+        if failure:
+            record['failure'] = failure
         body_name = None
         if payload is not None:
             record.update(trace_api_payload(payload))
@@ -290,6 +313,7 @@ class RaceObserver:
             try:
                 folder.mkdir(parents=True, exist_ok=True)
                 if body_name:
+                    record_veterans(folder.parent, record['body'], route, record['at'])
                     responses.mkdir(parents=True, exist_ok=True)
                     temporary = responses / (body_name + '.partial')
                     temporary.write_text(json.dumps(record, ensure_ascii=False, allow_nan=False), encoding='utf-8')
@@ -299,6 +323,7 @@ class RaceObserver:
                 with path.open('a', encoding='utf-8') as stream:
                     stream.write(line + '\n')
             except (OSError, TypeError, ValueError):
+                self.status['write_failed'] += 1
                 return
 
     def _export(self, raw, encoding, context, category='other', category_source='unknown', captured_at=None, route=None):
@@ -344,10 +369,10 @@ class RaceObserver:
             documents = [json.dumps(race, ensure_ascii=False, allow_nan=False).encode('utf-8') for race in races]
             if sum(map(len, documents)) > MAX_BODY:
                 raise ValueError('output_limit')
-        except Exception:
+        except Exception as error:
             self._count('decode_failed')
             if not traced:
-                self._trace(route, 200, None)
+                self._trace(route, 200, None, error.code if isinstance(error, EnvelopeDecodeError) else 'decode_or_archive_failed')
             return
         folder = Path(self.output_path)
         for output in documents:
@@ -369,6 +394,7 @@ class RaceObserver:
         self._write_status(force=True)
 
     def error(self, flow):
+        self._record_full(flow, 'error')
         self.contexts.pop(flow.id, None)
 
     def done(self):
