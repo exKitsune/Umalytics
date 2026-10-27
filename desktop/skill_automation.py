@@ -160,6 +160,9 @@ class SkillAutomation:
             self.wake.clear()
             if self.store.closed:
                 break
+            maintenance = getattr(getattr(self.store, 'service', None), 'storage_optimizer', None)
+            if maintenance and maintenance.reserving_databases:
+                continue
             with self.store.connect() as db:
                 requests = [(r[0], json.loads(r[1])) for r in db.execute('SELECT source,value FROM skill_automation ORDER BY rowid DESC')]
             for source_id, request in requests:

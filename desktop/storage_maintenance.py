@@ -8,7 +8,7 @@ import sqlite3
 import time
 from contextlib import closing
 
-from globalsim_bridge.cache_storage import HEX, SHARED, summary_bytes, summary_value, write_shared
+from globalsim_bridge.cache_storage import HEX, SHARED, CACHE_LOCK, summary_bytes, summary_value, write_shared
 from globalsim_bridge.runtime import _read_cache, _canonical
 
 
@@ -16,6 +16,23 @@ def storage_bytes(root):
     targets = [root / 'cache/analysis.sqlite', root / 'simulator.sqlite']
     targets += [p for p in (root / 'cache/globalsim').rglob('*') if p.is_file() and not p.is_symlink()]
     return sum(p.stat().st_size for p in targets if p.is_file())
+
+
+def convert_model(path, auth):
+    """Convert one complete binding atomically; readers can use either format."""
+    with CACHE_LOCK:
+        if path.stat().st_size > 64 * 1024 * 1024 + 8192:
+            raise ValueError('Cache is too large.')
+        stamp = path.stat()
+        header = json.loads(path.read_bytes())
+        if header.get('storage') == SHARED:
+            return False
+        model = _read_cache(path, path.stem, 64 * 1024 * 1024, auth)
+        if model is None:
+            raise ValueError('Invalid modeled cache.')
+        write_shared(path, header, _canonical(model))
+        os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        return True
 
 
 def optimize(root, latest_dashboards=False, plain_summaries=False):
@@ -37,19 +54,7 @@ def optimize(root, latest_dashboards=False, plain_summaries=False):
         if path.is_symlink() or not path.resolve().is_relative_to(native.resolve()) or not HEX.fullmatch(path.stem):
             continue
         try:
-            if path.stat().st_size > 64 * 1024 * 1024 + 8192:
-                raise ValueError('Cache is too large.')
-            stamp = path.stat()
-            header = json.loads(path.read_bytes())
-            if header.get('storage') == SHARED:
-                continue
-            # Never convert checksum-only data into an authenticated trace.
-            model = _read_cache(path, path.stem, 64 * 1024 * 1024, auth)
-            if model is None:
-                raise ValueError('Invalid modeled cache.')
-            write_shared(path, header, _canonical(model))
-            os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
-            result['migratedModels'] += 1
+            result['migratedModels'] += int(convert_model(path, auth))
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             result['skipped'] += 1
     analysis = root / 'cache/analysis.sqlite'

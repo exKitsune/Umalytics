@@ -253,6 +253,11 @@ class BackgroundAnalysis:
                 with self.lock:
                     job = next((j for j in self.jobs.values() if j['phase'] == 'queued'), None)
                 if job is None:
+                    maintenance = getattr(self.service, 'storage_optimizer', None)
+                    if maintenance and maintenance.reserving_databases:
+                        self.wake.wait(.2)
+                        self.wake.clear()
+                        continue
                     job = self.background_candidate()
                 if job:
                     with self.lock:

@@ -182,12 +182,34 @@ For one 15.6 MB signed model, authenticated cache-read median improved from
 529 ms to 308 ms across six reads (first excluded), with identical modeled data.
 This measures cache decoding/verification only, not complete race analysis.
 
-`scripts/optimize-storage.py` reports size by default. After installing a build
-with this storage reader, exit Umalytics from the tray before migrating existing
-storage. Use `--apply` to compress models and summaries, and additionally
-`--keep-latest-dashboards` to remove superseded dashboard versions. The tool refuses
-the normal running service's data directory and preserves cache timestamps.
+Existing storage is optimized automatically by the service after an update.
+The worker waits ten seconds after startup and defers while the game, foreground
+analysis or simulation is active. It also waits for the updater to commit success
+before touching persistent data, preserving the updater's rollback window.
+Compression and authenticated dashboard retirement run in checkpointed batches;
+closing the app resumes the work on the next launch. Settings shows progress and
+reclaimed space. Original captures, saved builds and simulation outcomes remain.
+
+Named migration steps and a build marker let future releases append optimizations
+without a user script. Each new build rescans supported formats; a completed build
+does not repeatedly migrate storage. Existing database connections keep their
+normal concurrency. Final SQLite compaction waits for an exclusive idle lease and
+is interrupted when a foreground database request arrives. Stable result cursors
+preserve dashboard pagination even if compaction reassigns SQLite row IDs.
+
+The automatic worker was stopped and resumed on an isolated copy with 37,100
+legacy summaries and 244 native cache bindings. All summaries, original captures,
+jobs, builds and retained dashboards matched after migration. It served 1,880
+concurrent simulator metadata reads with unchanged result cursors. Tests also
+verify an incoming reader interrupts compaction and a later idle retry completes.
+The installed application's data was not migrated during this verification.
+
+`scripts/optimize-storage.py` remains an optional offline maintenance tool and
+reports size by default. Exit Umalytics from the tray before using `--apply` to
+compress models and summaries, and additionally `--keep-latest-dashboards` to
+remove superseded dashboard versions. The tool refuses the normal running
+service's data directory and preserves cache timestamps.
 For an intentional downgrade to an older executable, first use
 `--apply --plain-run-summaries` to restore plain JSON simulator summaries. Native
 headers not understood by an older version are ordinary cache misses. Existing
-cache limits and preferences are preserved; live data is not silently migrated.
+cache limits and preferences are preserved.

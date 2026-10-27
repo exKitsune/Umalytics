@@ -491,7 +491,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
         </section>
         {#if health?.dataDirectory}<section><h3>Saved data</h3><button class="saved-data-path" onclick={()=>revealFolder('data')} disabled={!health?.csrfToken}><code class="launch-option">{health.dataDirectory}</code></button><small>Click to open this folder in Explorer. Race imports, preferences, certificates and collection history are saved here.</small></section>{/if}
         <section><h3>Diagnostics</h3><button onclick={()=>revealFolder('diagnostics')} disabled={!health?.csrfToken}>Open diagnostics folder</button></section>
-        <CacheSettings serviceStatus={health?.analysisBackground} client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>
+        <CacheSettings serviceStatus={health?.analysisBackground} storageStatus={health?.storageOptimization} client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>
         {#if setupSettled}{@render certSection()}{@render steamSection()}{/if}
         <section>
           <h3>Uninstall</h3>

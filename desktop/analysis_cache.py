@@ -7,6 +7,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from globalsim_bridge.cache_storage import SHARED, HEX, CACHE_LOCK, blob_path
+from storage_gate import database_gate
 
 DEFAULT_POLICY = {'mode': 'unlimited', 'value': 1000, 'background': False}
 
@@ -19,6 +20,11 @@ class AnalysisCache:
 
     @contextmanager
     def connect(self):
+        with database_gate(self.path).use(), self._connect() as db:
+            yield db
+
+    @contextmanager
+    def _connect(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.path, timeout=15)
         if db.execute('PRAGMA page_count').fetchone()[0] == 0:
@@ -133,7 +139,8 @@ class AnalysisCache:
         elif path is None:
             db.execute('DELETE FROM entries WHERE key=?', (entry['key'],))
         elif not path.is_symlink() and path.resolve().is_relative_to(self.simulation_root):
-            path.unlink(missing_ok=True)
+            with CACHE_LOCK:
+                path.unlink(missing_ok=True)
 
     def read(self, key=None):
         with self.lock, self.connect() as db:

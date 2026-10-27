@@ -25,6 +25,8 @@ from globalsim_bridge.worker_pool import WorkerPool
 from globalsim_bridge.cache_storage import summary_bytes, summary_value
 from simulation_service import read_json
 from skill_automation import SkillAutomation, BackgroundBusy
+from storage_gate import database_gate
+import run_cursors
 
 def outcome_summary(setup, run, modeled):
     """Compact samples deliberately leave uncomputed analysis fields unknown."""
@@ -69,6 +71,7 @@ class SandboxService:
             db.executescript('CREATE TABLE IF NOT EXISTS documents (kind TEXT, id TEXT, value TEXT, PRIMARY KEY(kind,id));'
                 'CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, value TEXT);'
                 'CREATE TABLE IF NOT EXISTS runs (job TEXT, n INTEGER, summary TEXT, dashboard BLOB, PRIMARY KEY(job,n));')
+            run_cursors.initialize(db)
             for job_id, raw in db.execute('SELECT id,value FROM jobs'):
                 value = json.loads(raw)
                 if value['phase'] in ('queued', 'running'):
@@ -79,6 +82,11 @@ class SandboxService:
 
     @contextmanager
     def connect(self):
+        with database_gate(self.path).use(), self._connect() as db:
+            yield db
+
+    @contextmanager
+    def _connect(self):
         db = sqlite3.connect(self.path, timeout=20)
         try:
             if db.execute('PRAGMA page_count').fetchone()[0] == 0:
@@ -135,9 +143,9 @@ class SandboxService:
             row = db.execute('SELECT value FROM jobs WHERE id=?', (job_id,)).fetchone()
             if not row: raise ValueError('Simulation not found.')
             value = json.loads(row[0])
-            completed, cursor = db.execute('SELECT count(*),coalesce(max(rowid),0) FROM runs WHERE job=?', (job_id,)).fetchone()
+            completed, cursor = db.execute('SELECT count(*),coalesce(max(coalesce(c.cursor,r.rowid)),0) FROM runs r LEFT JOIN run_cursors c ON c.job=r.job AND c.n=r.n WHERE r.job=?', (job_id,)).fetchone()
             partial = after is not None and after <= cursor
-            value['runs'] = [summary_value(r[0]) for r in db.execute('SELECT summary FROM runs WHERE job=? AND rowid>? ORDER BY n',
+            value['runs'] = [summary_value(r[0]) for r in db.execute('SELECT r.summary FROM runs r LEFT JOIN run_cursors c ON c.job=r.job AND c.n=r.n WHERE r.job=? AND coalesce(c.cursor,r.rowid)>? ORDER BY r.n',
                 (job_id, after if partial else 0))] if include_runs else []
             value.update(runCursor=cursor, runsPartial=partial, completed=completed)
             value['readyRuns'] = [r[0] for r in db.execute('SELECT n FROM runs WHERE job=? AND dashboard IS NOT NULL', (job_id,))]
@@ -161,7 +169,7 @@ class SandboxService:
                 # thousands of finished runner summaries merely to count them.
                 return [{**json.loads(raw), 'runs':[], 'completed':completed, 'runCursor':cursor, 'runsPartial':False}
                     for raw,completed,cursor in db.execute(
-                        "SELECT j.value,count(r.n),coalesce(max(r.rowid),0) FROM jobs j LEFT JOIN runs r ON r.job=j.id "
+                        "SELECT j.value,count(r.n),coalesce(max(coalesce(c.cursor,r.rowid)),0) FROM jobs j LEFT JOIN runs r ON r.job=j.id LEFT JOIN run_cursors c ON c.job=r.job AND c.n=r.n "
                         "WHERE json_extract(j.value,'$.impactSourceId')=? GROUP BY j.rowid ORDER BY j.rowid", (job_id,))]
             ids = [row[0] for row in db.execute("SELECT id FROM jobs WHERE json_extract(value,'$.impactSourceId')=? ORDER BY rowid", (job_id,))]
         return [self.job(key) for key in ids]
@@ -358,9 +366,11 @@ class SandboxService:
         summary, packed = result
         if connection is not None:
             connection.execute('INSERT INTO runs VALUES (?,?,?,?)', (job_id,index,summary_bytes(summary),packed))
+            connection.execute('INSERT OR IGNORE INTO run_cursors(job,n) VALUES (?,?)', (job_id,index))
             return
         with self.connect() as db:
             db.execute('INSERT INTO runs VALUES (?,?,?,?)', (job_id,index,summary_bytes(summary),packed))
+            db.execute('INSERT OR IGNORE INTO run_cursors(job,n) VALUES (?,?)', (job_id,index))
 
     def run_outcomes(self, job, config, refs):
         # Keep the WAL connection open through the batch. Closing the final

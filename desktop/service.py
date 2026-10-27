@@ -240,6 +240,9 @@ class Service:
         self.sandbox.auto_skills.start()
         from analysis_events import watch_directory
         self.library_watcher = watch_directory(self.inbox, self.closed, self.library_changed)
+        from storage_optimizer import StorageOptimizer
+        self.storage_optimizer = StorageOptimizer(self, diagnostic_version())
+        self.storage_optimizer.start()
         self.diagnostics.event('service_initialized')
 
     def library_changed(self):
@@ -848,6 +851,7 @@ class Service:
 
     def shutdown(self):
         self.diagnostics.event('service_shutdown_requested')
+        self.storage_optimizer.close()
         self.sandbox.close()
         self.catalog.close()
         self.closed.set()
@@ -905,6 +909,7 @@ def make_handler(service):
                 if path == '/api/health':
                     self.send(200, {'ok': True, 'app': 'UmaTrace', 'mode': 'desktop', 'staticReady': '/' in service.assets,
                                     'analysisService': service.analysis_service.available, 'analysisBackground': service.analysis_service.status(), 'analysisEvents': True,
+                                    'storageOptimization': service.storage_optimizer.status(),
                                     'csrfToken': service.csrf, 'proxy': service.proxy_status(), 'certificate': service.certificate(),
                                     'launchOption': f'"{service.desktop_exe}" --launch-game -- %command%' if service.desktop_exe else None,
                                     'dataDirectory': str(service.data_dir),
@@ -1285,6 +1290,7 @@ def main():
         server.serve_forever(poll_interval=0.25)
     finally:
         log.event('service_stopping')
+        service.storage_optimizer.close()
         service.updater.close()
         service.catalog.close()
         service.sandbox.close()
