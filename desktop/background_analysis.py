@@ -259,6 +259,18 @@ class BackgroundAnalysis:
                         self.checked[job['raceId']] = job['stamp']
                     self.failures.pop(job['raceId'], None)
                     self.last_error = None
+            except StaleAnalysis as error:
+                # A capture or catalog can change while this job is running.
+                # Discard the old result and rescan current inputs without the
+                # failure cooldown used for actual calculation errors.
+                with self.lock:
+                    if job:
+                        job.update(phase='failed', error=str(error))
+                        self.checked.pop(job['raceId'], None)
+                        self.failures.pop(job['raceId'], None)
+                    self.last_error = None
+                    self.last_scan = 0
+                job = None  # Yield before retrying, even if inputs keep changing.
             except Exception as error:
                 self.last_error = str(error)
                 if job:

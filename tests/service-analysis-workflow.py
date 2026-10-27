@@ -51,9 +51,23 @@ with tempfile.TemporaryDirectory(prefix='service-analysis-') as temporary:
     cache = AnalysisCache(store.data_dir)
     cache.update({'action': 'policy', 'policy': {'mode': 'unlimited', 'value': 1000, 'background': True}})
     starts, worker_pids = [], []
+    stale_keys = []
     original = BackgroundAnalysis.run
     def counted(self, job):
         starts.append(job['raceId'])
+        if not stale_keys:
+            # A catalog/configuration refresh can land after the background
+            # job captured its identity, but before it reads the engine job.
+            stale_keys.append(job['key'])
+            original_get = store.simulation.get
+            def refreshed_get(*args, **kwargs):
+                store.simulation.get = original_get
+                registry_path = root / 'simulation/engine-registry.json'
+                registry = json.loads(registry_path.read_text())
+                registry['registryId'] = 'synthetic-refreshed-during-analysis'
+                registry_path.write_text(json.dumps(registry))
+                return original_get(*args, **kwargs)
+            store.simulation.get = refreshed_get
         result = original(self, job)
         worker_pids.append(self.node_pool.session.process.pid)
         return result
@@ -62,7 +76,9 @@ with tempfile.TemporaryDirectory(prefix='service-analysis-') as temporary:
     try:
         assert service.available
         until(lambda: len(service.checked) == 3, 'Headless backlog did not finish: ' + str(service.status()))
-        assert starts == ['new~0', 'middle~0', 'old~0'], starts
+        assert starts == ['new~0', 'new~0', 'middle~0', 'old~0'], starts
+        assert not service.status()['error'] and not service.failures
+        assert service.read(stale_keys[0]) is None, 'A stale job published a dashboard.'
         assert len(set(worker_pids)) == 1, 'The calculation worker was restarted between races.'
         # An idle worker can exit unexpectedly; the next job remains self-contained.
         child = service.node_pool.session.process
