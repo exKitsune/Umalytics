@@ -4,6 +4,7 @@ use std::{fs, path::PathBuf, process::{Command, Stdio}};
 mod service_startup;
 mod updater;
 mod storage_paths;
+mod diagnostics;
 use service_startup::ServiceEndpoint;
 use sha2::{Digest, Sha256};
 use tauri::{menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -200,29 +201,36 @@ fn open_browser(url: &str) {
 
 fn main() {
     let mut arguments: Vec<String> = std::env::args().skip(1).collect();
-    if let Err(error) = wait_for_parent(&mut arguments) { show_error(&error); std::process::exit(1); }
+    diagnostics::initialize(match arguments.first().map(String::as_str) {
+        Some("--apply-update" | "--rollback-update") => "updater",
+        Some("--launch-game") => "game-wrapper",
+        _ => "desktop",
+    });
+    if let Err(error) = wait_for_parent(&mut arguments) { diagnostics::event("restart_parent_timeout"); show_error(&error); std::process::exit(1); }
     if matches!(arguments.first().map(String::as_str), Some("--apply-update" | "--rollback-update")) {
         let result = arguments.get(1).ok_or_else(|| "Update transaction is missing.".to_string())
             .and_then(|path| if arguments[0] == "--apply-update" { updater::apply(std::path::Path::new(path)) } else { updater::rollback(std::path::Path::new(path)) });
-        if let Err(error) = result { show_error(&error); std::process::exit(1); }
+        if let Err(error) = result { diagnostics::event("update_helper_failed"); show_error(&error); std::process::exit(1); }
+        diagnostics::event("update_helper_finished");
         return;
     }
-    let data = match data_path() { Ok(path) => path, Err(error) => { show_error(&error); std::process::exit(1); } };
+    let data = match data_path() { Ok(path) => path, Err(error) => { diagnostics::event("storage_setup_failed"); show_error(&error); std::process::exit(1); } };
     let migration_pending = storage_paths::user_data().is_ok_and(|target| target != data);
     match updater::recover_pending(&data) {
-        Ok(true) => return,
+        Ok(true) => { diagnostics::event("exit_update_recovery"); return; },
         Ok(false) => {},
-        Err(error) => { show_error(&error); std::process::exit(1); }
+        Err(error) => { diagnostics::event("update_recovery_failed"); show_error(&error); std::process::exit(1); }
     }
-    if let Err(error) = updater::wait_replacement_turn(&data) { show_error(&error); std::process::exit(1); }
+    if let Err(error) = updater::wait_replacement_turn(&data) { diagnostics::event("update_replacement_failed"); show_error(&error); std::process::exit(1); }
     let path = data.join("runtime").join("UmalyticsCollector.exe");
-    if let Err(error) = migrate_webview(&data) { show_error(&error); std::process::exit(1); }
+    if let Err(error) = migrate_webview(&data) { diagnostics::event("webview_migration_failed"); show_error(&error); std::process::exit(1); }
     let launch_game = arguments.first().map(String::as_str) == Some("--launch-game");
     let stop_after_game = launch_game
         && !health().is_some_and(|status| ServiceEndpoint::matches_instance(&status, &path, &data));
     if std::env::var_os("UMALYTICS_FOLLOW_SERVICE").is_some() {
-        if !follow_service(&path, &data) { std::process::exit(0); }
-    } else if let Err(error) = start_service(&path, &data) { show_error(&error); std::process::exit(1); }
+        if !follow_service(&path, &data) { diagnostics::event("exit_follow_service_timeout"); std::process::exit(0); }
+    } else if let Err(error) = start_service(&path, &data) { diagnostics::event("service_start_failed"); show_error(&error); std::process::exit(1); }
+    diagnostics::event("service_connected");
     let _ = updater::cleanup(&data);
     cleanup_legacy_runtimes(&data);
     if launch_game {
@@ -233,6 +241,7 @@ fn main() {
             hidden(Command::new(executable).arg("--background").env("UMALYTICS_FOLLOW_SERVICE", "1")).spawn().ok()
         });
         let code = hidden(Command::new(&path).args(&arguments)).status().ok().and_then(|s| s.code()).unwrap_or(1);
+        diagnostics::detail("game_session_ended", serde_json::json!({"code": code, "ownsService": stop_after_game}));
         if stop_after_game {
             ServiceEndpoint { port: 4317 }.stop_owned(&path, &data);
             if let Some(child) = tray.as_mut() { wait_for_exit(child, 40000); }
@@ -244,6 +253,7 @@ fn main() {
     let shutdown_runtime = path.clone();
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            diagnostics::event("second_instance_received");
             if !args.iter().any(|arg| arg == "--background") { show(app); }
         }))
         .setup(move |app| {
@@ -271,10 +281,12 @@ fn main() {
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "open" => show(app),
                     "exit" => {
+                        diagnostics::event("tray_exit_requested");
                         if let Some(status) = health() {
                             if ServiceEndpoint::matches_instance(&status, &tray_runtime, &tray_data) {
                                 let stopped = request("POST", "/api/app/exit", Some("{}"), status["csrfToken"].as_str());
                                 if stopped.is_none_or(|value| value["ok"] != true) {
+                                    diagnostics::event("tray_exit_stop_failed");
                                     show_error("Collection could not stop. Please try Exit again.");
                                     return;
                                 }
@@ -287,13 +299,20 @@ fn main() {
                 .on_tray_icon_event(|tray, event| { if let TrayIconEvent::DoubleClick { .. } = event { show(tray.app_handle()); } })
                 .build(app)?;
             updater::desktop_ready(&data)?;
+            diagnostics::event("desktop_ready");
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut unavailable = 0;
                 let mut ticks = 0;
+                let mut last_heartbeat = std::time::Instant::now();
+                let mut last_state = "";
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(750));
                     ticks += 1;
+                    if last_heartbeat.elapsed() >= std::time::Duration::from_secs(60) {
+                        diagnostics::event("heartbeat");
+                        last_heartbeat = std::time::Instant::now();
+                    }
                     if ticks % 14 == 0 && data.join("cache/update/success.json").is_file() {
                         let _ = updater::cleanup(&data);
                     }
@@ -310,6 +329,7 @@ fn main() {
                                         if background { restart.arg("--background"); }
                                         if hidden(&mut restart).spawn().is_err() { show_error("Reopen Umalytics to finish moving your data to AppData."); }
                                     }
+                                    diagnostics::event("exit_storage_migration");
                                     handle.exit(0); break;
                                 }
                             }
@@ -317,10 +337,14 @@ fn main() {
                     }
                     match health() {
                         Some(status) => {
+                            if unavailable > 0 { diagnostics::detail("service_health_recovered", serde_json::json!({"missedPolls": unavailable})); }
                             unavailable = 0;
-                            if !ServiceEndpoint::matches_instance(&status, &path, &data)
-                                || status["runtimeBuildSha256"].as_str() != Some(SERVICE_DIGEST)
-                                || status["update"]["phase"] == "restarting" {
+                            let exit_reason = if !ServiceEndpoint::matches_instance(&status, &path, &data) { Some("exit_service_identity_changed") }
+                                else if status["update"]["phase"] == "restarting" { Some("exit_update_restart") }
+                                else if status["runtimeBuildSha256"].as_str() != Some(SERVICE_DIGEST) { Some("exit_service_build_changed") }
+                                else { None };
+                            if let Some(reason) = exit_reason {
+                                diagnostics::event(reason);
                                 handle.exit(0);
                                 break;
                             }
@@ -331,6 +355,10 @@ fn main() {
                                     else if status["proxy"]["listening"] == true || status["proxy"]["state"] == "running" { "Waiting for game" }
                                     else if status["proxy"]["state"] == "starting" { "Starting collector" }
                                     else { "Collection stopped" };
+                                if state != last_state {
+                                    diagnostics::detail("collector_state_changed", serde_json::json!({"state": state}));
+                                    last_state = state;
+                                }
                                 let title = format!("Umalytics — {state}");
                                 if let Some(tray) = handle.tray_by_id("umatrace") { let _ = tray.set_tooltip(Some(&title)); }
                                 if let Some(window) = handle.get_webview_window("main") { let _ = window.set_title(&title); }
@@ -338,17 +366,27 @@ fn main() {
                         }
                         None => {
                             unavailable += 1;
+                            if unavailable == 1 { diagnostics::event("service_health_lost"); }
                             if let Some(window) = handle.get_webview_window("main") { let _ = window.set_title("Umalytics — Reconnecting to collector"); }
-                            if unavailable >= 4 && !(ServiceEndpoint { port: 4317 }).listening() { handle.exit(0); break; }
+                            if unavailable >= 4 && !(ServiceEndpoint { port: 4317 }).listening() {
+                                diagnostics::detail("exit_service_unavailable", serde_json::json!({"missedPolls": unavailable}));
+                                handle.exit(0); break;
+                            }
                         }
                     }
                 }
             });
             Ok(())
         })
-        .on_window_event(|window, event| { if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); let _ = window.hide(); } })
-        .run(tauri::generate_context!());
+        .on_window_event(|window, event| { if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); diagnostics::event("window_hidden_to_tray"); let _ = window.hide(); } })
+        .build(tauri::generate_context!());
+    let result = result.map(|app| app.run(|_app, event| match event {
+        tauri::RunEvent::ExitRequested { code, .. } => diagnostics::detail("desktop_exit_requested", serde_json::json!({"code": code})),
+        tauri::RunEvent::Exit => diagnostics::event("desktop_exit"),
+        _ => {},
+    }));
     if let Err(error) = result {
+        diagnostics::event("desktop_setup_failed");
         // Failed tray/window setup must not leave an invisible collector.
         if let Some(status) = health() {
             if ServiceEndpoint::matches_instance(&status, &shutdown_runtime, &shutdown_data) {

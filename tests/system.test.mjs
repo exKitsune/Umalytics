@@ -42,6 +42,9 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+test('local diagnostics retain safe exceptions and distinguish process exits',async()=>{
+  await run('python',[join(root,'tests/diagnostics-workflow.py')],{cwd:root,windowsHide:true,timeout:30000});
+});
 test('raw-stat course comparisons preserve hills, HP thresholds and uncertainty',async()=>{
   await run(process.execPath,['--import','tsx','tests/raw-stat-comparison-workflow.ts'],{cwd:root,timeout:30000});
 });

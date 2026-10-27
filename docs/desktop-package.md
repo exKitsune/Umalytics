@@ -36,6 +36,7 @@ The directory contains:
 - `capture/`: this installation's certificate and **private key**, with
   `umalytics-*` filenames. Keep this folder private.
 - `cache/`: the WebView profile and temporary update files.
+- `logs/`: rotating process diagnostics, available through Settings → Open diagnostics folder.
 
 Dependency notices are embedded and available offline through Settings → Licenses.
 There is no extracted license tree. Desktop imports and preferences migrate from
@@ -59,6 +60,29 @@ collector too. Steam's launch wrapper starts the tray if needed, then stops that
 Steam-started session when the game exits. A tray that was already running stays
 open. The **Start at login** toggle changes only this user's Run entry. There is
 no administrator Windows service or scheduled task.
+
+## Local diagnostics
+
+The desktop, updater helper, game wrapper, Python service and collector keep
+separate session JSONL files in `logs/`. Each role retains at most 12 files of
+about 1 MiB each. Events include startup/readiness, a one-minute heartbeat,
+collector restarts and exit codes, tray exits, window hiding, service identity
+changes, update restarts, and exception source locations. Python timestamps are
+UTC; native timestamps use Unix milliseconds. Each record identifies its process,
+session and build. An ended process with no exit event indicates an abrupt exit
+or logging failure, not proof of a particular crash cause.
+
+Python exception hooks record exception types and stack locations without
+exception messages, source lines or local variables. The native panic hook
+records its source location even with release panic-abort enabled. These logs
+exclude game arguments, HTTP bodies, auth tokens and account data. Collector
+stdout/stderr remains discarded. Nothing is uploaded automatically.
+
+Native access violations, external termination and power loss may prevent a
+final record; Windows Application Error / Windows Error Reporting should be
+checked alongside the last heartbeat. Older builds have no lifecycle history to
+recover retroactively. `cache/api-trace.jsonl` and `cache/responses/` are separate
+game capture archives and are not crash reports.
 
 ## Certificate and game setup
 

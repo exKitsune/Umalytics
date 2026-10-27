@@ -18,7 +18,7 @@ export interface ImportReceipt { id:string; sha256:string; filename:string; rece
 export async function saveDesktopExport(filename: string, content: string, csrfToken: string): Promise<SavedExport> {
   return api<SavedExport>('exports', {filename, content}, csrfToken);
 }
-export async function revealDesktop(target: 'data' | 'exports', csrfToken: string): Promise<SavedExport> {
+export async function revealDesktop(target: 'data' | 'exports' | 'diagnostics', csrfToken: string): Promise<SavedExport> {
   return api<SavedExport>('reveal', {target}, csrfToken);
 }
 

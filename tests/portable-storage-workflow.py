@@ -329,7 +329,9 @@ def workflows(temporary):
 with tempfile.TemporaryDirectory(prefix='portable-storage-', dir=ROOT / '.cache') as workspace:
     # Explorer can finish opening after this disposable installation is deleted.
     # Native shell behavior is covered by the separate interactive smoke tests.
-    with patch.object(desktop, 'reveal_file', return_value=False) as reveal:
+    # This fixture supplies its own launcher PID; a real game running alongside
+    # QA must not change its idle assertions or require the user to close it.
+    with patch.object(desktop, 'reveal_file', return_value=False) as reveal, patch('processes.process_names', return_value=[]):
         workflows(Path(workspace))
         reveal.assert_called_once_with(Path(workspace) / 'portable/Umalytics-data/json-out/portable-export.json')
 print('Portable storage/service workflows passed: migration, offline notices, import/preferences restart, reference recovery/release upgrade, live collector CA preservation.')

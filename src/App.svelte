@@ -278,7 +278,7 @@
   function openSettings(){exportDraft=settings.exportDirectory??'';pendingCertRemoval=false;message='';settingsOpen=true;}
   function closeSettings(){settingsOpen=false;pendingCertRemoval=false;}
   function requestAutoCollection(){if(desktopSession)openSettings();else downloadPromptOpen=true;}
-  async function revealFolder(target:'data'|'exports') {
+  async function revealFolder(target:'data'|'exports'|'diagnostics') {
     if(!health?.csrfToken)return;
     try{const saved=await revealDesktop(target,health.csrfToken);tell(saved.revealed?'Opened in Explorer.':saved.path);}catch(e){error=String(e)}
   }
@@ -490,6 +490,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
           <small>{settings.downloadsDirectory?`Downloads folder: ${settings.downloadsDirectory}`:'Uses your Windows Downloads folder unless you choose another path.'}</small>
         </section>
         {#if health?.dataDirectory}<section><h3>Saved data</h3><button class="saved-data-path" onclick={()=>revealFolder('data')} disabled={!health?.csrfToken}><code class="launch-option">{health.dataDirectory}</code></button><small>Click to open this folder in Explorer. Race imports, preferences, certificates and collection history are saved here.</small></section>{/if}
+        <section><h3>Diagnostics</h3><button onclick={()=>revealFolder('diagnostics')} disabled={!health?.csrfToken}>Open diagnostics folder</button></section>
         <CacheSettings serviceStatus={health?.analysisBackground} client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>
         {#if setupSettled}{@render certSection()}{@render steamSection()}{/if}
         <section>

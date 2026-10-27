@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 from storage import atomic_json, default_data_directory, prepare_storage, cleanup_legacy_notices
 from simulation_service import SimulationService, StaleAnalysis, QueueFull
+import diagnostics
 
 PORT = 4317
 PROXY_PORT = 4327
@@ -37,6 +38,12 @@ NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 class LocalServer(ThreadingHTTPServer):
     allow_reuse_address = False
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # The default handler prints exception messages and request context.
+        error = sys.exception()
+        if error:
+            diagnostics.report_exception('http_thread_exception', error)
 
     def server_bind(self):
         # Windows SO_REUSEADDR permits another server to steal traffic. An exclusive
@@ -152,6 +159,7 @@ def current_user_trust(der, install=False, uninstall=False):
 
 class Service:
     def __init__(self, data_dir, no_proxy=False, desktop_exe=None, proxy_port=PROXY_PORT):
+        self.diagnostics = diagnostics.initialize(data_dir, 'service', diagnostic_version())
         self.data_dir = data_dir = prepare_storage(data_dir)
         self.inbox = data_dir / 'races'
         self.ca_dir = data_dir / 'capture'
@@ -230,6 +238,7 @@ class Service:
         self.sandbox.auto_skills.start()
         from analysis_events import watch_directory
         self.library_watcher = watch_directory(self.inbox, self.closed, self.library_changed)
+        self.diagnostics.event('service_initialized')
 
     def library_changed(self):
         if getattr(self, 'analysis_service', None):
@@ -496,9 +505,10 @@ class Service:
 
     def reveal_target(self, body):
         target = body.get('target')
-        if set(body) != {'target'} or target not in ('data', 'exports'):
+        if set(body) != {'target'} or target not in ('data', 'exports', 'diagnostics'):
             raise ValueError('Reveal target is invalid.')
-        folder = self.data_dir if target == 'data' else self.prepared_export_directory()
+        folder = (diagnostics.log_directory(self.data_dir) if target == 'diagnostics'
+                  else self.data_dir if target == 'data' else self.prepared_export_directory())
         if not folder.is_dir() or folder.is_symlink():
             raise ValueError('That folder is unavailable.')
         return {'path': str(folder), 'revealed': reveal_folder(folder)}
@@ -580,18 +590,23 @@ class Service:
 
     def stop_proxy(self):
         if self.proxy and self.proxy.poll() is None:
+            self.diagnostics.event('collector_stop_requested', child_pid=self.proxy.pid)
             self.stop_path.touch()
             try:
                 self.proxy.wait(timeout=8)
             except subprocess.TimeoutExpired:
+                self.diagnostics.event('collector_stop_timeout', child_pid=self.proxy.pid)
                 self.proxy.terminate()
                 self.proxy.wait(timeout=5)
+        if self.proxy:
+            self.diagnostics.event('collector_stopped', child_pid=self.proxy.pid, code=self.proxy.poll())
         self.proxy = None
 
     def supervise(self):
         try:
             self.ensure_certificate()
-        except Exception:
+        except Exception as error:
+            self.diagnostics.exception('certificate_setup_failed', error)
             self.proxy_state = 'certificate_error'
             return
         retry_after = 0
@@ -610,6 +625,9 @@ class Service:
                     else:
                         self.proxy_state = 'running'
                         continue
+                if self.proxy and self.proxy.poll() is not None:
+                    self.diagnostics.event('collector_exited', child_pid=self.proxy.pid, code=self.proxy.returncode)
+                    self.proxy = None
                 if time.monotonic() < retry_after:
                     continue
                 self.stop_path.unlink(missing_ok=True)
@@ -624,7 +642,9 @@ class Service:
                                                   stderr=subprocess.DEVNULL, creationflags=NO_WINDOW, env=env)
                     self.proxy_stage = desired_stage
                     self.proxy_state = 'starting'
-                except OSError:
+                    self.diagnostics.event('collector_started', child_pid=self.proxy.pid)
+                except OSError as error:
+                    self.diagnostics.exception('collector_start_failed', error)
                     self.proxy = None
                     self.proxy_state = 'start_failed'
                 retry_after = time.monotonic() + 15
@@ -825,6 +845,7 @@ class Service:
         return {'ok': True}
 
     def shutdown(self):
+        self.diagnostics.event('service_shutdown_requested')
         self.sandbox.close()
         self.catalog.close()
         self.closed.set()
@@ -972,7 +993,8 @@ def make_handler(service):
                 self.send(409, {'error': str(error)})
             except (ValueError, TypeError):
                 self.send(400, {'error': 'Invalid request.'})
-            except Exception:
+            except Exception as error:
+                service.diagnostics.exception('http_get_failed', error)
                 self.send(500, {'error': 'Local operation failed.'})
 
         do_HEAD = do_GET
@@ -1010,7 +1032,9 @@ def make_handler(service):
                 elif self.path == '/api/update/install':
                     self.send(200, service.updater.install())
                 elif self.path == '/api/update/restart':
-                    self.send(200, service.updater.restart(body.get('token')))
+                    result = service.updater.restart(body.get('token'))
+                    service.diagnostics.event('update_restart_authorized')
+                    self.send(200, result)
                 elif self.path == '/api/update/abort':
                     self.send(200, service.updater.abort(body.get('token')))
                 elif self.path == '/api/game/launch-state':
@@ -1072,7 +1096,8 @@ def make_handler(service):
                 self.send(409, {'error': str(error)})
             except (ValueError, TypeError, RecursionError) as error:
                 self.send(400, {'error': str(error)})
-            except Exception:
+            except Exception as error:
+                service.diagnostics.exception('http_post_failed', error)
                 self.send(500, {'error': 'Local operation failed.'})
 
     return Handler
@@ -1186,6 +1211,14 @@ def launch_game(arguments, port=PORT, data_dir=None):
             pass
 
 
+def diagnostic_version():
+    try:
+        root = RESOURCE_ROOT if getattr(sys, 'frozen', False) else RESOURCE_ROOT / 'desktop'
+        return str(json.loads((root / 'build-info.json').read_text(encoding='utf-8'))['version'])
+    except (OSError, ValueError, KeyError):
+        return 'unknown'
+
+
 def main():
     # PyInstaller windowed processes provide None for standard streams.
     for name in ('stdout', 'stderr', 'stdin'):
@@ -1212,21 +1245,28 @@ def main():
             parser.error('--diagnose-output is required for an offline diagnostic.')
         from simulation_diagnostic import diagnose_installed_capture
         return diagnose_installed_capture(RESOURCE_ROOT, args.diagnose_capture, args.diagnose_output, args.diagnose_engine)
+    log = diagnostics.initialize(args.data_dir, 'collector' if args.collector else 'launcher' if args.launch_game else 'service', diagnostic_version())
     if args.collector:
         collector(args.data_dir, args.stage, args.proxy_port, args.status_port)
+        log.event('collector_returned')
         return 0
     if args.launch_game:
         try:
-            return launch_game(args.game, args.port, args.data_dir)
+            code = launch_game(args.game, args.port, args.data_dir)
+            log.event('game_session_ended', code=code)
+            return code
         except ValueError as error:
+            log.exception('game_launch_failed', error)
             if os.name == 'nt':
                 ctypes.windll.user32.MessageBoxW(None, str(error), 'UmaTrace', 0x40)
             return 1
     # Binding is the single-instance lock. A second entry never changes state.
     try:
         server = LocalServer(('127.0.0.1', args.port), BaseHTTPRequestHandler)
-    except OSError:
-        return 0 if health(args.port) else 2
+    except OSError as error:
+        code = 0 if health(args.port) else 2
+        log.event('existing_service' if code == 0 else 'service_bind_failed', code=code, exception=error if code else None)
+        return code
     service = Service(args.data_dir.resolve(), args.no_proxy, args.desktop_exe, args.proxy_port)
     server.RequestHandlerClass = make_handler(service)
     server.daemon_threads = True
@@ -1235,9 +1275,11 @@ def main():
     service.catalog.start()
     worker = threading.Thread(target=service.supervise, daemon=True)
     worker.start()
+    log.event('service_listening')
     try:
         server.serve_forever(poll_interval=0.25)
     finally:
+        log.event('service_stopping')
         service.updater.close()
         service.catalog.close()
         service.sandbox.close()
@@ -1248,6 +1290,7 @@ def main():
         worker.join(timeout=15)
         service.status_socket.close()
         server.server_close()
+        log.event('service_stopped')
     return 0
 
 
