@@ -41,7 +41,7 @@
     }catch(e){if(request===navigationRequest)error=String(e);}finally{if(request===navigationRequest){restoringRoute=false;simulationLoading=false;}}
   }
   function switchWorkspace(mode:'races'|'simulator'|'umas'){void navigate(mode==='simulator'?{kind:mode,...simulatorLocation}:mode==='races'?{kind:mode,...(lastCapturedId?{id:lastCapturedId}:{})}:{kind:mode});}
-  async function loadSimulator(){if(!reference||!race)return;const draft=fromRace(recordedRace??race,reference),id=activeId;try{simulatorInput=race.sandbox?draft:await api<typeof draft>('simulator/from-race',{raceId:id,draft:draft.setup,warnings:draft.warnings},health?.csrfToken);simulatorLocation={view:'setup'};switchWorkspace('simulator');}catch(e){error=String(e);}}
+  async function loadSimulator(){if(!reference||!race)return;const draft=fromRace(recordedRace??race,reference),id=library.find(entry=>entry.id===activeId)?.remoteId??activeId;try{simulatorInput=race.sandbox?draft:await api<typeof draft>('simulator/from-race',{raceId:id,draft:draft.setup,warnings:draft.warnings},health?.csrfToken);simulatorLocation={view:'setup'};switchWorkspace('simulator');}catch(e){error=String(e);}}
   function openSimulated(value:PreparedRace,refs:ReferenceData,record=true){++selectionRequest;activeId=value.race.id;race=value.race;recordedRace=null;reference=refs;analysis=value.analysis;historical=null;analysisGate=null;runnerSelectionTouched=false;selectDefaultRunner(race);time=0;playing=false;skillDetail=null;analysisState={...analysisState,busy:false};workspaceMode='simulation';if(record&&race.sandbox)writeRoute({kind:'simulation',jobId:race.sandbox.jobId,index:race.sandbox.runIndex});}
   import { onMount } from 'svelte';
   import {collectorStatus} from './collector-status';
