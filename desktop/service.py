@@ -565,7 +565,8 @@ class Service:
 
     def export_json(self, body):
         filename, content = body.get('filename'), body.get('content')
-        if (set(body) != {'filename', 'content'} or not isinstance(filename, str)
+        reveal = body.get('reveal', True)
+        if (set(body) - {'filename', 'content', 'reveal'} or type(reveal) is not bool or not isinstance(filename, str)
                 or not re.fullmatch(r'[^<>:"/\\|?*\x00-\x1f]{1,120}\.json', filename)
                 or filename.startswith('.') or filename.endswith(' .json')
                 or filename.split('.')[0].rstrip(' ').upper() in {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
@@ -591,7 +592,7 @@ class Service:
                 temporary.replace(target)
             finally:
                 temporary.unlink(missing_ok=True)
-        return {'filename': target.name, 'path': str(target), 'revealed': reveal_file(target)}
+        return {'filename': target.name, 'path': str(target), 'revealed': reveal_file(target) if reveal else False}
 
     def stop_proxy(self):
         if self.proxy and self.proxy.poll() is None:

@@ -224,6 +224,28 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
                 pass  # TCP readiness only: no game, credentials, or upstream traffic.
             tls_loopback_fixture(data)
             tls_loopback_fixture(data, game_sni=True)
+            # Startup maintenance legitimately changes persistent storage once.
+            # Verify it completes before measuring steady-state collector writes.
+            deadline = time.monotonic() + 45
+            while True:
+                with opener.open(url + '/api/health', timeout=3) as response:
+                    maintenance_health = json.load(response)
+                assert_owned(maintenance_health, data)
+                optimization = maintenance_health.get('storageOptimization', {})
+                if optimization.get('phase') == 'complete':
+                    break
+                if optimization.get('phase') == 'waiting':
+                    from processes import process_names
+                    # Local development can run beside the real game. Do not
+                    # close it or force maintenance to satisfy this smoke test.
+                    if any(name.lower() in ('\x75mamusume.exe', '\x75mamusume\x70rettyderby.exe') for name in process_names()):
+                        break
+                assert optimization.get('phase') in ('pending', 'running', 'waiting'), f'Storage optimization failed: {optimization}'
+                if time.monotonic() >= deadline:
+                    raise AssertionError(f'Storage optimization did not finish: {optimization}')
+                time.sleep(.25)
+            # Include completion diagnostics before taking the baseline snapshot.
+            time.sleep(.25)
             # Polling the real running collector and API must not rewrite data files.
             def persistent_files():
                 return {str(p.relative_to(data)): (p.stat().st_mtime_ns, p.stat().st_size)
@@ -233,7 +255,9 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
                 with opener.open(url + '/api/health', timeout=3) as response:
                     assert json.load(response)['proxy']['listening']
                 time.sleep(.25)
-            assert persistent_files() == before_idle, 'Idle collector changed persistent files.'
+            after_idle = persistent_files()
+            changed = sorted(key for key in before_idle.keys() | after_idle.keys() if before_idle.get(key) != after_idle.get(key))
+            assert not changed, f'Idle collector changed persistent files: {changed}'
             assert not (data / 'collector-status.json').exists()
         race = [{'title': 'Packaged smoke fixture', 'category': 'practice', 'race_scenario': 'synthetic'}]
         (data / 'races' / 'synthetic.json').write_text(json.dumps(race), encoding='utf-8')
@@ -263,13 +287,15 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
         with opener.open(Request(url + '/api/settings', data=json.dumps({'exportDirectory': str(data / 'exports')}).encode(), headers=headers), timeout=3) as response:
             assert Path(json.load(response)['exportDirectory']) == data / 'exports'
         export_content = json.dumps({'title': 'System export fixture', 'races': race}, ensure_ascii=False)
-        export_body = json.dumps({'filename': 'system-export.json', 'content': export_content}).encode()
+        export_body = json.dumps({'filename': 'system-export.json', 'content': export_content, 'reveal': not args.headless}).encode()
         with opener.open(Request(url + '/api/exports', data=export_body, headers=headers), timeout=10) as response:
             exported = json.load(response)
         assert Path(exported['path']).read_text(encoding='utf-8') == export_content
         assert Path(exported['path']).parent == (data / 'exports').resolve()
         if not args.headless:
             assert exported['revealed']
+        else:
+            assert exported['revealed'] is False
         with opener.open(Request(url + '/api/exports', data=export_body, headers=headers), timeout=10) as response:
             duplicate_export = json.load(response)
         assert duplicate_export['filename'] == 'system-export (1).json'
@@ -423,6 +449,7 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
         print(json.dumps({'serviceProcess': 'passed', 'processMode': 'source' if args.executable.suffix == '.py' else 'packaged', 'collectorPassthrough': 'passed' if args.collector_probe else 'not requested',
                           'encryptedLoopbackProxy': 'passed' if args.collector_probe else 'not requested',
                           'apiConnectionLifecycle': 'passed' if args.collector_probe else 'not requested',
+                          'startupStorageOptimization': optimization['phase'] if args.collector_probe else 'not requested',
                           'idlePersistentWrites': 'none' if args.collector_probe else 'not requested',
                           'unchangedSettingsWrites': 'none', 'desktopExportReveal': 'not requested (headless)' if args.headless else 'passed',
                           'actualLauncherStub': 'passed' if args.collector_probe else 'not requested',

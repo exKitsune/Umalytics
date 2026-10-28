@@ -186,7 +186,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         assert all(record[key] == 'http://127.0.0.1:4327' for key in ('http_proxy','https_proxy','all_proxy'))
         assert record['no_proxy'] == 'localhost,127.0.0.1,::1'
         post('/api/settings', {'exportDirectory': str(data / 'exports')}, health)
-        exported = post('/api/exports', {'filename':'native-export.json', 'content':json.dumps([race])}, health)
+        exported = post('/api/exports', {'filename':'native-export.json', 'content':json.dumps([race]), 'reveal':not args.headless}, health)
         export_path = Path(exported['path'])
         assert export_path.parent == (data / 'exports').resolve()
         if not args.headless:
