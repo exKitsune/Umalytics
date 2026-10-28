@@ -213,3 +213,42 @@ For an intentional downgrade to an older executable, first use
 `--apply --plain-run-summaries` to restore plain JSON simulator summaries. Native
 headers not understood by an older version are ordinary cache misses. Existing
 cache limits and preferences are preserved.
+
+## Update relaunch and workspace recovery (2026-10-28)
+
+One installed update log measured 5.12 s from desktop process entry to window
+readiness (4.40 s to service connection), and 10.85 s for the updater helper's
+handoff, replacement and readiness checks. This excludes downloading the release.
+It is one local observation, not a startup latency guarantee.
+
+Helper preparation now hashes while copying, avoiding a second executable read
+and full-file allocation. A 60,121,600-byte local executable measured 57.05 ms
+before versus 49.76 ms after across seven warm samples; helper bytes and hashes
+matched. This small microbenchmark is not the complete update time. Native
+readiness verification hashes the runtime once at the final commit gate rather
+than repeatedly during its two-second stability interval. The interval, signed
+release checks, runtime/data hashes and rollback protections remain in place.
+Startup cleanup runs on a delayed background thread. Runtime reuse still compares
+every embedded byte, using a bounded buffer instead of a full runtime allocation.
+Diagnostics include runtime preparation and service-startup elapsed milliseconds
+for measuring future real launches. Service unpacking/startup remains a material
+part of the total; no whole-update speedup is claimed from the helper benchmark.
+
+The WebView profile retains a versioned workspace checkpoint: route, captured race,
+selected runner, paused replay time/speed, simulator setup, seed options, results
+job and an open Uma editor draft. Simulator results themselves remain in the
+service database. Field edits are debounced; update buttons, page hide and visibility
+changes flush pending state. Reloading restores drafts without saving or changing
+their Dorm originals, and viewing results does not replace an unfinished setup.
+Explicit URL routes take precedence over the checkpoint. Incompatible/malformed
+checkpoints are ignored and unavailable browser storage does not block the app.
+
+App-only updates reuse the running collector when both independently verified
+component identities match its exact runtime hash. This removes collector
+shutdown, PyInstaller extraction/startup and engine initialization from that
+update path; capture and the Steam game wrapper remain alive. Collector changes
+continue to wait for the game to close. The first upgrade from a release without
+component identities uses that conservative path too. Frontend assets are gzip
+compressed in the native executable and reference data remains collector-owned.
+The portable download still contains the collector for offline installation;
+separate CI artifacts do not yet mean a smaller app-only download.

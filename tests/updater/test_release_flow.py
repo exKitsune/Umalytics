@@ -162,7 +162,7 @@ while not Path(sys.argv[6]).exists(): time.sleep(.02)
 def packaging_flow(folder):
     """Run the actual release CLI in an isolated source tree with a fixture key."""
     tree = folder / 'release-source'
-    for name in ('scripts/release.py', 'desktop/updater.py', 'package.json', 'package-lock.json',
+    for name in ('scripts/release.py', 'desktop/updater.py', 'desktop/app_components.py', 'package.json', 'package-lock.json',
                  'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock', 'src-tauri/tauri.conf.json',
                  'public/data/update-manifest.json'):
         destination = tree / name

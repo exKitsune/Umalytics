@@ -60,9 +60,16 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/nodejs/node/$nodeVersi
 & $python desktop/generate_licenses.py
 if ($LASTEXITCODE -ne 0) { throw 'Dependency license collection failed.' }
 if (-not $SkipService) {
+    & $python scripts/collector-artifact.py restore
+    $collectorCacheMiss = $LASTEXITCODE
+    if ($collectorCacheMiss -notin @(0, 2)) { throw 'Collector identity calculation failed.' }
+    if ($collectorCacheMiss -eq 2) {
     $env:PYINSTALLER_CONFIG_DIR = Join-Path $workspace '.cache/pyinstaller-config'
     & $python -m PyInstaller --noconfirm --clean --distpath .cache/desktop-service --workpath .cache/desktop-pyinstaller desktop/collector.spec
     if ($LASTEXITCODE -ne 0) { throw 'Collector packaging failed.' }
+    & $python scripts/collector-artifact.py save
+    if ($LASTEXITCODE -ne 0) { throw 'Collector artifact cache failed.' }
+    }
 }
 $env:UMATRACE_SERVICE_DIGEST = (Get-FileHash -LiteralPath '.cache/desktop-service/UmaTraceService.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
 & $cargo build --locked --release --manifest-path src-tauri/Cargo.toml
@@ -70,5 +77,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed.' }
 New-Item -ItemType Directory -Path '.cache/dist' -Force | Out-Null
 $artifactPath = Join-Path (Join-Path $workspace '.cache/dist') $OutputFile
 Copy-Item -LiteralPath (Join-Path $env:CARGO_TARGET_DIR 'release/umatrace.exe') -Destination $artifactPath -Force
+if ($OutputFile -eq 'Umalytics.exe') {
+    & $python scripts/collector-artifact.py stamp
+    if ($LASTEXITCODE -ne 0) { throw 'Component identity stamping failed.' }
+}
 $artifact = Get-Item -LiteralPath $artifactPath
 Write-Output "Built $($artifact.FullName) ($([Math]::Round($artifact.Length / 1MB, 1)) MiB)."

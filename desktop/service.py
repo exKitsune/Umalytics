@@ -208,6 +208,8 @@ class Service:
         self.launcher_pids = {}
         self.launcher_lock = threading.RLock()
         self.assets = {}
+        from frontend import DesktopFrontend
+        self.frontend = DesktopFrontend(data_dir)
         dist = RESOURCE_ROOT / 'dist'
         if dist.exists():
             for path in dist.rglob('*'):
@@ -229,6 +231,7 @@ class Service:
         from updater import UpdateController
         self.updater = UpdateController(data_dir, desktop_exe, RESOURCE_ROOT, game_active=self.game_active)
         self.runtime_build_sha256 = hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest() if getattr(sys, 'frozen', False) else None
+        self.updater.collector_sha256 = self.runtime_build_sha256
         manifest = self.assets.get('/data/update-manifest.json')
         self.bundled_data_sha256 = hashlib.sha256(manifest[0]).hexdigest() if manifest else None
         self.simulation = SimulationService(self, RESOURCE_ROOT)
@@ -908,7 +911,8 @@ def make_handler(service):
             path = url.path
             try:
                 if path == '/api/health':
-                    self.send(200, {'ok': True, 'app': 'UmaTrace', 'mode': 'desktop', 'staticReady': '/' in service.assets,
+                    service.updater.refresh_app_identity()
+                    self.send(200, {'ok': True, 'app': 'UmaTrace', 'mode': 'desktop', 'staticReady': bool(service.frontend.asset('/')) or '/' in service.assets,
                                     'analysisService': service.analysis_service.available, 'analysisBackground': service.analysis_service.status(), 'analysisEvents': True,
                                     'storageOptimization': service.storage_optimizer.status(),
                                     'csrfToken': service.csrf, 'proxy': service.proxy_status(), 'certificate': service.certificate(),
@@ -995,6 +999,9 @@ def make_handler(service):
                 elif path.startswith('/data/') and path[len('/data/'):] in service.reference_data.assets:
                     name = path[len('/data/'):]
                     self.send(200, raw=service.reference_data.assets[name], content_type='application/json' if name.endswith('.json') else 'text/plain; charset=utf-8')
+                elif (frontend_asset := service.frontend.asset(path)) is not None:
+                    raw, kind = frontend_asset
+                    self.send(200, raw=raw, content_type=kind)
                 elif path in service.assets:
                     raw, kind = service.assets[path]
                     self.send(200, raw=raw, content_type=kind)

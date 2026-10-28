@@ -14,6 +14,18 @@ const MAX_EXE: u64 = 512 * 1024 * 1024;
 const REPO: &str = "https://github.com/exKitsune/Umalytics";
 const MANAGED:&[&str]=&["data/metadata.json","data/courses.json","data/course-geometry.json","data/simulator-skill-ids.json","data/reference-source.json","data/NOTICE.txt","data/UMA-TOOLS-LICENSE.txt","data/update-manifest.json","data/active.json","runtime/UmalyticsCollector.exe"];
 
+fn components(path:&Path)->Option<Value>{
+    use std::io::{Seek,SeekFrom};
+    let mut file=fs::File::open(path).ok()?;file.seek(SeekFrom::End(-20)).ok()?;
+    let mut tail=[0u8;20];file.read_exact(&mut tail).ok()?;
+    if &tail[4..]!=b"UMALYTICS-PART1!"{return None;}
+    let size=u32::from_le_bytes(tail[..4].try_into().ok()?) as usize;if size==0||size>4096{return None;}
+    file.seek(SeekFrom::End(-20-size as i64)).ok()?;let mut raw=vec![0;size];file.read_exact(&mut raw).ok()?;
+    let value:Value=serde_json::from_slice(&raw).ok()?;
+    if !exact_keys(&value,&["schemaVersion","collectorSha256","appVersion","buildNumber"])||value["schemaVersion"]!=1
+        ||!is_hex(value["collectorSha256"].as_str()?,64)||build(value["appVersion"].as_str()?)!=value["buildNumber"].as_u64(){return None;}Some(value)
+}
+
 fn bad<T>(message:&str)->Result<T,String>{Err(message.to_owned())}
 fn hex(bytes:&[u8])->String{bytes.iter().map(|byte|format!("{byte:02x}")).collect()}
 fn is_hex(text:&str,length:usize)->bool{text.len()==length&&text.bytes().all(|c|c.is_ascii_digit()||(b'a'..=b'f').contains(&c))}
@@ -58,7 +70,7 @@ fn expected_path(value:&Value,key:&str,expected:&Path)->Result<PathBuf,String>{
 }
 fn build(version:&str)->Option<u64>{let suffix=version.strip_prefix("0.2.")?;let number=suffix.parse::<u64>().ok()?;if version==format!("0.2.{number}"){Some(number)}else{None}}
 
-struct Plan{install:PathBuf,exe:PathBuf,data:PathBuf,folder:PathBuf,stage:PathBuf,backup:PathBuf,manifest:Value,token:String,previous:String,old_hash:String}
+struct Plan{install:PathBuf,exe:PathBuf,data:PathBuf,folder:PathBuf,stage:PathBuf,backup:PathBuf,manifest:Value,token:String,previous:String,old_hash:String,app_only:bool}
 impl Plan{
     fn load(transaction:&Path,key:&[u8;32],recovery:bool)->Result<Self,String>{
         regular_path(transaction)?;
@@ -100,7 +112,10 @@ impl Plan{
         if stage.exists()&&(fs::metadata(&stage).map_err(|_|"Staged release is unavailable.")?.len()!=size||digest(&stage)?!=field(&manifest,"sha256")?){return bad("Staged release does not match its signed hash and size.");}
         let backup=folder.join("backup");if backup.exists(){safe_tree(&backup)?;if !recovery{return bad("An earlier update backup needs recovery before another update can start.");}}else if recovery{return bad("The pending update backup is unavailable.");}
         for path in [data.join("data"),data.join("runtime")]{if path.exists(){safe_tree(&path)?;}}
-        Ok(Self{install,exe,data,folder,stage,backup,manifest,token,previous,old_hash})
+        let candidate=if stage.exists(){&stage}else{&exe};
+        let app_only=components(&own).zip(components(candidate)).is_some_and(|(old,new)|old["collectorSha256"]==new["collectorSha256"]
+            && new["appVersion"]==manifest["version"] && digest(&data.join("runtime/UmalyticsCollector.exe")).is_ok_and(|h|Some(h.as_str())==new["collectorSha256"].as_str()));
+        Ok(Self{install,exe,data,folder,stage,backup,manifest,token,previous,old_hash,app_only})
     }
     fn owns(&self,health:&Value)->bool{health["app"]=="UmaTrace"&&health["ok"]==true&&health["dataDirectory"].as_str().is_some_and(|path|path_equal(Path::new(path),&self.data))}
     fn idle(&self,health:&Value)->bool{health["proxy"]["activeGameConnections"].as_u64()==Some(0)&&health["proxy"]["gameConnected"].as_bool()!=Some(true)}
@@ -113,6 +128,17 @@ impl Plan{
 }
 
 fn launch(exe:&Path,install:&Path)->Result<Child,String>{
+    #[cfg(windows)]{
+        use std::io::{Seek,SeekFrom};
+        let valid=(||->std::io::Result<bool>{
+            let mut file=fs::File::open(exe)?;let mut header=[0u8;64];file.read_exact(&mut header)?;
+            if &header[..2]!=b"MZ"{return Ok(false);}
+            let offset=u32::from_le_bytes(header[60..64].try_into().unwrap()) as u64;
+            if offset<64||offset>1024*1024{return Ok(false);}
+            file.seek(SeekFrom::Start(offset))?;let mut signature=[0;4];file.read_exact(&mut signature)?;Ok(&signature==b"PE\0\0")
+        })().unwrap_or(false);
+        if !valid{return bad("The replacement is not a valid Windows executable.");}
+    }
     let mut command=Command::new(exe);command.current_dir(install).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     // A replacement or rollback app must own its frozen collector extraction,
     // even when this helper inherited the previous collector's _PYI state.
@@ -166,7 +192,14 @@ fn replace_executable(target:&Path,replacement:&Path,backup:&Path)->Result<(),St
 fn abort_restart(plan:&Plan,endpoint:&ServiceEndpoint){
     if let Some(health)=endpoint.health(){if plan.owns(&health){let _=endpoint.request("POST","/api/update/abort",Some(&json!({"token":plan.token}).to_string()),health["csrfToken"].as_str());}}
 }
-fn wait_app_exit(exe:&Path,old_hash:Option<&str>)->Result<(),String>{
+fn wait_app_exit(exe:&Path,old_hash:Option<&str>)->Result<(),String>{wait_app_exit_filtered(exe,old_hash,None)}
+fn wait_ui_exit(plan:&Plan)->Result<(),String>{
+    if !plan.app_only{return wait_app_exit(&plan.exe,Some(&plan.old_hash));}
+    let receipt:Value=serde_json::from_slice(&read_small(&plan.data.join("runtime/desktop-ui.json"),1024)?).map_err(|_|"Desktop identity is unavailable.")?;
+    let pid=receipt["pid"].as_u64().filter(|p|*p>0&&*p<=u32::MAX as u64).ok_or("Desktop process is invalid.")? as u32;
+    wait_app_exit_filtered(&plan.exe,Some(&plan.old_hash),Some(pid))
+}
+fn wait_app_exit_filtered(exe:&Path,old_hash:Option<&str>,only_pid:Option<u32>)->Result<(),String>{
     // A mapped Windows executable can pass an exclusive read/delete open while
     // its process and single-instance mutex are still alive. Wait on processes.
     #[cfg(windows)]{
@@ -192,7 +225,7 @@ fn wait_app_exit(exe:&Path,old_hash:Option<&str>)->Result<(),String>{
             };
             let mut running=Vec::new();
             for pid in &ids[..count]{
-                if *pid==0||*pid==std::process::id(){continue;}
+                if *pid==0||*pid==std::process::id()||only_pid.is_some_and(|wanted|wanted!=*pid){continue;}
                 let handle=unsafe{OpenProcess(0x100000|0x1000,0,*pid)};
                 if handle.is_null(){continue;}let handle=Handle(handle);
                 let mut name=vec![0u16;32768];let mut length=name.len() as u32;
@@ -225,7 +258,7 @@ fn wait_app_exit(exe:&Path,old_hash:Option<&str>)->Result<(),String>{
             }
         }
     }
-    #[cfg(not(windows))]{let _=(exe,old_hash);thread::sleep(Duration::from_millis(1000));Ok(())}
+    #[cfg(not(windows))]{let _=(exe,old_hash,only_pid);thread::sleep(Duration::from_millis(1000));Ok(())}
 }
 
 /// Also protects upgrades initiated by older helpers with the faulty file-lock
@@ -238,6 +271,12 @@ pub(crate) fn wait_replacement_turn(data:&Path)->Result<(),String>{
         let value:Value=serde_json::from_slice(&read_small(&transaction,16384)?).map_err(|_|"Update transaction is invalid.")?;
         let hash=field(&value,"expectedOldExeSha256")?;
         if !is_hex(hash,64){return bad("Previous executable hash is invalid.");}
+        let helper=folder.join("helper.exe");
+        if digest(&helper).is_ok_and(|actual|actual==hash)&&components(&helper).zip(components(&own)).is_some_and(|(old,new)|old["collectorSha256"]==new["collectorSha256"]){
+            let receipt:Value=serde_json::from_slice(&read_small(&data.join("runtime/desktop-ui.json"),1024)?).map_err(|_|"Desktop identity is unavailable.")?;
+            let pid=receipt["pid"].as_u64().filter(|p|*p>0&&*p<=u32::MAX as u64).ok_or("Desktop process is invalid.")? as u32;
+            return wait_app_exit_filtered(&own,Some(hash),Some(pid));
+        }
         wait_app_exit(&own,Some(hash))?;
     }Ok(())
 }
@@ -313,7 +352,7 @@ fn remove_backup(path:&Path)->Result<(),String>{
 }
 fn prepare_journal(plan:&Plan)->Result<Value,String>{
     let mut files=serde_json::Map::new();
-    for name in MANAGED{let path=plan.data.join(name);if path.exists(){regular_path(&path)?;if !path.is_file(){return bad("A managed update file is an unexpected directory.");}files.insert((*name).to_owned(),Value::String(digest(&path)?));}}
+    for name in if plan.app_only{&[][..]}else{MANAGED}{let path=plan.data.join(name);if path.exists(){regular_path(&path)?;if !path.is_file(){return bad("A managed update file is an unexpected directory.");}files.insert((*name).to_owned(),Value::String(digest(&path)?));}}
     Ok(json!({"schemaVersion":1,"oldHash":plan.old_hash,"newHash":plan.manifest["sha256"],"files":files}))
 }
 fn load_journal(plan:&Plan)->Result<Value,String>{
@@ -331,6 +370,7 @@ fn load_journal(plan:&Plan)->Result<Value,String>{
     Ok(journal)
 }
 fn restore_files(plan:&Plan,journal:&Value)->Result<(),String>{
+    if plan.app_only{return Ok(());}
     // Unknown files and legacy snapshot directories remain where they were.
     // Only the app's fixed managed names can be replaced or removed.
     for name in MANAGED{
@@ -354,7 +394,10 @@ fn record_success(plan:&Plan,version:&Value,hash:&Value)->Result<(),String>{
         output.write_all(json!({"schemaVersion":1,"version":version,"sha256":hash}).to_string().as_bytes())?;
         output.sync_all()?;drop(output);fs::rename(&temporary,&target)
     })();
-    result.map_err(|_|"The app updated, but temporary update cleanup could not be recorded.".to_owned())
+    result.map_err(|_|"The app updated, but temporary update cleanup could not be recorded.".to_owned())?;
+    let prompt=plan.data.join("cache/collector-reopen.json");
+    if regular_path(&prompt).is_ok(){let _=fs::remove_file(prompt);}
+    Ok(())
 }
 fn completed_update(folder:&Path,exe:&Path)->Result<bool,String>{
     let marker=folder.join("success.json");if !marker.exists(){return Ok(false);}regular_path(&marker)?;
@@ -367,11 +410,15 @@ fn completed_update(folder:&Path,exe:&Path)->Result<bool,String>{
 
 fn run(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
     let health=endpoint.health().ok_or("The collector is unavailable for update authorization.")?;
-    if !plan.owns(&health)||!plan.idle(&health)||health["version"]!=plan.previous{return bad("The running installation changed or Uma is active. Try again after closing Uma.");}
+    if !plan.owns(&health)||(!plan.app_only&&!plan.idle(&health))||health["version"]!=plan.previous{return bad("The running installation changed or Uma is active. Try again after closing Uma.");}
+    if plan.app_only{
+        plan.verify_runtime(&health)?;
+        if components(&plan.stage).is_none_or(|parts|parts["collectorSha256"]!=health["runtimeBuildSha256"]){return bad("The running collector differs from this app-only update.");}
+    }
     let response=endpoint.request("POST","/api/update/restart",Some(&json!({"token":plan.token}).to_string()),health["csrfToken"].as_str());
     if response.is_none_or(|response|response["phase"]!="restarting"){return bad("The running application refused update authorization.");}
-    if let Err(error)=wait_app_exit(&plan.exe,Some(&plan.old_hash)){abort_restart(plan,endpoint);let _=launch(&plan.exe,&plan.install);return Err(error);}
-    if let Err(error)=stop_owned(plan,endpoint){abort_restart(plan,endpoint);let _=launch(&plan.exe,&plan.install);return Err(error);}
+    if let Err(error)=wait_ui_exit(plan){abort_restart(plan,endpoint);let _=launch(&plan.exe,&plan.install);return Err(error);}
+    if let Err(error)=if plan.app_only{Ok(())}else{stop_owned(plan,endpoint)}{abort_restart(plan,endpoint);let _=launch(&plan.exe,&plan.install);return Err(error);}
     // Recheck after the shutdown interval so a changed staged file is never run.
     let preparation=(||{
         regular_path(&plan.exe)?;regular_path(&plan.stage)?;
@@ -408,20 +455,21 @@ fn run(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
                 if health["staticReady"]!=true{thread::sleep(Duration::from_millis(250));continue;}
                 let settings=endpoint.request("GET","/api/settings",None,None).ok_or("Updated settings are unavailable.")?;
                 if settings["collectionEnabled"]==true&&health["proxy"]["listening"]!=true{thread::sleep(Duration::from_millis(250));continue;}
-                {
+                if desktop_since.is_some_and(|since|since.elapsed()>=Duration::from_secs(2)){
                     plan.verify_runtime(&health)?;
                     let data=endpoint.request("GET","/api/data/status",None,None).ok_or("Updated reference data is unavailable.")?;
                     if data["manifestSha256"]!=plan.manifest["dataSha256"]{return bad("Updated reference data does not match the signed release.");}
-                    if desktop_since.is_some_and(|since|since.elapsed()>=Duration::from_secs(2)){return Ok(());}
+                    return Ok(());
                 }
             }
             thread::sleep(Duration::from_millis(250));
         }bad("The updated application did not become healthy in time.")
     })();
     if let Err(reason)=result{
-        if endpoint.health().is_some(){if stop_owned(plan,endpoint).is_err(){return Err(format!("{reason} Rollback is saved in cache/update/backup; close Uma before recovery."));}}
+        if !plan.app_only&&endpoint.health().is_some(){if stop_owned(plan,endpoint).is_err(){return Err(format!("{reason} Rollback is saved in cache/update/backup; close Uma before recovery."));}}
         if let Some(child)=child.as_mut(){let _=child.kill();let _=child.wait();}
         let journal=load_journal(plan)?;restore_files(plan,&journal)?;restore_exe(plan)?;
+        if plan.app_only{abort_restart(plan,endpoint);}
         record_success(plan,&Value::String(plan.previous.clone()),&Value::String(plan.old_hash.clone()))?;
         let _=remove_backup(&plan.backup);
         let _=launch(&plan.exe,&plan.install);
@@ -489,8 +537,8 @@ pub(crate) fn rollback_verified(transaction:&Path,key:&[u8;32],port:u16)->Result
     let completed=completed_update(&plan.folder,&plan.exe)?;
     let journal=if completed{None}else{Some(load_journal(&plan)?)};
     let result=(||{
-        wait_app_exit(&plan.exe,Some(&plan.old_hash))?;
-        if endpoint.health().is_some(){stop_owned(&plan,&endpoint)?;}
+        wait_ui_exit(&plan)?;
+        if !plan.app_only&&endpoint.health().is_some(){stop_owned(&plan,&endpoint)?;}
         if completed{let _=remove_backup(&plan.backup);launch(&plan.exe,&plan.install)?;return Ok(());}
         restore_files(&plan,journal.as_ref().unwrap())?;restore_exe(&plan)?;
         record_success(&plan,&Value::String(plan.previous.clone()),&Value::String(plan.old_hash.clone()))?;

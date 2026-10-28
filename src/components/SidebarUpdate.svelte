@@ -5,7 +5,7 @@
   export let onInstall:()=>void;
   $: pending=['downloading','restarting','waiting-for-game'].includes(status.phase);
   $: label=status.phase==='waiting-for-game'?'Update ready':status.phase==='downloading'?'Downloading…':status.phase==='restarting'?'Restarting…':'Update available';
-  $: detail=status.phase==='waiting-for-game'?'Installs after the game closes':status.phase==='downloading'?'Preparing the new version':status.phase==='restarting'?'Umalytics will reopen':`Version ${status.availableVersion}`;
+  $: detail=status.phase==='waiting-for-game'?(status.collectorChanged===false?'Restarting app · capture continues':'Installs after the game closes'):status.phase==='downloading'?'Preparing the new version':status.phase==='restarting'?'Umalytics will reopen':`Version ${status.availableVersion}`;
 </script>
 <div class="sidebar-update">
   <button class:pending disabled={disabled||pending||status.canInstall===false} onclick={onInstall} title={detail} aria-label={`${label} · ${detail}`}>

@@ -5,6 +5,8 @@ mod service_startup;
 mod updater;
 mod storage_paths;
 mod diagnostics;
+mod frontend;
+mod tray_policy;
 use service_startup::ServiceEndpoint;
 use sha2::{Digest, Sha256};
 use tauri::{menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -78,10 +80,22 @@ fn wait_for_parent(arguments: &mut Vec<String>) -> Result<(), String> {
 }
 
 fn extract_service(path: &PathBuf) -> Result<(), String> {
+    use std::io::Read;
+    let started=std::time::Instant::now();
     let directory = path.parent().ok_or("Could not find the collector folder.")?;
     fs::create_dir_all(directory).map_err(|_| "Could not prepare Umalytics runtime.")?;
     // Compare exact embedded bytes before reusing an extracted runtime.
-    if fs::read(&path).ok().as_deref() != Some(SERVICE) {
+    let matches=(|| -> std::io::Result<bool> {
+        let mut file=fs::File::open(path)?;
+        if file.metadata()?.len()!=SERVICE.len() as u64{return Ok(false);}
+        let mut buffer=vec![0u8;1024*1024];
+        for chunk in SERVICE.chunks(buffer.len()){
+            file.read_exact(&mut buffer[..chunk.len()])?;
+            if &buffer[..chunk.len()]!=chunk{return Ok(false);}
+        }
+        Ok(file.read(&mut buffer[..1])?==0)
+    })().unwrap_or(false);
+    if !matches {
         let temporary = directory.join(format!("service-{}.partial", std::process::id()));
         fs::write(&temporary, SERVICE).map_err(|_| "Could not extract UmaTrace runtime.")?;
         // The previous PyInstaller parent can retain its file briefly after
@@ -94,16 +108,21 @@ fn extract_service(path: &PathBuf) -> Result<(), String> {
         if !replaced { return Err("The older collector is still closing. Reopen Umalytics in a moment.".into()); }
         fs::rename(&temporary, path).map_err(|_| "Could not finish Umalytics runtime extraction.")?;
     }
+    diagnostics::detail("runtime_prepared",serde_json::json!({"elapsedMs":started.elapsed().as_millis(),"reused":matches}));
     Ok(())
 }
 
 fn start_service(path: &PathBuf, data: &PathBuf) -> Result<(), String> {
+    frontend::prepare(data)?;
+    let started=std::time::Instant::now();
     let executable = std::env::current_exe().map_err(|_| "Could not resolve desktop executable.")?;
-    ServiceEndpoint { port: 4317 }.ensure_service_build(path, data, Some(SERVICE_DIGEST), || {
+    let result=ServiceEndpoint { port: 4317 }.ensure_service_build(path, data, Some(SERVICE_DIGEST), || {
         extract_service(path)?;
         hidden(Command::new(path).arg("--serve").arg("--data-dir").arg(data).arg("--desktop-exe").arg(executable)).spawn().map_err(|_| "Could not start UmaTrace background service.")?;
         Ok(())
-    })
+    });
+    diagnostics::detail("service_startup_elapsed",serde_json::json!({"elapsedMs":started.elapsed().as_millis(),"ok":result.is_ok()}));
+    result
 }
 
 fn follow_service(path: &PathBuf, data: &PathBuf) -> bool {
@@ -231,8 +250,14 @@ fn main() {
         if !follow_service(&path, &data) { diagnostics::event("exit_follow_service_timeout"); std::process::exit(0); }
     } else if let Err(error) = start_service(&path, &data) { diagnostics::event("service_start_failed"); show_error(&error); std::process::exit(1); }
     diagnostics::event("service_connected");
-    let _ = updater::cleanup(&data);
-    cleanup_legacy_runtimes(&data);
+    // Cleanup is not a prerequisite for opening the window. Keep verified,
+    // lock-protected cleanup off the relaunch's critical path.
+    let cleanup_data=data.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let _ = updater::cleanup(&cleanup_data);
+        cleanup_legacy_runtimes(&cleanup_data);
+    });
     if launch_game {
         // Steam waits on this wrapper. A tray started for this session follows
         // the collector and must not start another one, so closing Uma can stop
@@ -271,7 +296,8 @@ fn main() {
                 .icon(app_icon())?
                 .title("Umalytics").visible(!background).data_directory(data.join("cache").join("webview")).inner_size(1440.0, 960.0).min_inner_size(900.0, 650.0).build()?;
             let open = MenuItem::with_id(app, "open", "Open Umalytics", true, None::<&str>)?;
-            let exit = MenuItem::with_id(app, "exit", "Exit Umalytics and stop collection", true, None::<&str>)?;
+            let initial_exit_blocked=tray_policy::exit_blocked(health().as_ref());
+            let exit = MenuItem::with_id(app, "exit", tray_policy::exit_label(initial_exit_blocked), !initial_exit_blocked, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &exit])?;
             let tray_data = data.clone();
             let tray_runtime = path.clone();
@@ -283,14 +309,21 @@ fn main() {
                     "exit" => {
                         diagnostics::event("tray_exit_requested");
                         if let Some(status) = health() {
+                            if tray_policy::exit_blocked(Some(&status)) {
+                                diagnostics::event("tray_exit_blocked_game_running");
+                                return;
+                            }
                             if ServiceEndpoint::matches_instance(&status, &tray_runtime, &tray_data) {
-                                let stopped = request("POST", "/api/app/exit", Some("{}"), status["csrfToken"].as_str());
+                                let stopped = request("POST", "/api/app/exit", Some("{\"onlyIfIdle\":true}"), status["csrfToken"].as_str());
                                 if stopped.is_none_or(|value| value["ok"] != true) {
                                     diagnostics::event("tray_exit_stop_failed");
-                                    show_error("Collection could not stop. Please try Exit again.");
+                                    show_error("Collection could not stop. Close the game first, then try Exit again.");
                                     return;
                                 }
                             }
+                        } else {
+                            diagnostics::event("tray_exit_blocked_status_unavailable");
+                            return;
                         }
                         app.exit(0);
                     },
@@ -299,6 +332,9 @@ fn main() {
                 .on_tray_icon_event(|tray, event| { if let TrayIconEvent::DoubleClick { .. } = event { show(tray.app_handle()); } })
                 .build(app)?;
             updater::desktop_ready(&data)?;
+            let ui_identity=data.join("runtime/desktop-ui.json");
+            storage_paths::regular(&ui_identity)?;
+            fs::write(ui_identity,serde_json::json!({"pid":std::process::id()}).to_string())?;
             diagnostics::event("desktop_ready");
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -306,6 +342,7 @@ fn main() {
                 let mut ticks = 0;
                 let mut last_heartbeat = std::time::Instant::now();
                 let mut last_state = "";
+                let mut last_exit_blocked=initial_exit_blocked;
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(750));
                     ticks += 1;
@@ -337,6 +374,12 @@ fn main() {
                     }
                     match health() {
                         Some(status) => {
+                            let blocked=tray_policy::exit_blocked(Some(&status));
+                            if blocked!=last_exit_blocked{
+                                let _=exit.set_text(tray_policy::exit_label(blocked));
+                                let _=exit.set_enabled(!blocked);
+                                last_exit_blocked=blocked;
+                            }
                             if unavailable > 0 { diagnostics::detail("service_health_recovered", serde_json::json!({"missedPolls": unavailable})); }
                             unavailable = 0;
                             let exit_reason = if !ServiceEndpoint::matches_instance(&status, &path, &data) { Some("exit_service_identity_changed") }
@@ -365,6 +408,11 @@ fn main() {
                             }
                         }
                         None => {
+                            if !last_exit_blocked{
+                                let _=exit.set_enabled(false);
+                                let _=exit.set_text(tray_policy::exit_label(true));
+                                last_exit_blocked=true;
+                            }
                             unavailable += 1;
                             if unavailable == 1 { diagnostics::event("service_health_lost"); }
                             if let Some(window) = handle.get_webview_window("main") { let _ = window.set_title("Umalytics — Reconnecting to collector"); }

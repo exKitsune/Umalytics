@@ -24,6 +24,9 @@ from urllib.request import ProxyHandler, Request, build_opener
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'desktop'))
+from app_components import append_components, read_components
+
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 OPENER = build_opener(ProxyHandler({}))
 MARKER = b'UMALYTICS-WORKFLOW-VERSION='
@@ -88,9 +91,15 @@ def owned_service(payload, install, port):
 
         def do_GET(self):
             if self.path == '/api/health':
+                reported_version = payload['version']
+                if payload.get('hot'):
+                    parts = read_components(install / 'Umalytics.exe')
+                    reported_version = parts['appVersion'] if parts else reported_version
+                    if reported_version != payload['version']:
+                        state['phase'] = 'idle'
                 self.send_json({'ok': True, 'app': 'UmaTrace', 'mode': 'desktop', 'csrfToken': CSRF,
                                 'staticReady': time.monotonic() - started >= payload.get('staticDelay', 0),
-                                'dataDirectory': str(data), 'version': payload['version'],
+                                'dataDirectory': str(data), 'version': reported_version,
                                 'dataSha256': '0' * 64 if payload.get('badData') else sha(reference),
                                 'runtimeBuildSha256': '0' * 64 if payload.get('badRuntime') else sha(runtime),
                                 'runtimeExecutable': str(runtime_path), 'update': state,
@@ -198,6 +207,8 @@ def main(harness, cross_drive_root=None, startup_only=False):
             install.mkdir(parents=True, exist_ok=True)
             update = data / 'cache/update'
             update.mkdir(parents=True)
+            prompt = data / 'cache/collector-reopen.json'
+            prompt.write_text('{"schemaVersion":1}')
             protected = {'races/one.json': b'synthetic saved race', 'settings.json': b'important preferences',
                          'capture/mitmproxy-ca.pem': b'synthetic private certificate bytes',
                          'cache/webview/profile.txt': b'existing browser data',
@@ -240,7 +251,15 @@ def main(harness, cross_drive_root=None, startup_only=False):
                   'manifestPath': str(update / 'release-manifest.json'),
                   'signaturePath': str(update / 'release-manifest.sig'), 'previousVersion': '0.2.0',
                   'version': '0.2.1', 'expectedOldExeSha256': sha(old_bytes), 'token': TOKEN}
-            initial_payload = {'version': '0.2.0'}
+            hot = name.startswith('hot-')
+            if hot:
+                collector_hash = sha(b'synthetic-collector:0.2.0')
+                for path, number in ((exe, 0), (helper, 0), (staged, 1)):
+                    append_components(path, collector_hash, {'version': f'0.2.{number}', 'buildNumber': number})
+                old_bytes, new_bytes = exe.read_bytes(), staged.read_bytes()
+                tx['expectedOldExeSha256'] = sha(old_bytes)
+                manifest.update(bytes=len(new_bytes), sha256=sha(new_bytes), dataSha256=sha(b'synthetic-reference:0.2.0'))
+            initial_payload = {'version': '0.2.0', **({'hot': True, 'gameActive': True} if hot else {})}
             if name == 'active-game':
                 initial_payload['gameActive'] = True
             if name == 'refused-stop':
@@ -249,12 +268,16 @@ def main(harness, cross_drive_root=None, startup_only=False):
                                         str(install), str(port)], creationflags=FLAGS,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
             helper_process = None
+            wrapper = None
             old_desktop = None
             cleanup_handle = None
             outputs = []
             try:
                 wait_health(port, '0.2.0')
-                if name == 'old-desktop-still-running':
+                if hot:
+                    wrapper = subprocess.Popen([str(exe), '--hold-desktop-fixture', str(install)], env=env,
+                                              creationflags=FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if name == 'old-desktop-still-running' or hot:
                     old_desktop = subprocess.Popen([str(exe), '--old-desktop-fixture'], env=env,
                                                    creationflags=FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     for _ in range(100):
@@ -304,7 +327,15 @@ def main(harness, cross_drive_root=None, startup_only=False):
                 stdout=output_path.read_text()
                 assert helper_process.returncode == 0, stdout
                 report = json.loads(stdout.strip())
+                if hot:
+                    assert wrapper.poll() is None, 'Game wrapper was interrupted'
+                    assert initial.poll() is None, 'Collector was restarted'
+                    assert '/api/app/exit' not in (install / 'events.txt').read_text(), 'Collector shutdown was requested'
+                    (install / 'old-exit').touch()
+                    wrapper.wait(timeout=5)
                 assert report['ok'] == expected, (name, report)
+                if expected or recovery:
+                    assert not prompt.exists(), 'Verified completion left the collector prompt behind'
                 expected_version = '0.2.0' if recovery or not expected else '0.2.1'
                 health = wait_health(port, expected_version)
                 assert sha(exe.read_bytes()) == sha(old_bytes if recovery or not expected else new_bytes)
@@ -352,8 +383,8 @@ def main(harness, cross_drive_root=None, startup_only=False):
                     assert invoke('--cleanup')['ok']
                     assert not (update / 'backup').exists()
                 if expected or recovery or name in ('bad-data-rollback', 'bad-runtime-rollback', 'bad-exe-rollback'):
-                    assert not (update / 'backup').exists(), name
-                    assert health['pyinstallerResetEnvironment'] == '1', (name, 'Restart reused the previous frozen environment')
+                    assert hot or not (update / 'backup').exists(), name
+                    assert hot or health['pyinstallerResetEnvironment'] == '1', (name, 'Restart reused the previous frozen environment')
                 if name == 'refused-stop':
                     assert health['update']['phase'] == 'error'
                     assert '/api/update/abort' in (install / 'events.txt').read_text()
@@ -372,7 +403,7 @@ def main(harness, cross_drive_root=None, startup_only=False):
                 if name == 'desktop-exited-rollback':
                     assert 'desktop exited' in report['error'], report
                 if expected or recovery:
-                    request(port, '/api/app/exit', {'onlyIfIdle': True})
+                    request(port, '/fixture/exit' if hot else '/api/app/exit', {'onlyIfIdle': True})
                     time.sleep(.3)
                     clean = subprocess.run([str(exe), '--cleanup', str(data)], env=env, capture_output=True,
                                            text=True, creationflags=FLAGS, check=True, timeout=10)
@@ -406,6 +437,8 @@ def main(harness, cross_drive_root=None, startup_only=False):
                     output.close()
 
         scenario('success')
+        scenario('hot-active-game')
+        scenario('hot-desktop-exited-rollback', {'desktopExit': True}, expected=False)
         scenario('static-ready-wait', {'staticDelay': 1.5})
         scenario('desktop-ready-wait', {'desktopDelay': 1.5})
         scenario('desktop-exited-rollback', {'desktopExit': True}, expected=False)

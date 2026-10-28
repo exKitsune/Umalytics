@@ -2,6 +2,8 @@ use std::{path::Path, process::{Command, Stdio}};
 #[path="../../../src-tauri/src/service_startup.rs"]mod service_startup;
 #[path="../../../src-tauri/src/updater.rs"]mod updater;
 #[path="../../../src-tauri/src/storage_paths.rs"]mod storage_paths;
+#[cfg(test)]
+#[path="../../../src-tauri/src/tray_policy.rs"]mod tray_policy;
 #[cfg(windows)]use std::os::windows::process::CommandExt;
 fn main(){
     let arguments:Vec<String>=std::env::args().skip(1).collect();
@@ -17,6 +19,8 @@ fn main(){
         let install=std::path::PathBuf::from(std::env::var("UMALYTICS_WORKFLOW_INSTALL").unwrap());
         let endpoint=service_startup::ServiceEndpoint{port:std::env::var("UMALYTICS_WORKFLOW_PORT").unwrap().parse().unwrap()};
         std::fs::write(install.join("old-desktop-ready.txt"),"running").unwrap();
+        let data=std::env::var("UMALYTICS_WORKFLOW_DATA").unwrap();
+        std::fs::write(Path::new(&data).join("runtime/desktop-ui.json"),serde_json::json!({"pid":std::process::id()}).to_string()).unwrap();
         loop{
             if endpoint.health().is_some_and(|h|h["update"]["phase"]=="restarting"){
                 std::thread::sleep(std::time::Duration::from_millis(1600));
@@ -49,12 +53,17 @@ fn main(){
     let own=std::env::current_exe().unwrap();let bytes=std::fs::read(own).unwrap();
     let marker=b"UMALYTICS-WORKFLOW-VERSION=";
     let index=bytes.windows(marker.len()).rposition(|part|part==marker).unwrap()+marker.len();
-    let version=std::str::from_utf8(&bytes[index..]).unwrap().trim();
+    let version=std::str::from_utf8(bytes[index..].split(|b|*b==b'\n').next().unwrap()).unwrap().trim();
     let payload:serde_json::Value=serde_json::from_str(version).unwrap();
     let endpoint=service_startup::ServiceEndpoint{port:std::env::var("UMALYTICS_WORKFLOW_PORT").unwrap().parse().unwrap()};
     // A native relaunch reuses the still-running owned collector after an
     // aborted restart, rather than creating a competing second collector.
-    if endpoint.health().is_some(){let _=std::fs::write(Path::new(&std::env::var("UMALYTICS_WORKFLOW_INSTALL").unwrap()).join("app-attached.txt"),"owned collector reused");while endpoint.health().is_some(){std::thread::sleep(std::time::Duration::from_millis(100));}return;}
+    if endpoint.health().is_some(){
+        let data=std::env::var("UMALYTICS_WORKFLOW_DATA").unwrap();
+        updater::wait_replacement_turn(Path::new(&data)).unwrap();
+        if payload["desktopExit"]==true{return;}
+        updater::desktop_ready(Path::new(&data)).unwrap();
+        let _=std::fs::write(Path::new(&std::env::var("UMALYTICS_WORKFLOW_INSTALL").unwrap()).join("app-attached.txt"),"owned collector reused");while endpoint.health().is_some(){std::thread::sleep(std::time::Duration::from_millis(100));}return;}
     let mut command=Command::new(std::env::var("UMALYTICS_WORKFLOW_PYTHON").unwrap());
     command.arg(std::env::var("UMALYTICS_WORKFLOW_SCRIPT").unwrap()).arg("--owned-service").arg(version)
         .arg(std::env::var("UMALYTICS_WORKFLOW_INSTALL").unwrap()).arg(std::env::var("UMALYTICS_WORKFLOW_PORT").unwrap())

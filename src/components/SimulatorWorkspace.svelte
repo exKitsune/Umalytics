@@ -1,6 +1,8 @@
 <script lang="ts">
   import {statColors} from '../sandbox/stat-colors';
   import {onMount} from 'svelte';
+  import {readWorkspaceSession,checkpointWorkspace} from '../sandbox/session';
+  const restoredSession=readWorkspaceSession().simulator;
   import {mergeJobProgress} from '../sandbox/progress';
   import {api} from '../api';
   import {loadSimulationDashboard} from '../sandbox/dashboard';
@@ -39,13 +41,13 @@
   export function cancelNavigation(){navigationVersion++;}
   export async function navigateTo(next:'setup'|'results',jobId?:string){
     const version=++navigationVersion;
-    if(jobId&&job?.id!==jobId){const loaded=await api<Job>(`simulator/job?id=${encodeURIComponent(jobId)}`);if(version!==navigationVersion)return;job=loaded;setup=editable(structuredClone(loaded.setup));warnings=[];void loadImpacts();}
+    if(jobId&&job?.id!==jobId){const loaded=await api<Job>(`simulator/job?id=${encodeURIComponent(jobId)}`);if(version!==navigationVersion)return;job=loaded;if(!setup.participants.length&&!restoredSession)setup=editable(structuredClone(loaded.setup));void loadImpacts();}
     if(version===navigationVersion)view=next;
   }
   $: if(initialized&&mode==='simulator'&&lastNavigation!==`${view}:${job?.id??''}`){lastNavigation=`${view}:${job?.id??''}`;onNavigate(view,job?.id);}
-  let setup=blankSetup(),library:Library={umas:[],setups:[],conditions:[],templates:[]},warnings:string[]=[],seen:unknown;
-  let error='',notice='',busy=false,job:Job|null=null,history:Pick<Job,'id'|'phase'|'createdAt'|'total'|'completed'|'impactSourceId'|'autoImpact'>[]=[],view:'setup'|'results'='setup';
-  let editing:UmaBuild|null=null,editingSlot:number|null=null,opening:number|null=null,conditionName='',conditionId='',setupId='',libraryView='unfiled',importInput:HTMLInputElement;
+  let setup=restoredSession?.setup??blankSetup(),library:Library={umas:[],setups:[],conditions:[],templates:[]},warnings:string[]=restoredSession?.warnings??[],seen:unknown;
+  let error='',notice='',busy=false,job:Job|null=null,history:Pick<Job,'id'|'phase'|'createdAt'|'total'|'completed'|'impactSourceId'|'autoImpact'>[]=[],view:'setup'|'results'=restoredSession?.view??'setup';
+  let editing:UmaBuild|null=restoredSession?.editing??null,editingSlot:number|null=restoredSession?.editingSlot??null,opening:number|null=null,conditionName='',conditionId='',setupId='',libraryView=restoredSession?.libraryView??'unfiled',importInput:HTMLInputElement;
   let saveSetupAs=false,sharedMood=5;
   let screenshotImport=false,screenshotImportId='';
   let screenshotImporter:{clear:()=>void}|undefined;
@@ -68,6 +70,7 @@
   function editable(value:Setup):Setup{return {...value,participants:normalizePopularity(value.participants).map(p=>({...p,uma:withOwnUnique(p.uma,reference)}))};}
   function addUma(uma:UmaBuild){setup.participants=[...setup.participants,participant(withOwnUnique(uma,reference),setup.participants.length)];}
   let stopped=false,polling=false,autoOpened='',initialized=false,lastBatchCount=100;
+  $: if(initialized)checkpointWorkspace({simulator:{setup,warnings,view,jobId:job?.id,editing,editingSlot,libraryView}});
   $: totalRuns=setup.count*(1+(setup.variations?.builds.length??0));
   $: multiRun=setup.count!==1||!!setup.variations;
   function runMode(multi:boolean){if(multi)setup.count=Math.max(2,lastBatchCount);else{lastBatchCount=Math.max(2,setup.count);setup.count=1;}}
@@ -82,6 +85,7 @@
   $: active=running(job)||running(impactJob);
   export async function refreshLibrary(){library=await api<Library>('simulator/library');}
   async function save(collection:keyof Library,record:unknown){library=await api<Library>('simulator/library',{collection,record},token);notice='Saved locally.';}
+  function checkpointEditor(value:UmaBuild){editing=value;}
   async function saveUma(uma:UmaBuild){const importedId=screenshotImportId,imported=!!importedId&&editing?.id===importedId;await save('umas',uma);if(imported&&screenshotImportId===importedId){screenshotImporter?.clear();screenshotImportId='';}}
   async function saveTemplate(name:string,skills:UmaBuild['skills']){await save('templates',{id:uid(),name,skills});}
   async function organize(body:unknown){library=await api<Library>('simulator/library',body,token);}
@@ -124,7 +128,7 @@
   function download(name:string,data:unknown){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name.replace(/[^\w .-]/g,'_')+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   async function importFile(file:File|undefined){if(!file)return;try{if(file.size>8*1024*1024)throw new Error('Simulator imports must be under 8 MB.');const value=JSON.parse(await file.text());if(value.kind==='umalytics-uma'){await organize({collection:'umas',action:'import',records:[value.uma]});}else if(value.kind==='umalytics-uma-library'&&value.schemaVersion===1){await organize({collection:'umas',action:'import',records:value.umas,folders:value.folders??[]});}else if(value.kind==='umalytics-setup'){const imported={...value.setup,id:uid()};await save('setups',imported);setup=editable(imported);view='setup';onMode('simulator');}else throw new Error('Choose an exported Uma or simulator setup. Import captured race JSON through the race library.');}catch(e){error=String(e);}finally{if(importInput)importInput.value='';}}
   async function saveSetup(name:string,id:string){const value={...setup,name,id};await save('setups',value);setup=value;setupId=id;}
-  onMount(()=>{void (async()=>{try{await refreshLibrary();history=await api<typeof history>('simulator/jobs');const running=history.find(j=>!j.autoImpact&&['running','queued'].includes(j.phase));if(running){if(running.impactSourceId){impactJob=await api<Job>(`simulator/job?id=${running.id}`);job=await api<Job>(`simulator/job?id=${running.impactSourceId}`);await loadImpacts();}else job=await api<Job>(`simulator/job?id=${running.id}`);}initialized=true;}catch(e){error=String(e);}})();const timer=setInterval(()=>{if(active||opening!==null||(automatic&&(!['complete','error','paused'].includes(automatic.phase)||automatic.activeJob)))void poll();},1000);return()=>{stopped=true;clearInterval(timer);clearTimeout(addedTimer);};});
+  onMount(()=>{void (async()=>{try{await refreshLibrary();history=await api<typeof history>('simulator/jobs');const running=history.find(j=>j.id===restoredSession?.jobId)??history.find(j=>!j.autoImpact&&['running','queued'].includes(j.phase));if(running&&!job){if(running.impactSourceId){impactJob=await api<Job>(`simulator/job?id=${running.id}`);job=await api<Job>(`simulator/job?id=${running.impactSourceId}`);await loadImpacts();}else job=await api<Job>(`simulator/job?id=${running.id}`);}initialized=true;}catch(e){error=String(e);}})();const timer=setInterval(()=>{if(active||opening!==null||(automatic&&(!['complete','error','paused'].includes(automatic.phase)||automatic.activeJob)))void poll();},1000);return()=>{stopped=true;clearInterval(timer);clearTimeout(addedTimer);};});
 </script>
 <div class="sim-workspace" hidden={mode==='races'}>
   <input class="file-input" bind:this={importInput} type="file" accept=".json" onchange={e=>importFile(e.currentTarget.files?.[0])}/>
@@ -162,7 +166,7 @@
 </div>
 {#if addedRacer&&mode==='umas'}<div class="added-toast" role="status" aria-atomic="true"><span class="added-check" aria-hidden="true">✓</span><span>Uma added to race as <strong>{racerOrdinal(addedRacer)} racer</strong></span><button aria-label="Dismiss Uma added message" onclick={dismissAdded}>×</button></div>{/if}
 <UmaScreenshotImport bind:this={screenshotImporter} {reference} visible={screenshotImport} onClose={()=>screenshotImport=false} onImport={uma=>{screenshotImport=false;edit(null,uma);screenshotImportId=uma.id;}}/>
-{#if editing}<UmaEditor value={editing} {reference} {library} onApply={apply} onSave={saveUma} onTemplate={saveTemplate} onClose={()=>editing=null} applyLabel={mode==='umas'?'Save & close':'Use build'}/>{/if}
+{#if editing}<UmaEditor value={editing} {reference} {library} onApply={apply} onDraft={checkpointEditor} onSave={saveUma} onTemplate={saveTemplate} onClose={()=>editing=null} applyLabel={mode==='umas'?'Save & close':'Use build'}/>{/if}
 {#if saveSetupAs}<SaveAsDialog kind="Setup" current={setup} records={library.setups} onSave={saveSetup} onClose={()=>saveSetupAs=false}/>{/if}
 <style>
   .participant-head{gap:12px}.participant-head>button:last-child{flex-shrink:0}

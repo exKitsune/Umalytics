@@ -230,6 +230,8 @@ jobs:
           path: .
       - name: Test Windows source service and updater
         run: |
+          .cache/proxy-venv/Scripts/python.exe tests/app-components-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'App/collector boundary tests failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/updater/test_release_flow.py
           if ($LASTEXITCODE -ne 0) { throw 'Updater integration tests failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/portable-storage-workflow.py
@@ -244,7 +246,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'API envelope regression tests failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/capture-inspection-workflow.py
           if ($LASTEXITCODE -ne 0) { throw 'HTTPS capture integration tests failed.' }
-      - name: Stamp and build single executable from shared frontend
+      - name: Restore independent collector artifact
+        uses: actions/cache@v4
+        with:
+          path: .cache/collector-artifacts
+          key: Windows-2022-collector-v1-${{ github.sha }}-${{ github.run_attempt }}
+          restore-keys: Windows-2022-collector-v1-
+      - name: Stamp and build app with independent collector
         id: desktop-build
         run: |
           .cache/proxy-venv/Scripts/python.exe scripts/release.py prepare --build-number ${{ github.run_number }} --commit ${{ github.sha }}
@@ -255,6 +263,8 @@ jobs:
       - name: Test native update and rollback
         run: |
           $env:CARGO_TARGET_DIR = "$PWD/.cache/updater-helper-target"
+          cargo test --locked --manifest-path tests/updater-helper/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Native tray policy tests failed.' }
           cargo build --locked --manifest-path tests/updater-helper/Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw 'Native update test harness build failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/appdata-migration-workflow.py --harness "$env:CARGO_TARGET_DIR/debug/umalytics-updater-helper-workflow.exe"
@@ -324,6 +334,14 @@ jobs:
           compression-level: 0
           retention-days: 1
           overwrite: true
+          if-no-files-found: error
+      - name: Share independent collector artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-${{ github.run_id }}
+          path: .cache/desktop-service/UmaTraceService.exe
+          compression-level: 0
+          retention-days: 14
           if-no-files-found: error
       - name: Save Python environment even after later test failure
         if: always() && steps.python-deps.outcome == 'success' && steps.python-cache.outputs.cache-hit != 'true'

@@ -23,6 +23,10 @@ import time
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+try:
+    from .app_components import read_components
+except ImportError:
+    from app_components import read_components
 
 REPOSITORY = 'https://github.com/exKitsune/Umalytics'
 LATEST = REPOSITORY + '/releases/latest/download/'
@@ -175,6 +179,10 @@ class UpdateController:
         self.error = None
         self.restart_token = None
         self.helper_started = None
+        self.app_only = False
+        self.await_game_restart = False
+        self.collector_sha256 = None
+        self.identity_stamp = None
         metadata = self.resource_root / 'desktop'
         # Source-mode test/dev servers can substitute their frontend asset root;
         # their application identity still comes from the source checkout.
@@ -203,14 +211,54 @@ class UpdateController:
 
     def status(self):
         with self.lock:
+            self.refresh_app_identity()
             available = self.manifest if self.manifest and self.manifest['buildNumber'] > self.build else None
             return {'phase': self.phase, 'currentVersion': self.version,
                     'availableVersion': available['version'] if available else None,
                     'checkedAt': utc(self.checked) if self.checked else None,
                     'nextCheckAt': utc(self.next_check), 'downloadBytes': self.progress,
                     'downloadTotal': available['bytes'] if available else 0,
-                    'error': self.error, 'gameActive': bool(self.game_active()),
+                    'error': self.error, 'gameActive': bool(self.game_active()), 'collectorChanged': not self.app_only,
+                    'reopenGameRequired': self.reopen_required(),
                     'canInstall': bool(available and not self.busy and self.desktop_exe and not self.closed.is_set())}
+
+    def refresh_app_identity(self):
+        if not self.desktop_exe:
+            return
+        try:
+            stat = self.desktop_exe.stat()
+            stamp = (stat.st_mtime_ns, stat.st_size)
+            if stamp == self.identity_stamp:
+                return
+            parts = read_components(self.desktop_exe)
+            if parts:
+                self.version, self.build = parts['appVersion'], parts['buildNumber']
+                if self.phase == 'restarting' and self.manifest and self.build == self.manifest['buildNumber']:
+                    self.phase = 'idle'
+            self.identity_stamp = stamp
+        except OSError:
+            pass
+
+    def can_keep_collector(self, stage):
+        old, new = read_components(self.desktop_exe), read_components(stage)
+        runtime = self.data_dir / 'runtime/UmalyticsCollector.exe'
+        if not old or not new or old['collectorSha256'] != new['collectorSha256'] or linked(runtime):
+            return False
+        if self.collector_sha256 is not None and self.collector_sha256 != new['collectorSha256']:
+            return False
+        try:
+            with runtime.open('rb') as stream:
+                return hashlib.file_digest(stream, 'sha256').hexdigest() == new['collectorSha256']
+        except OSError:
+            return False
+
+    def reopen_required(self):
+        marker = self.data_dir / 'cache/collector-reopen.json'
+        if not marker.is_file() or linked(marker):
+            return False
+        # Only the verified native update/rollback completion clears this.
+        # Merely observing a new game process does not prove collector readiness.
+        return True
 
     def _schedule(self):
         while not self.closed.is_set():
@@ -237,7 +285,7 @@ class UpdateController:
                     or self.phase != 'waiting-for-game'
                     or not self.helper_started or time.monotonic() - self.helper_started > 60):
                 raise ValueError('Update helper authorization is invalid or expired.')
-            if self.closed.is_set() or self.game_active():
+            if self.closed.is_set() or self.game_active() and not self.app_only:
                 raise ValueError('Close the game before restarting Umalytics.')
             self.phase = 'restarting'
             return self.status()
@@ -386,10 +434,12 @@ class UpdateController:
             partial.unlink(missing_ok=True)
         atomic_bytes(folder / 'release-manifest.json', self.raw)
         atomic_bytes(folder / 'release-manifest.sig', self.signature)
+        self.app_only = self.can_keep_collector(stage)
+        self.await_game_restart = not self.app_only and bool(self.game_active())
         with self.lock:
             self.phase = 'waiting-for-game'
         while not self.closed.is_set():
-            if not self.game_active():
+            if self.app_only or not self.game_active():
                 self._handoff(folder, stage, manifest)
                 return
             self.closed.wait(1)
@@ -397,22 +447,31 @@ class UpdateController:
     def _handoff(self, folder, stage, manifest):
         if self.closed.is_set():
             return
+        if self.await_game_restart:
+            atomic_bytes(self.data_dir / 'cache/collector-reopen.json', b'{"schemaVersion":1}')
         if not self.desktop_exe.is_file() or self.desktop_exe.is_symlink():
             raise ValueError('The current desktop executable is unavailable.')
         helper = folder / 'helper.exe'
         if linked(helper):
             raise ValueError('Update helper must not be a symbolic link.')
-        shutil.copyfile(self.desktop_exe, helper)
+        # Hash the exact helper bytes as they are copied, avoiding a second
+        # whole-executable read/allocation during the restart handoff.
+        old_digest = hashlib.sha256()
+        with self.desktop_exe.open('rb') as source, helper.open('wb') as target:
+            while block := source.read(1024 * 1024):
+                target.write(block)
+                old_digest.update(block)
+            target.flush()
         transaction = {'schemaVersion': 1, 'installationDir': str(self.desktop_exe.parent),
                        'executablePath': str(self.desktop_exe), 'dataDirectory': str(self.data_dir),
                        'stagedExecutable': str(stage), 'manifestPath': str(folder / 'release-manifest.json'),
                        'signaturePath': str(folder / 'release-manifest.sig'),
                        'previousVersion': self.version, 'version': manifest['version'],
-                       'expectedOldExeSha256': hashlib.sha256(self.desktop_exe.read_bytes()).hexdigest(),
+                       'expectedOldExeSha256': old_digest.hexdigest(),
                        'token': secrets.token_hex(32)}
         path = folder / 'transaction.json'
         atomic_bytes(path, json.dumps(transaction, separators=(',', ':')).encode())
-        if self.closed.is_set() or self.game_active():
+        if self.closed.is_set() or self.game_active() and not self.app_only:
             raise ValueError('The game started during update preparation. Retry after it closes.')
         with self.lock:
             self.restart_token = transaction['token']
@@ -426,6 +485,8 @@ class UpdateController:
         while not self.closed.is_set():
             with self.lock:
                 if self.phase == 'error':
+                    return
+                if self.app_only and self.phase == 'idle' and self.build == manifest['buildNumber']:
                     return
                 acknowledged = self.phase == 'restarting'
             if process.poll() is not None or (not acknowledged and time.monotonic() - self.helper_started > 60):

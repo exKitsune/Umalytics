@@ -13,6 +13,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from desktop.updater import REPOSITORY, verify_manifest
+from desktop.app_components import read_components
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -63,6 +64,9 @@ def sign(executable, output):
     if actual != expected:
         raise ValueError('The signing key does not match the public key embedded in this application.')
     info = json.loads((ROOT / 'desktop/build-info.json').read_text(encoding='utf-8'))
+    parts = read_components(executable)
+    if parts and (parts['appVersion'] != info['version'] or parts['buildNumber'] != info['buildNumber']):
+        raise ValueError('Executable component identity differs from the release version.')
     raw_executable = executable.read_bytes()
     manifest = {'schemaVersion': 1, 'version': info['version'], 'buildNumber': info['buildNumber'],
                 'commit': info['commit'], 'filename': 'Umalytics.exe', 'bytes': len(raw_executable),

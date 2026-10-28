@@ -7,8 +7,9 @@ do not install Node.js, Python, or Rust. The Windows WebView2 runtime is require
 current Windows installations normally provide it. The executable is currently
 unsigned, so Windows may show a reputation prompt on a new download.
 
-The frontend is bundled once, inside the embedded service. Tauri opens the
-service's loopback URL; it does not carry a second unused copy of the website.
+The frontend is gzip-compressed inside the native app and published as an
+immutable bundle served through the collector's loopback URL. The collector
+owns capture, APIs, analysis engines and reference data independently of the UI.
 
 Keep the executable in a writable folder so it can update itself. App files live
 in `%LOCALAPPDATA%\Umalytics`, regardless of the executable's location. Settings
@@ -56,7 +57,9 @@ authenticated dashboard snapshots. No visible or hidden webview is needed.
 Closing the window does not stop the queue; exiting Umalytics does. Both normal launch and
 `--background` keep a native Umalytics process and tray icon alive. Double-click
 the icon to open the window; **Exit Umalytics and stop collection** stops the
-collector too. Steam's launch wrapper starts the tray if needed, then stops that
+collector too. While the game is running, Exit is disabled and labeled
+**(Close game first)**; shutdown also rechecks that the game is idle to protect
+against a game starting just after the menu was shown. Steam's launch wrapper starts the tray if needed, then stops that
 Steam-started session when the game exits. A tray that was already running stays
 open. The **Start at login** toggle changes only this user's Run entry. There is
 no administrator Windows service or scheduled task.
@@ -272,3 +275,32 @@ then add `-Apply`. It moves root `tmp-*` folders and top-level artifact images,
 JSON reports and clips into `.cache/archives/diagnostics-*/` with a restore manifest.
 It never deletes files or moves EXEs, launcher folders, captured races, or
 `Umalytics-data`. Geometry plots now write to `.cache/reports/`.
+
+### Independent app and collector builds
+
+The native app owns the frontend bundle; the collector owns capture, APIs,
+analysis engines and reference data. CI publishes separate app and collector
+artifacts. The portable download still contains both for offline first launch,
+and users keep one Update action. Collector packages are reused byte for byte
+only when packaged source, engines, data and dependency identities all match.
+
+The app's component trailer is covered by the existing signed executable hash,
+keeping the release manifest compatible with older installations. Both the
+controller and native helper independently compare the installed, running and
+new collector hashes. An exact match permits an app-only update while the game
+wrapper and collector remain alive. Only the desktop process is awaited; its
+replacement must report readiness and pass the normal release health checks.
+Failure restores the app without replacing collector files or user data.
+
+Collector changes retain the game-close barrier. A persistent dialog explains
+the restart, and a marker survives app restarts until the native helper confirms
+the updated collector and desktop are healthy. Verification clears the dialog;
+opening the game again is not required. Offline updates do not demand a game restart. Existing releases
+without component identities take the conservative full-update path, so the
+first upgrade into this architecture still waits for the game to close.
+
+Validation: `tests/app-components-workflow.py`, the native helper workflow's
+active-game/rollback cases, the existing signed release flow, packaged service
+smoke test, and native startup smoke test. Review the QA dialog and verify that
+an unfinished simulator setup, result job, selected race/runner and replay time
+survive a reload before releasing.

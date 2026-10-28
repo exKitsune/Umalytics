@@ -195,7 +195,8 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
             raise RuntimeError('Packaged service did not become ready.')
         assert_owned(health, data)
         assert health['analysisService'] and health['analysisBackground']['available'], 'Bundled background analysis runtime missing.'
-        assert health['app'] == 'UmaTrace' and health['staticReady'] and not health['certificate']['trusted']
+        # The collector package owns APIs/data; the native app now supplies UI assets.
+        assert health['app'] == 'UmaTrace' and not health['certificate']['trusted']
         with opener.open(url + '/api/data/status', timeout=3) as response:
             assert len(json.load(response)['manifestSha256']) == 64
         with opener.open(url + '/data/simulator-skill-ids.json', timeout=3) as response:

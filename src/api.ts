@@ -1,7 +1,7 @@
 import type { RaceCategory } from './data/types';
 export interface CollectionSettings { schemaVersion: number; collectionEnabled: boolean; categories: Record<RaceCategory, boolean>; startAtLogin?: boolean; exportDirectory?: string | null; downloadsDirectory?: string }
 export interface CertificateStatus { exists: boolean; trusted: boolean; sha256?: string; sha1?: string; subject?: string; expiresAt?: string }
-export interface UpdateStatus { phase:string; availableVersion:string|null; canInstall?:boolean }
+export interface UpdateStatus { phase:string; availableVersion:string|null; canInstall?:boolean; collectorChanged?:boolean;gameActive?:boolean;reopenGameRequired?:boolean }
 export interface StorageOptimizationStatus {phase:'pending'|'waiting'|'running'|'complete'|'failed'|'stopped';stage:string;done:number;total:number;reclaimedBytes:number;skipped:number}
 export interface Health { storageOptimization?:StorageOptimizationStatus; analysisService?:boolean; analysisBackground?:{running:boolean;checked:number;total:number;failed:number}; ok: boolean; app?: string; mode: string; csrfToken?: string; proxy?: {state:string;port:number;error?:string;running?:boolean;listening?:boolean;gameConnected?:boolean;activeGameConnections?:number;lastGameTrafficAt?:string|null}; certificate?: CertificateStatus; launchOption?:string; dataDirectory?:string; update?:UpdateStatus }
 export const defaultSettings = (): CollectionSettings => ({schemaVersion:1,collectionEnabled:true,categories:{career:false,'team-trials':false,practice:true,'champions-meeting':true,'league-of-heroes':true,other:true}});

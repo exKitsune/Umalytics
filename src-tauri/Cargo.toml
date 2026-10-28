@@ -8,6 +8,7 @@ default-run = "umatrace"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+flate2 = "1"
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
@@ -16,6 +17,7 @@ serde_json = "1"
 sha2 = "0.10"
 ed25519-dalek = "2"
 base64 = "0.22"
+flate2 = "1"
 
 [profile.release]
 strip = true

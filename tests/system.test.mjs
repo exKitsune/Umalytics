@@ -42,6 +42,14 @@ const fetch = (url, options={}) => globalThis.fetch(url,{signal:AbortSignal.time
 const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2, availableParallelism()));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
+
+test('workspace sessions restore unfinished simulator edits and dashboard context',async()=>{
+  await run(process.execPath,['--import','tsx','tests/workspace-session-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
+});
+
+test('independent app components preserve capture and serve updated frontend assets',async()=>{
+  await run('python',['tests/app-components-workflow.py'],{cwd:root,windowsHide:true,timeout:15000});
+});
 test('screenshot imports merge one Uma and reject UI text and ambiguous skill tiers',async()=>{
   await run(process.execPath,['--import','tsx','tests/ocr-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
 });

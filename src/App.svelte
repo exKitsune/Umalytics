@@ -20,18 +20,21 @@
     await simulatorWorkspace?.refreshLibrary();message=`${name} saved to Dorm.`;
   }
   import {parseRoute,routeHash,type WorkspaceRoute} from './sandbox/navigation';
+  import {readWorkspaceSession,checkpointWorkspace,flushWorkspaceSession} from './sandbox/session';
   import {loadSimulationDashboard} from './sandbox/dashboard';
   import {catalogReference,installCatalog,catalogRevision,type CatalogSnapshot} from './data/catalog';
   import {tick} from 'svelte';
-  const initialRoute=parseRoute(location.hash);
+  const restoredWorkspace=readWorkspaceSession();
+  const initialRoute=location.hash.length>1?parseRoute(location.hash):restoredWorkspace.route??parseRoute('');
+  if(location.hash.length<=1&&restoredWorkspace.route)history.replaceState({umalytics:true},'',routeHash(initialRoute));
   let workspaceMode:WorkspaceRoute['kind']=initialRoute.kind;
   let simulatorInput:{setup:Setup;warnings:string[]}|null=null;
   let simulatorWorkspace:{navigateTo:(view:'setup'|'results',jobId?:string)=>Promise<void>;cancelNavigation:()=>void;refreshLibrary:()=>Promise<void>}|null=null;
-  let simulatorLocation:{view:'setup'|'results';jobId?:string}={view:'setup'},lastCapturedId='';
+  let simulatorLocation:{view:'setup'|'results';jobId?:string}={view:restoredWorkspace.simulator?.view??'setup',jobId:restoredWorkspace.simulator?.jobId},lastCapturedId=restoredWorkspace.lastCapturedId??'';
   let navigationRequest=0,restoringRoute=false,simulationLoading=false,catalogVersion=catalogRevision,catalogChecking=false,catalogLoaded=false;
   let engineSkillIds:Set<string>|undefined;
   $: simulatorReference=reference?catalogReference(reference,catalogVersion,engineSkillIds):null;
-  function writeRoute(route:WorkspaceRoute,replace=false){const hash=routeHash(route);if(location.hash===hash)return;window.history[replace?'replaceState':'pushState']({umalytics:true},'',hash);}
+  function writeRoute(route:WorkspaceRoute,replace=false){checkpointWorkspace({route});const hash=routeHash(route);if(location.hash===hash)return;window.history[replace?'replaceState':'pushState']({umalytics:true},'',hash);}
   function simulatorNavigated(view:'setup'|'results',jobId?:string){simulatorLocation={view,jobId};if(workspaceMode==='simulator'&&!restoringRoute)writeRoute({kind:'simulator',...simulatorLocation});}
   async function refreshCatalog(){
     if(catalogChecking)return;catalogChecking=true;
@@ -39,6 +42,7 @@
     catch{/* Use bundled/last-good catalog offline. */}finally{catalogChecking=false;}
   }
   async function navigate(route:WorkspaceRoute,record=true){
+    checkpointWorkspace({route});
     const request=++navigationRequest;simulatorWorkspace?.cancelNavigation();playing=false;skillDetail=null;restoringRoute=true;simulationLoading=false;error='';
     if(record)writeRoute(route);
     try{
@@ -59,7 +63,7 @@
   }
   function switchWorkspace(mode:'races'|'simulator'|'umas'){void navigate(mode==='simulator'?{kind:mode,...simulatorLocation}:mode==='races'?{kind:mode,...(lastCapturedId?{id:lastCapturedId}:{})}:{kind:mode});}
   async function loadSimulator(){if(!reference||!race)return;const draft=fromRace(recordedRace??race,reference),id=library.find(entry=>entry.id===activeId)?.remoteId??activeId;try{simulatorInput=race.sandbox?draft:await api<typeof draft>('simulator/from-race',{raceId:id,draft:draft.setup,warnings:draft.warnings},health?.csrfToken);simulatorLocation={view:'setup'};switchWorkspace('simulator');}catch(e){error=String(e);}}
-  function openSimulated(value:PreparedRace,refs:ReferenceData,record=true){++selectionRequest;activeId=value.race.id;race=value.race;recordedRace=null;reference=refs;analysis=value.analysis;historical=null;analysisGate=null;runnerSelectionTouched=false;selectDefaultRunner(race);time=0;playing=false;skillDetail=null;analysisState={...analysisState,busy:false};workspaceMode='simulation';if(record&&race.sandbox)writeRoute({kind:'simulation',jobId:race.sandbox.jobId,index:race.sandbox.runIndex});}
+  function openSimulated(value:PreparedRace,refs:ReferenceData,record=true){++selectionRequest;activeId=value.race.id;race=value.race;recordedRace=null;reference=refs;analysis=value.analysis;historical=null;analysisGate=null;runnerSelectionTouched=false;time=0;selectDefaultRunner(race);playing=false;skillDetail=null;analysisState={...analysisState,busy:false};workspaceMode='simulation';if(record&&race.sandbox)writeRoute({kind:'simulation',jobId:race.sandbox.jobId,index:race.sandbox.runIndex});}
   import { onMount } from 'svelte';
   import {collectorStatus} from './collector-status';
   import {formatRaceTime} from './data/race-time';
@@ -73,6 +77,7 @@
   import { browserPreferences, migrateBrowserStorage, saveDesktopRace, raceForExport, THEME_KEY } from './desktop-storage';
   import AnalysisDetails from './components/AnalysisDetails.svelte';
   import AppUpdates from './components/AppUpdates.svelte';
+  import CollectorUpdatePrompt from './components/CollectorUpdatePrompt.svelte';
   import { rankSamples, runnerGap } from './view-model';
   import RaceTrack from './components/RaceTrack.svelte';
   import RaceConditions from './components/RaceConditions.svelte';
@@ -129,11 +134,15 @@
   let runnerSelectionTouched=false;
   function selectRunner(id:string){selected=id;runnerSelectionTouched=true;}
   function selectDefaultRunner(value:Race){
+    const saved=restoredWorkspace.race;
+    if(!restoredRunner&&saved?.id===activeId&&value.runners.some(r=>r.id===saved.selected)){selected=saved.selected;runnerSelectionTouched=true;time=Math.min(saved.time,value.duration);playbackSpeed=saved.speed;restoredRunner=true;}
     if(!runnerSelectionTouched||!value.runners.some(r=>r.id===selected))selected=(value.runners.find(r=>r.finishOrder===1)??value.runners[0])?.id??'';
   }
   let time = 0;
   let playing = false;
   let playbackSpeed = 1;
+  let restoredRunner=false;
+  $: if(race&&selected)checkpointWorkspace({race:{id:activeId,selected,time,speed:playbackSpeed}});
   let sidebarCollapsed=localStorage.getItem('umalytics.library-collapsed')==='true';
   function toggleLibrary(){sidebarCollapsed=!sidebarCollapsed;localStorage.setItem('umalytics.library-collapsed',String(sidebarCollapsed));}
   let search = '';
@@ -242,7 +251,7 @@
   async function selectEntry(entry:LibraryEntry,force=false,record=true) {
     workspaceMode='races';
     if(removingId===entry.id||(!force&&entry.id===activeId))return;
-    lastCapturedId=entry.id;if(record&&!restoringRoute)writeRoute({kind:'races',id:entry.id},!location.hash);
+    lastCapturedId=entry.id;checkpointWorkspace({lastCapturedId});if(record&&!restoringRoute)writeRoute({kind:'races',id:entry.id},!location.hash);
     const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
     try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
   }
@@ -305,6 +314,7 @@
   }
   async function uninstallCertificate() {if(!certificate?.sha256||!health?.csrfToken)return;busy=true;try{await api('certificate/uninstall',{sha256:certificate.sha256},health.csrfToken);pendingCertRemoval=false;await refreshCertificate();tell('Capture certificate removed.');}catch(e){error=String(e)}finally{busy=false}}
   async function installAvailableUpdate() {
+    flushWorkspaceSession();
     const current=health;if(!current?.csrfToken)return;openSettings();busy=true;
     try{health={...current,update:await api('update/install',{},current.csrfToken)};tell('Installing update…');}catch(e){error=String(e)}finally{busy=false}
   }
@@ -351,6 +361,9 @@
   function keydown(e:KeyboardEvent){if(workspaceMode!=='races'&&workspaceMode!=='simulation')return;if(downloadPromptOpen){if(e.key==='Escape')downloadPromptOpen=false;return;}if(e.defaultPrevented||settingsOpen||skillDetail!==null||(e.target instanceof HTMLElement&&['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)))return;if(e.code==='Space'){e.preventDefault();togglePlay();}else if(e.code==='ArrowRight'){seek(time+1)}else if(e.code==='ArrowLeft'){seek(time-1)}}
   function dismissPopups(event:PointerEvent){analysisClient.interacting();const node=event.target as HTMLElement|null;if(!node)return;if(pendingRemoval&&!node.closest('.race-delete'))pendingRemoval='';}
   onMount(()=>{
+    const saveSession=()=>flushWorkspaceSession();
+    window.addEventListener('pagehide',saveSession);
+    document.addEventListener('visibilitychange',saveSession);
     let cancelled=false;
     const stopEvents=desktopSession?watchServiceEvents(event=>{
       if(event.analysis)analysisClient.notifyService();
@@ -360,7 +373,7 @@
     if(!desktopSession)savedRaces().then(entries=>{if(cancelled||desktopSession)return;entries=entries.map(entry=>{if(!entry.race||entry.race.distance)return entry;try{return {...entry,race:parseRaceJson(entry.race)[0]}}catch{return entry}});merge(entries);if(!race&&entries.length)selectEntry(entries.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt))[0]);}).catch(e=>error=`Local library unavailable: ${e}`);
     poll();const catalogTimer=setInterval(refreshCatalog,60000);const healthTimer=setInterval(pollHealth,1000);const timer=setInterval(poll,5000);let previous=performance.now(),animation=0;
     const step=(now:number)=>{if(playing&&race){time=Math.min(race.duration,time+Math.min(.15,(now-previous)/1000)*playbackSpeed);if(time>=race.duration)playing=false;}previous=now;animation=requestAnimationFrame(step)};animation=requestAnimationFrame(step);
-    return()=>{cancelled=true;disposed=true;stopEvents();analysisClient.dispose();clearInterval(timer);clearInterval(healthTimer);clearInterval(catalogTimer);cancelAnimationFrame(animation);hydrateCaptions.dispose()};
+    return()=>{saveSession();window.removeEventListener('pagehide',saveSession);document.removeEventListener('visibilitychange',saveSession);cancelled=true;disposed=true;stopEvents();analysisClient.dispose();clearInterval(timer);clearInterval(healthTimer);clearInterval(catalogTimer);cancelAnimationFrame(animation);hydrateCaptions.dispose()};
   });
 </script>
 {#if runnerMenu}<RunnerSaveMenu {...runnerMenu} onSave={()=>{if(runnerMenu)saveDashboardRunner(runnerMenu.id);}} onClose={()=>runnerMenu=null}/>{/if}
@@ -436,6 +449,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
     <footer><span>Umalytics <span class="muted">/ Steam Global</span></span><span>Race data stays on this computer · <a href="data/NOTICE.txt" target="_blank">Data sources</a></span></footer>
   </main>
 </div>
+<CollectorUpdatePrompt status={health?.update}/>
 {#if settingsOpen}<div class="modal-backdrop" role="presentation" onkeydown={e=>{if(e.key==='Escape')closeSettings();}} onclick={(event)=>{if(event.target===event.currentTarget)closeSettings();}}><div class="settings-modal" use:modalFocus role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1"><div class="modal-title"><div class="eyebrow">UMALYTICS</div><h2>Settings</h2><button class="icon-button" aria-label="Close settings" onclick={closeSettings}>×</button></div><div class="settings-body">
       {#if error||(message&&settingsOpen)}<div class="notice" class:error={!!error} role="status">{error||message}</div>{/if}
       {#snippet certSection()}
@@ -486,7 +500,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
         <div class="font-scale-setting"><label for="font-scale">Text size <output for="font-scale">{fontScale}%</output></label><div class="font-scale-control"><input id="font-scale" type="range" min={MIN_FONT_SCALE} max={MAX_FONT_SCALE} step="5" aria-label="Text size" aria-valuetext={`${fontScale}%`} bind:value={fontScale} onchange={()=>saveFontScale()}/><button onclick={()=>saveFontScale(100)}>Reset</button></div><small>Telemetry graph text stays the same size.</small></div>
       </section>
       {#if desktopSession}
-        <AppUpdates csrfToken={health?.csrfToken}/>
+        <AppUpdates csrfToken={health?.csrfToken} beforeInstall={flushWorkspaceSession}/>
       {:else}
         <section><h3>Reference data</h3><p>Game names, course paths and skill data are included with this viewer.</p><a href="data/NOTICE.txt" target="_blank" rel="noreferrer">Sources and licenses ↗</a></section>
       {/if}

@@ -23,10 +23,12 @@
   export let onTemplate:(name:string,skills:UmaBuild['skills'])=>Promise<void>;
   export let onClose:()=>void;
   export let applyLabel='Use build';
+  export let onDraft:(draft:UmaBuild)=>void=()=>{};
   let draft=withOwnUnique(structuredClone(value),reference),query='',loadOpen=false,tagText=(value.tags??[]).join(', '),template='',templateName='',failure='',showUnreleased=false;
   draft.aptitudes=buildAptitudes(draft);
   if(draft.name==='New Uma')draft.name=reference.metadata.characters[draft.charaId]||'Uma';
   let filters=emptySkillFilters(),saveAs=false,closeAfterSave=false,savingBuild=false;
+  $: onDraft({...draft,tags:parseTags(tagText)});
   const skillName=(ref:ReferenceData,id:number)=>editorSkillName(ref,id);
   $: ownUnique=outfitUniques(reference,draft.cardId).find(id=>draft.skills.some(s=>s.id===id));
   function snapshot(){const normalized=withOwnUnique(structuredClone(draft),reference);return {...normalized,aptitudes:buildAptitudes(normalized),tags:parseTags(tagText),skills:normalized.skills.map(s=>({...s,level:hasLevel(s.id)?s.level:1}))};}

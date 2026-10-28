@@ -3,7 +3,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 root = Path(SPECPATH).parent
-datas = [(str(root / 'dist'), 'dist')]
+datas = [(str(root / 'public' / 'data'), 'dist/data')]
 datas += [(str(root / 'simulation' / 'engine-registry.json'), 'simulation')]
 if (root / 'simulation' / 'installed-bundles.json').is_file():
     datas += [(str(root / 'simulation' / 'installed-bundles.json'), 'simulation'),
@@ -13,7 +13,9 @@ if (root / 'simulation' / 'installed-bundles.json').is_file():
 datas += [(str(root / 'desktop' / 'globalsim_bridge'), 'globalsim_bridge')]
 datas += [(str(root / '.cache' / 'desktop-licenses' / 'THIRD-PARTY-NOTICES.txt'), '.')]
 datas += [(str(root / 'desktop' / name), 'desktop')
-          for name in ('build-info.json', 'update-public-key.txt')]
+          for name in ('update-public-key.txt',)]
+# App releases have their own identity, outside this stable collector artifact.
+datas += [(str(root / '.cache/collector-build/build-info.json'), 'desktop')]
 datas += [(str(root / 'scripts' / 'proxy' / name), 'scripts/proxy')
           for name in ('observer.py', 'race_extract.py', 'uma_envelope.py', 'development_capture.py')]
 datas += [(str(root / 'simulation/analysis'), 'simulation/analysis')]
