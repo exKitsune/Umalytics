@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {equipSkill,withOwnUnique,ownInherited,outfitUniques,editorSkillName} from '../src/sandbox/editor';
+import type {ReferenceData} from '../src/data/reference';
 import {blankUma,participant} from '../src/sandbox/model';
 import {defaultAptitudes,buildAptitudes,syncParticipantAptitudes,setRaceAptitude,replaceParticipantBuild,runnerAptitudes} from '../src/sandbox/aptitudes';
 import {impactTarget,impactContext} from '../src/sandbox/insights';
@@ -25,3 +28,22 @@ assert.equal(impactTarget(saved,{...saved,stats:{...saved.stats,speed:1300},apti
 const job={setup:{...blankSetup(),participants:[participant(saved,0)]}} as Job,changed=structuredClone(job);changed.setup.participants[0].uma.aptitudes!.long='A';
 assert.notEqual(impactContext(job),impactContext(changed),'Aptitude edits invalidate pooled impact contexts');
 console.log('Saved aptitudes: outfit defaults, full grade persistence, legacy setup migration, race-only overrides, course/style changes and reset passed.');
+const reference={metadata:JSON.parse(readFileSync('public/data/metadata.json','utf8'))} as ReferenceData;
+let equipped=withOwnUnique({...saved,skills:[]},reference);
+const unique=equipped.skills[0];assert.ok(unique);unique.level=4;
+for(const id of [200012,200011,200013,200014,200012]){
+  equipped=equipSkill(equipped,id,reference);
+  assert.deepEqual(equipped.skills.filter(s=>reference.metadata.skills[s.id]?.groupId===20001).map(s=>s.id),[id],'Circle tiers and gold upgrades replace each other in either direction');
+}
+equipped=equipSkill(equipSkill(equipped,200332,reference),200331,reference);
+assert.ok(!equipped.skills.some(s=>s.id===200332));
+equipped=equipSkill(equipped,200332,reference);assert.ok(!equipped.skills.some(s=>s.id===200331));
+for(const id of ownInherited(saved.cardId))equipped=equipSkill(equipped,id,reference);
+assert.ok(!equipped.skills.some(s=>ownInherited(saved.cardId).includes(s.id)),'Cannot equip inherited version of own unique');
+assert.deepEqual(equipped.skills[0],unique,'Own unique stays first and preserves its level');
+const another=outfitUniques(reference,100101)[0];if(another){equipped=equipSkill(equipped,another,reference);assert.ok(!equipped.skills.some(s=>s.id===another));}
+const names=equipped.skills.slice(1).map(s=>editorSkillName(reference,s.id));assert.deepEqual(names,[...names].sort((a,b)=>a.localeCompare(b)));
+const dirty={...equipped,skills:[...equipped.skills,{id:200331,level:1},{id:200332,level:1},{id:200332,level:1}]};
+const clean=withOwnUnique(dirty,reference);assert.equal(clean.skills.filter(s=>reference.metadata.skills[s.id]?.groupId===20033).length,1);
+assert.deepEqual(withOwnUnique(clean,reference),clean,'Normalization is idempotent and covers loaded builds/templates');
+console.log('Equipped skills: catalog tiers replace both ways, own unique lock, deduplication and default alphabetical order passed.');

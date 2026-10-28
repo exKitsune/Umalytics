@@ -2,6 +2,7 @@ import type {ReferenceData,SkillReference} from '../data/reference';
 import {skillName} from '../data/reference';
 import {catalog as fallback,catalogRevision} from '../data/catalog';
 import type {UmaBuild,Participant} from './model';
+import type {RunnerSkill} from '../data/types';
 
 const owners:Record<string,number[]> = fallback.skillOwners;
 const byCard=new Map<number,number[]>();
@@ -18,7 +19,15 @@ export function outfitUniques(ref:ReferenceData,cardId:number):number[]{indexOwn
 export function withOwnUnique(uma:UmaBuild,ref:ReferenceData):UmaBuild {
   const candidates=outfitUniques(ref,uma.cardId),old=uma.skills.find(s=>candidates.includes(s.id)),id=old?.id??candidates[0];
   const skills=uma.skills.filter(s=>!nativeUnique(ref.metadata.skills[s.id])&&!(String(s.id).startsWith('9')&&owners[s.id]?.includes(uma.cardId)));
-  return {...uma,skills:[...(id?[{id,level:old?.level??1}]:[]),...skills.map(s=>({...s,level:1}))]};
+  const equipped:RunnerSkill[]=[];
+  for(const skill of skills){const group=ref.metadata.skills[skill.id]?.groupId;for(let i=equipped.length-1;i>=0;i--)if(equipped[i].id===skill.id||(group&&ref.metadata.skills[equipped[i].id]?.groupId===group))equipped.splice(i,1);equipped.push({...skill,level:1});}
+  equipped.sort((a,b)=>editorSkillName(ref,a.id).localeCompare(editorSkillName(ref,b.id))||a.id-b.id);
+  return {...uma,skills:[...(id?[{id,level:old?.level??1}]:[]),...equipped]};
+}
+/** A newly chosen tier replaces the equipped tier from the same catalog group. */
+export function equipSkill(uma:UmaBuild,id:number,ref:ReferenceData):UmaBuild {
+  if(nativeUnique(ref.metadata.skills[id])||ownInherited(uma.cardId).includes(id))return withOwnUnique(uma,ref);
+  return withOwnUnique({...uma,skills:[...uma.skills.filter(s=>s.id!==id),{id,level:1}]},ref);
 }
 export function swapPopularity(participants:Participant[],index:number,popularity:number):Participant[]{
   if(!Number.isInteger(popularity)||popularity<1||popularity>participants.length)return participants;

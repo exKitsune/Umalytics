@@ -80,7 +80,7 @@
   $: courses=Object.values(reference.courses).sort((a,b)=>a.trackName.localeCompare(b.trackName)||a.distance-b.distance);
   $: if(!setup.courseId&&courses.length)setup.courseId=courses[0].id;
   $: active=running(job)||running(impactJob);
-  async function refreshLibrary(){library=await api<Library>('simulator/library');}
+  export async function refreshLibrary(){library=await api<Library>('simulator/library');}
   async function save(collection:keyof Library,record:unknown){library=await api<Library>('simulator/library',{collection,record},token);notice='Saved locally.';}
   async function saveUma(uma:UmaBuild){const importedId=screenshotImportId,imported=!!importedId&&editing?.id===importedId;await save('umas',uma);if(imported&&screenshotImportId===importedId){screenshotImporter?.clear();screenshotImportId='';}}
   async function saveTemplate(name:string,skills:UmaBuild['skills']){await save('templates',{id:uid(),name,skills});}

@@ -27,6 +27,8 @@
   export let race:Race, reference:ReferenceData|null, analysis:RaceAnalysis, selected:string;
   export let onSelect:(id:string)=>void;
   export let compact=false;
+  export let onSave:((id:string)=>void)|undefined=undefined;
+  export let onRunnerMenu:((event:MouseEvent,id:string)=>void)|undefined=undefined;
   let comparingStats=false;
   $: comparisonCourse=reference?.courses[race.courseId??0];
   $: comparisonProfiles=comparisonCourse?race.runners.map(r=>({...rawProfile(r,comparisonCourse),name:`#${r.index+1} ${runnerName(reference,r)}`})):[];
@@ -173,7 +175,7 @@
   {#if !row.empty}{#if !modes[id]}<span class="note">Calculating gains…</span>{:else if mode(id,kind)}<ModeImpactSummary value={mode(id,kind)}/>{:else}<span class="note">Gain unavailable</span>{/if}{/if}
 {/snippet}
 <section class="panel field-stats" class:compact>
-  <div class="panel-heading"><strong>Race results</strong>{#if comparisonCourse}<button class="compare-stats" onclick={()=>comparingStats=true}>Compare raw stats</button>{/if}<span class="muted">{analysis.source!=null?'Select a runner':'Select a runner · dotted values use models'}</span></div>
+  <div class="panel-heading"><strong>Race results</strong>{#if comparisonCourse}<button class="compare-stats" onclick={()=>comparingStats=true}>Compare raw stats</button>{/if}{#if onSave}<button onclick={()=>onSave?.(selected)}>Save selected Uma</button>{/if}<span class="muted">{analysis.source!=null?'Select a runner':'Select a runner · dotted values use models'}</span></div>
   <div class="field-scroll" use:pinFinish><table use:hoverCol data-col="">
     <thead><tr>{#each ['Finish','Uma','Time','Start delay','Last spurt','HP','Dueling','Uphill','Downhill','Corner loss','PU / SU','PD / OT','Spot struggle','Conserve / Release','Rushed','Debuffs received','Blocked / Near'] as heading}<th title={heading==='Downhill'?downhillHelp:heading==='Uphill'?uphillHelp:heading==='PU / SU'?'Pace up / Speed up (front runners).':heading==='PD / OT'?'Pace down / Overtake (front runners).':heading==='Spot struggle'?'Spot struggle':heading==='Start delay'?'Time before leaving the gate.':undefined}>{heading}</th>{/each}</tr></thead>
     <tbody>{#each sorted as r}
@@ -194,7 +196,7 @@
       {@const motion=motions[r.id]}{@const hole=blockHole(motion)}
       {@const hp=hpView(s,stolenTotal(r.id))}
       {@const empty=emptyHpView(r.id)}
-      <tr class:row-selected={selected===r.id} onclick={()=>onSelect(r.id)}>
+      <tr class:row-selected={selected===r.id} onclick={()=>onSelect(r.id)} oncontextmenu={e=>onRunnerMenu?.(e,r.id)}>
         <td class="finish"><span class="finish-mark"><span class="finish-place">{r.finishOrder??'—'}</span>{#if r.finishOrder===1||r.finishOrder===2||r.finishOrder===3}<PodiumTrophy place={r.finishOrder} size={15}/>{/if}</span></td>
         <td><button class="result-runner" onclick={()=>onSelect(r.id)}><UmaPortrait runner={r} size={38}/><span><strong><span class="result-gate" title="Starting gate">{r.gate??r.index+1}</span>{runnerName(reference,r)}</strong><small class="result-badges"><StrategyBadge runner={{...r,strategyCode:style}}/>{#if r.mood!=null}<GameIcon name={`mood-${r.mood}`} label={`${mood(r.mood)} mood`} size={19}/>{/if}</small></span></button></td>
         <td><div class="fact"><strong title="Race completion time.">{f(s?.rawTime,3)}</strong><span class="unit">s</span></div><span class="note" title="Distance behind the winner at the instant the winner finishes.">{s?.finishGapDistance==null?'':`${s.finishGapDistance>=0?'+':''}${f(s.finishGapDistance)} m`}</span></td>

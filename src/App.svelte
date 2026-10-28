@@ -1,7 +1,24 @@
 <script lang="ts">
   import {newestLibraryFirst,raceIdentityColor} from './library';
   import SimulatorWorkspace from './components/SimulatorWorkspace.svelte';
-  import {fromRace,type Setup} from './sandbox/model';
+  import {fromRace,type Setup,type UmaBuild,type Library as UmaLibraryData} from './sandbox/model';
+  import {withOwnUnique} from './sandbox/editor';
+  import SaveAsDialog from './components/SaveAsDialog.svelte';
+  import RunnerSaveMenu from './components/RunnerSaveMenu.svelte';
+  let savingRunner:UmaBuild|null=null;
+  let runnerMenu:{x:number;y:number;id:string}|null=null;
+  function openRunnerMenu(event:MouseEvent,id:string){event.preventDefault();runnerMenu={x:event.clientX,y:event.clientY,id};}
+  function saveDashboardRunner(id:string){
+    runnerMenu=null;
+    const source=recordedRace??race,refs=simulatorReference??reference,r=source?.runners.find(r=>r.id===id);
+    if(!source||!refs||!r)return;
+    savingRunner=withOwnUnique(fromRace({...source,runners:[r]},refs).setup.participants[0].uma,refs);
+  }
+  async function saveDashboardBuild(name:string,id:string){
+    if(!savingRunner)return;
+    await api<UmaLibraryData>('simulator/library',{collection:'umas',record:{...savingRunner,name,id}},health?.csrfToken);
+    await simulatorWorkspace?.refreshLibrary();message=`${name} saved to Dorm.`;
+  }
   import {parseRoute,routeHash,type WorkspaceRoute} from './sandbox/navigation';
   import {loadSimulationDashboard} from './sandbox/dashboard';
   import {catalogReference,installCatalog,catalogRevision,type CatalogSnapshot} from './data/catalog';
@@ -9,7 +26,7 @@
   const initialRoute=parseRoute(location.hash);
   let workspaceMode:WorkspaceRoute['kind']=initialRoute.kind;
   let simulatorInput:{setup:Setup;warnings:string[]}|null=null;
-  let simulatorWorkspace:{navigateTo:(view:'setup'|'results',jobId?:string)=>Promise<void>;cancelNavigation:()=>void}|null=null;
+  let simulatorWorkspace:{navigateTo:(view:'setup'|'results',jobId?:string)=>Promise<void>;cancelNavigation:()=>void;refreshLibrary:()=>Promise<void>}|null=null;
   let simulatorLocation:{view:'setup'|'results';jobId?:string}={view:'setup'},lastCapturedId='';
   let navigationRequest=0,restoringRoute=false,simulationLoading=false,catalogVersion=catalogRevision,catalogChecking=false,catalogLoaded=false;
   let engineSkillIds:Set<string>|undefined;
@@ -346,6 +363,8 @@
     return()=>{cancelled=true;disposed=true;stopEvents();analysisClient.dispose();clearInterval(timer);clearInterval(healthTimer);clearInterval(catalogTimer);cancelAnimationFrame(animation);hydrateCaptions.dispose()};
   });
 </script>
+{#if runnerMenu}<RunnerSaveMenu {...runnerMenu} onSave={()=>{if(runnerMenu)saveDashboardRunner(runnerMenu.id);}} onClose={()=>runnerMenu=null}/>{/if}
+{#if savingRunner}<SaveAsDialog kind="Uma" current={savingRunner} records={[]} allowDuplicateNames onSave={saveDashboardBuild} onClose={()=>savingRunner=null}/>{/if}
 <svelte:window onpopstate={()=>{void navigate(parseRoute(location.hash),false);}} onkeydown={keydown} onpointerdown={dismissPopups} onpointermove={e=>{if(e.buttons)analysisClient.interacting();}} onwheel={()=>analysisClient.interacting()} ondragenter={onDragEnter} ondragover={onDragOver} ondragleave={onDragLeave} ondrop={onDrop}/>
 <input class="file-input" bind:this={input} type="file" accept=".json,.jsonl,.msgpack,.mpk,.har" multiple onchange={e=>importFiles(e.currentTarget.files)}/>
 <svelte:head><title>Umalytics — {collectorLabel}</title></svelte:head>
@@ -395,8 +414,8 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
       <div class="workspace">
         {#if analysis?.source==='recorded'}<p class="muted">Recorded data · unavailable analysis fields are left blank.</p>{/if}
         {#if analysis}<div class="analysis-layout"><div class="analysis-main">
-        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.sandbox?'SIMULATED RACE':race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/><div class="race-datetimes">{#if analysisRace.racedAt??analysisRace.capturedAt}<span>Recorded at <time>{date(analysisRace.racedAt??analysisRace.capturedAt??'')}</time></span>{/if}{#if library.find(e=>e.id===activeId)?.receivedAt}<span>Saved at <time>{date(library.find(e=>e.id===activeId)?.receivedAt??'')}</time></span>{/if}</div></div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner}/></div>{#if !race.sandbox}<form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>{/if}
-        <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={selectRunner}/>
+        <div class="race-heading"><div class="race-heading-meta"><div class="eyebrow"><i style={`background:${facetInfo(captureFacet(race)).color}`}></i>{race.sandbox?'SIMULATED RACE':race.synthetic?'SAMPLE RACE':facetInfo(captureFacet(race)).label.toUpperCase()}<span>·</span>{race.runners.length} RUNNERS<span>·</span>{race.duration.toFixed(2)} S</div><h1>{courseCaption(analysisRace,reference)}</h1><RaceConditions conditions={race.conditions}/><div class="race-datetimes">{#if analysisRace.racedAt??analysisRace.capturedAt}<span>Recorded at <time>{date(analysisRace.racedAt??analysisRace.capturedAt??'')}</time></span>{/if}{#if library.find(e=>e.id===activeId)?.receivedAt}<span>Saved at <time>{date(library.find(e=>e.id===activeId)?.receivedAt??'')}</time></span>{/if}</div></div><RaceTeams race={analysisRace} {reference} {selected} onSelect={selectRunner} onRunnerMenu={openRunnerMenu}/></div>{#if !race.sandbox}<form class="race-tag-editor" onsubmit={e=>{e.preventDefault();void saveTags();}}><label for="race-tags">Tags</label><input id="race-tags" aria-label="Race tags" placeholder="Add tags, separated by commas" bind:value={tagDraft}/><button type="submit">Save tags</button><button type="button" class="export-race" onclick={exportRace}>Export race JSON</button></form>{/if}
+        <FieldStats race={analysisRace} {reference} {analysis} {selected} compact onSelect={selectRunner} onSave={saveDashboardRunner} onRunnerMenu={openRunnerMenu}/>
         <div class="primary-replay">
           <CurveReplay race={analysisRace} {course} {reference} {selected} {time} {analysis} {fontScale} onSelect={selectRunner} onSeek={seek}>
             <div slot="minimap" aria-label="Course minimap"><RaceTrack race={analysisRace} {samples} {course} {reference} {selected} compact onSelect={selectRunner}/></div>

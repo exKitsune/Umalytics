@@ -1,7 +1,7 @@
 <script lang="ts">
   import {tick} from 'svelte';
   import type {ReferenceData} from '../data/reference';
-  import {withOwnUnique,outfitUniques,ownInherited,editorSkillName} from '../sandbox/editor';
+  import {withOwnUnique,equipSkill,outfitUniques,ownInherited,editorSkillName} from '../sandbox/editor';
   import SkillFilters from './SkillFilters.svelte';
   import SaveAsDialog from './SaveAsDialog.svelte';
   import {totalSkillCost} from '../data/skill-cost';
@@ -40,9 +40,10 @@
   const hasLevel=(id:number)=>id===ownUnique;
   const stats=['speed','stamina','power','guts','wisdom'] as const;
 
-  async function add(id:number){if(draft.skills.some(s=>s.id===id))return;draft.skills=[...draft.skills,{id,level:1}];query='';await tick();search.focus();}
+  async function add(id:number){if(draft.skills.some(s=>s.id===id))return;draft=equipSkill(draft,id,reference);query='';await tick();search.focus();}
   async function save(close=false){if(savingBuild)return;if(close&&library.umas.some(u=>u.id===draft.id)){savingBuild=true;failure='';try{const value=snapshot();await onSave(value);onApply(value);}catch(e){failure=String(e);}finally{savingBuild=false;}return;}closeAfterSave=close;saveAs=true;}
   async function saveNamed(name:string,id:string){const value={...snapshot(),name,id};await onSave(value);draft=value;if(closeAfterSave)onApply(value);}
+  function useBuild(){if(!ownUnique||savingBuild)return;if(applyLabel==='Save & close')void save(true);else onApply(snapshot());}
   function load(saved:UmaBuild){draft=withOwnUnique({...structuredClone(saved),aptitudes:buildAptitudes(saved)},reference);tagText=(saved.tags??[]).join(', ');loadOpen=false;}
   async function saveTemplate(){try{await onTemplate(templateName,draft.skills);templateName='';}catch(e){failure=String(e);}}
   function focus(node:HTMLElement){
@@ -58,7 +59,7 @@
     return {destroy(){node.removeEventListener('keydown',trap);previous?.focus();}};
   }
 </script>
-<div class="modal-backdrop" role="presentation" onclick={e=>{if(e.target===e.currentTarget)onClose();}} onkeydown={e=>{if(e.key==='Escape')onClose();}}>
+<div class="modal-backdrop" role="presentation" onclick={e=>{if(e.target===e.currentTarget)useBuild();}} onkeydown={e=>{if(e.key==='Escape')onClose();}}>
   <div class="uma-editor" role="dialog" aria-modal="true" aria-label="Edit Uma" tabindex="-1" use:focus>
     <header><div><span class="eyebrow">UMA BUILD</span><h2>{draft.name}</h2></div><button class="icon-button" aria-label="Close Uma editor" onclick={onClose}>×</button></header>
     <div class="editor-scroll">
@@ -84,7 +85,7 @@
       <details><summary>Skill templates</summary><div class="editor-load"><select aria-label="Skill template" bind:value={template}><option value="">Choose a template…</option>{#each library.templates as t}<option value={t.id}>{t.name}</option>{/each}</select><button disabled={!template} onclick={()=>{const t=library.templates.find(t=>t.id===template);if(t)draft=withOwnUnique({...draft,skills:structuredClone(t.skills)},reference);}}>Replace skills</button></div><div class="editor-load"><input placeholder="Template name" aria-label="New skill template name" bind:value={templateName}/><button disabled={!templateName.trim()} onclick={saveTemplate}>Save template</button></div></details>
       </section></div>
     </div>
-    <footer><span class="muted">Race settings can override saved aptitudes.</span><div><button disabled={!ownUnique||savingBuild} onclick={()=>save()}>Save As</button><button class="primary" disabled={!ownUnique||savingBuild} onclick={()=>applyLabel==='Save & close'?save(true):onApply(snapshot())}>{applyLabel}</button></div></footer>
+    <footer><span class="muted">Race settings can override saved aptitudes.</span><div><button disabled={!ownUnique||savingBuild} onclick={()=>save()}>Save As</button><button class="primary" disabled={!ownUnique||savingBuild} onclick={useBuild}>{applyLabel}</button></div></footer>
   </div>
 </div>
 {#if saveAs}<SaveAsDialog kind="Uma" allowDuplicateNames current={draft} records={library.umas} onSave={saveNamed} onClose={()=>saveAs=false}/>{/if}
