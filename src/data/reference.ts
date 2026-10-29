@@ -25,6 +25,7 @@ export interface ReferenceMetadata {
   trackNames: Record<string, string>; skillNames: Record<string, string>;
   skills: Record<string, SkillReference>; source: ReferenceSource;
   raceInstances?: Record<string, number>;
+  racePrograms?: Record<string, number>;
   raceInstanceConditions?: Record<string, { grade?: number; time?: number }>;
   fallback?: Pick<ReferenceMetadata, 'characters' | 'outfits' | 'skillNames' | 'skills' | 'source'> & {
     skillTexts?: Record<string, {name?: string; description?: string}>;

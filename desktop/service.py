@@ -667,6 +667,7 @@ class Service:
                 courses = json.loads(self.reference_data.assets.get('courses.json', b'{}'))
                 metadata = json.loads(self.reference_data.assets.get('metadata.json', b'{}'))
                 instances = metadata.get('raceInstances', {}) if isinstance(metadata, dict) else {}
+                self._summary_programs = metadata.get('racePrograms', {}) if isinstance(metadata, dict) else {}
                 self._summary_reference = (courses if isinstance(courses, dict) else {},
                                            instances if isinstance(instances, dict) else {})
             except (ValueError, TypeError):
@@ -697,6 +698,9 @@ class Service:
         course = course or first_number(('race_course_id', 'raceCourseId', 'course_id', 'courseId', 'CourseId')) or course_value
         identity = entry.get('courseIdentity') if isinstance(entry.get('courseIdentity'), dict) else {}
         instance = first_number(('race_instance_id', 'raceInstanceId', 'RaceInstanceId')) or number(identity.get('raceInstanceId'))
+        if instance is None and entry.get('race_category',entry.get('category')) == 'career':
+            program = first_number(('race_program_id','raceProgramId'))
+            instance = number(getattr(self,'_summary_programs',{}).get(str(program)))
         courses, instances = reference
         from_instance = False
         if course is None and instance is not None:

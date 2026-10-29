@@ -7,7 +7,7 @@ import re
 
 from globalsim_bridge.adapter import ReferenceData, canonical
 from globalsim_bridge.bundled_skills import ROWS, SOURCE
-from globalsim_bridge.skill_catalog import Compiler, CONTRACT, SOURCE_COMMIT
+from globalsim_bridge.skill_catalog import Compiler, CONTRACT, AUDITED_SOURCE_COMMITS
 from storage import atomic_json, linked
 
 
@@ -49,7 +49,7 @@ class EngineSkillCatalog:
         build_path = self.simulation.path(base['artifact']).parent / 'build.json'
         if not build_path.is_file(): return manifest
         build = json.loads(build_path.read_bytes())
-        if build.get('sourceCommit') != SOURCE_COMMIT or build.get('artifactSha256') != base['artifact_sha256']:
+        if build.get('sourceCommit') not in AUDITED_SOURCE_COMMITS or build.get('artifactSha256') != base['artifact_sha256']:
             return manifest  # A new engine revision needs its own reviewed contract.
         catalog = getattr(self.simulation.service, 'catalog', None)
         revision, rows, source = catalog.engine_snapshot() if catalog else (None, None, None)

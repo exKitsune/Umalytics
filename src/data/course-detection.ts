@@ -11,6 +11,12 @@ export function instanceCourse(id: number | null, reference?:ReferenceData|null)
   if(typeof active==='number'&&Number.isSafeInteger(active)&&active>0)return active;
   return (identities.raceInstances as Record<string, number>)[id] ?? null;
 }
+/** Career program IDs are a separate namespace from race-instance IDs. */
+export function programInstance(id:number|null,reference?:ReferenceData|null):number|null{
+  if(id===null||!Number.isSafeInteger(id)||id<=0)return null;
+  const compiled=(identities as unknown as {racePrograms?:Record<string,number>}).racePrograms;
+  return reference?.metadata.racePrograms?.[id]??compiled?.[id]??null;
+}
 export function instanceConditions(id: number | null, reference?: ReferenceData | null): { grade?: number; time?: number } | null {
   if (id === null || !Number.isSafeInteger(id) || id <= 0) return null;
   const compiled = (identities as unknown as { raceInstanceConditions?: Record<string, { grade?: number; time?: number }> }).raceInstanceConditions;

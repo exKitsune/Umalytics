@@ -162,7 +162,7 @@ def main():
         '--output', str(output / 'metadata.json'), '--identity-output', str(output / 'course-identities.json')], check=True)
     source = {'name': 'Direct installed Global master and CourseParamTable reference',
         'revision': file_sha(master), 'url': 'https://\x75mamusume.com/', 'license': 'Game metadata © the UM:PD rights holders',
-        'tables': ['text_data', 'skill_data', 'race_instance', 'race', 'race_course_set', 'race_course_set_status'],
+        'tables': ['text_data', 'skill_data', 'race_instance', 'race', 'race_course_set', 'race_course_set_status', 'single_mode_program'],
         'eventTransforms': {'0': 'Corner start/length', '2': 'Paired straight boundaries/frontType', '11': 'Slope start/length/grade'},
         'distanceDecimals': 2, 'excludedCourses': {str(k): v for k, v in EXCLUDED.items()},
         'notes': ['Reference definitions, not a generated observed replay or simulator compatibility list.',

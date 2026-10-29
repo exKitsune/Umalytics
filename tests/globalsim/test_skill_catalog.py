@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'desktop'))
 from globalsim_bridge.adapter import ReferenceData, canonical
 from globalsim_bridge.bundled_skills import ROWS
-from globalsim_bridge.skill_catalog import Compiler, catalog_rows, CONTRACT
+from globalsim_bridge.skill_catalog import Compiler, catalog_rows, CONTRACT, AUDITED_SOURCE_COMMITS
 from engine_skill_catalog import EngineSkillCatalog, references
 from simulation_service import SimulationService
 from sandbox_inputs import prepare
@@ -33,6 +33,11 @@ def fixture():
 
 class SkillCompilerTests(unittest.TestCase):
     def setUp(self): self.compiler = Compiler(fixture())
+
+    def test_release_engine_pin_has_an_audited_skill_import_contract(self):
+        lock=json.loads((ROOT/'simulation/source-lock.json').read_bytes())
+        self.assertIn(lock['revision'], AUDITED_SOURCE_COMMITS,
+                      'Audit the skill import contract when changing the release engine; do not silently disable imports')
 
     def test_nine_complete_definitions_and_level_scaling(self):
         accepted, presentation, rejected = self.compiler.additions(ROWS, fixture())

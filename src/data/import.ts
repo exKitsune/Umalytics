@@ -2,7 +2,7 @@ import {raceTimestamp} from './race-time';
 /* Key mappings informed by SSHZ.ORG replay reference (MIT). See THIRD_PARTY_LICENSE.txt. */
 import { decode } from '@msgpack/msgpack';
 import { base64Bytes, MAX_FILE_BYTES, MAX_FRAMES, MAX_RUNNERS, MAX_SAMPLES, parseScenario } from './binary';
-import { courseDistance, finishDistance, instanceCourse, instanceConditions } from './course-detection';
+import { courseDistance, finishDistance, instanceCourse, instanceConditions, programInstance } from './course-detection';
 import { careerForHorse, parseCareer } from './career';
 import { extractSanitizedRaw, copyOriginalRace } from './raw-export';
 import { attachTeamStatTotals } from './race-teams';
@@ -109,7 +109,7 @@ function captureFields(obj: RecordValue): Pick<Race, 'category' | 'capturedAt' |
 function importCategory(obj: RecordValue, endpoint?: unknown): RaceCategory | undefined {
   const explicit = category(obj.category ?? obj.race_category);
   if (explicit) return explicit;
-  const groups: Record<string, RaceCategory> = { single_mode: 'career', single_mode_free: 'career',
+  const groups: Record<string, RaceCategory> = { single_mode: 'career', single_mode_free: 'career', single_mode_live: 'career',
     team_stadium: 'team-trials', team_race: 'team-trials', room_match: 'practice', practice: 'practice',
     practice_race: 'practice', champions: 'champions-meeting', champions_meeting: 'champions-meeting', heroes: 'league-of-heroes', league_of_heroes: 'league-of-heroes', LeagueOfHeroes: 'league-of-heroes' };
   const path = typeof endpoint === 'string' ? endpoint.split('?')[0].replace(/^\/\x75mamusume\//, '').replace(/^\//, '') : '';
@@ -166,6 +166,10 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
   // Some decoded responses put replay bytes on data and runner metadata on
   // data.race_start_info.race_horse_data. Only allowlisted fields reach Race.
   obj = { ...record(pick(obj, 'race_start_info', 'raceStartInfo')), ...obj };
+  if(importCategory(obj)==='career'&&obj.race_program_id===undefined&&obj.raceProgramId===undefined){
+    const program=number(obj.program_id);
+    if(program!==null&&Number.isSafeInteger(program)&&program>0)obj={...obj,race_program_id:program};
+  }
   const binary = parseScenario(scenario);
   const actHorses = pick(obj, '<RaceHorse>k__BackingField', 'raceHorse');
   const isAct = Array.isArray(actHorses) || obj.simDataBase64 !== undefined || obj['<SimDataBase64>k__BackingField'] !== undefined;
@@ -226,7 +230,9 @@ function parseExport(obj: RecordValue, scenario: string, index: number): Race {
   }).sort((a, b) => a.time - b.time);
   const courseValue = pick(obj, '<RaceCourseSet>k__BackingField', 'raceCourseSet', 'RaceCourseSet', 'race_course_set');
   const course = record(courseValue);
-  const raceInstanceId = number(pick(obj, 'race_instance_id', 'raceInstanceId', 'RaceInstanceId'));
+  const programId=number(pick(obj,'race_program_id','raceProgramId'));
+  const raceInstanceId = number(pick(obj, 'race_instance_id', 'raceInstanceId', 'RaceInstanceId'))
+    ?? (importCategory(obj)==='career'?programInstance(programId):null);
   const recordedCourse = number(pick(course, 'id', 'Id', 'course_id', 'courseId', '<Id>k__BackingField') ?? pick(obj, 'race_course_id', 'raceCourseId', 'course_id', 'courseId', 'CourseId') ?? (typeof courseValue === 'number' || typeof courseValue === 'string' ? courseValue : null));
   const courseId = recordedCourse ?? instanceCourse(raceInstanceId);
   const context = instanceConditions(raceInstanceId);

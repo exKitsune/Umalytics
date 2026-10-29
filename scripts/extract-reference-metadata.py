@@ -67,6 +67,8 @@ records = {
         'notes': 'Independently selected public metadata columns; no user/account data or artwork.'},
 }
 race_columns = {row[1] for row in db.execute('PRAGMA table_info(race)')}
+if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='single_mode_program'").fetchone():
+    records['racePrograms'] = {str(row[0]): row[1] for row in db.execute('SELECT id,race_instance_id FROM single_mode_program')}
 instance_columns = {row[1] for row in db.execute('PRAGMA table_info(race_instance)')}
 condition_columns = ([('grade', 'r.grade')] if 'grade' in race_columns else []) + ([('time', 'ri.time')] if 'time' in instance_columns else [])
 if condition_columns:
@@ -79,8 +81,9 @@ a.output.write_text(public_json(json.dumps(records, ensure_ascii=False, separato
 identity_output.parent.mkdir(parents=True, exist_ok=True)
 identity_output.write_text(public_json(json.dumps({'distances': {str(row[0]): row[1] for row in db.execute(
     'SELECT id, distance FROM race_course_set')}, 'raceInstances': records['raceInstances'],
+    **({'racePrograms': records['racePrograms']} if 'racePrograms' in records else {}),
     **({'raceInstanceConditions': records['raceInstanceConditions']} if 'raceInstanceConditions' in records else {}),
-    'source': {'masterSha256': records['source']['revision'], 'tables': 'race_instance JOIN race; race_course_set'}},
+    'source': {'masterSha256': records['source']['revision'], 'tables': 'race_instance JOIN race; race_course_set; single_mode_program (when present)'}},
     separators=(',', ':'))), encoding='utf8')
 print(f'{len(names)} character names, {len(outfits)} outfit labels, {len(skill_names)} skill names, {len(skills)} skill records')
 db.close()

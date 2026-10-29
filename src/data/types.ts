@@ -133,6 +133,7 @@ export interface RaceRaw {
   raceGrade?: number;
   startTimeType?: number;
   raceInstanceId?: number;
+  raceProgramId?: number;
   distance?: number;
   laneDistanceMax?: number;
   horseACT_version?: string;

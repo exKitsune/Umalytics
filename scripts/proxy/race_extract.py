@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 MAX_RACES = 100
 MAX_SCENARIO_CHARS = 16 * 1024 * 1024
 CATEGORIES = ('career', 'team-trials', 'practice', 'champions-meeting', 'league-of-heroes', 'other')
-RACE_NUMBERS = ('distance', 'race_distance', 'lane_distance_max', 'race_course_id', 'course_id', 'race_instance_id', 'random_seed', 'race_grade', 'start_time_type')
+RACE_NUMBERS = ('distance', 'race_distance', 'lane_distance_max', 'race_course_id', 'course_id', 'race_instance_id', 'race_program_id', 'random_seed', 'race_grade', 'start_time_type')
 CONDITIONS = ('season', 'weather', 'ground_condition')
 TRAINED_KEYS = ('trained_chara_array', 'trainedCharaArray', 'trained_chara_data_array')
 ENVELOPE = frozenset(('auth', 'auth_data', 'auth_key', 'authentication', 'headers', 'request', 'requests',
@@ -31,7 +31,7 @@ def classify_race(endpoint='', content=None):
     """Only finite group names survive; never raw route/query/identifiers."""
     parts = endpoint.split('?', 1)[0].split('/')
     group = parts[2] if len(parts) > 2 and parts[1] == '\x75mamusume' else ''
-    known = {'single_mode': 'career', 'single_mode_free': 'career',
+    known = {'single_mode': 'career', 'single_mode_free': 'career', 'single_mode_live': 'career',
         'team_stadium': 'team-trials', 'team_race': 'team-trials',
         'room_match': 'practice', 'practice': 'practice', 'practice_race': 'practice',
         'champions': 'champions-meeting', 'champions_meeting': 'champions-meeting',
@@ -648,6 +648,11 @@ def extract_races(payload, endpoint='', captured_at=None, settings=None):
                 race = {'race_scenario': scenario, 'title': 'Observed game replay',
                     'race_category': category, 'metadata': {'umaTrace': {
                         'endpointGroup': endpoint_category, 'categorySource': source}}}
+                if category == 'career':
+                    start = value.get('race_start_info')
+                    program = _int(start.get('program_id')) if isinstance(start, dict) else None
+                    if program is not None and program > 0:
+                        race['race_program_id'] = program
                 mode = race_mode(endpoint)
                 if mode:
                     race['race_mode'] = mode

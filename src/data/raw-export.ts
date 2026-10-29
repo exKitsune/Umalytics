@@ -14,7 +14,7 @@ const ENVELOPE = new Set([
 ]);
 const RAW_KEYS = [
   'randomSeed', 'weather', 'groundCondition', 'season', 'raceType', 'raceGrade',
-  'startTimeType', 'raceInstanceId', 'raceDistance', 'raceCourseAliases', 'raceDistanceAliases', 'laneDistanceMax', 'horseACT_version',
+  'startTimeType', 'raceInstanceId', 'raceProgramId', 'raceDistance', 'raceCourseAliases', 'raceDistanceAliases', 'laneDistanceMax', 'horseACT_version',
 ] as const;
 
 type RecordValue = Record<string, unknown>;
@@ -156,6 +156,7 @@ export function extractSanitizedRaw(source: Record<string, unknown>, scenario: s
   copyScalar(draft, obj, 'raceGrade', 'race_grade', 'RaceGrade');
   copyScalar(draft, obj, 'startTimeType', 'start_time_type', 'StartTimeType');
   copyScalar(draft, obj, 'raceInstanceId', 'race_instance_id', 'RaceInstanceId');
+  copyScalar(draft, obj, 'raceProgramId', 'race_program_id');
   // A normalized display distance can be finish-derived. Never feed it back
   // into raw starting conditions, including a nested course object.
   if (options.normalized) {

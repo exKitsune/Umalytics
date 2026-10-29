@@ -236,7 +236,7 @@ def normalize_capture(capture: dict) -> dict:
             raise InputError("Ambiguous raw and portable capture shapes")
         return {key: deepcopy(capture[key]) for key in (
             "race_horse_data_array", "race_scenario", "race_instance_id", "race_course_id", "course_id",
-            "race_course_set", "random_seed", "race_grade", "start_time_type", "season", "weather",
+            "race_course_set", "race_program_id", "random_seed", "race_grade", "start_time_type", "season", "weather",
             "ground_condition", "race_category", "metadata", "distance", "race_distance") if key in capture}
     if capture.get("schemaVersion") == 1 and "raceHorse" in capture:
         horses = capture["raceHorse"]
@@ -261,7 +261,7 @@ def normalize_capture(capture: dict) -> dict:
         # raceDistance is a distinct additive raw-field contract. The app must
         # preserve original response distance there, never normalized distance.
         for source, target in {"simDataBase64": "race_scenario", "raceInstanceId": "race_instance_id",
-                "raceCourseSet": "race_course_set", "randomSeed": "random_seed", "raceGrade": "race_grade",
+                "raceCourseSet": "race_course_set", "raceProgramId": "race_program_id", "randomSeed": "random_seed", "raceGrade": "race_grade",
                 "startTimeType": "start_time_type", "raceDistance": "race_distance", "season": "season", "weather": "weather",
                 "groundCondition": "ground_condition"}.items():
             if source in capture:
@@ -456,7 +456,8 @@ def prepare_capture(capture: dict, references: ReferenceData,
         if category is None:
             raise InputError("Captured race category is required", "needs_input", ("race_category",))
         if category not in SUPPORTED_CATEGORIES:
-            raise InputError("Race mode is unsupported by this integration profile (career is not enabled)", "unsupported")
+            message = "Career race simulation is not enabled by this integration profile" if category == 'career' else f"Race category '{category}' is unsupported by this integration profile"
+            raise InputError(message, "unsupported")
         metadata = raw.get("metadata", {})
         if not isinstance(metadata, dict) or not isinstance(metadata.get("umaTrace", {}), dict):
             raise InputError("Capture category metadata is malformed")

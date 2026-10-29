@@ -12,6 +12,9 @@ from catalog_transform import overlay, skill_record
 
 CONTRACT = 'v74-skill-import-1'
 SOURCE_COMMIT = '231f346a46b569dd4d0f91a0046326275667d1c7'
+# b8cd884 changes only decision-trace/JSON serialization. Skill evaluation,
+# condition vocabulary, effects and the import protocol are unchanged.
+AUDITED_SOURCE_COMMITS = frozenset((SOURCE_COMMIT, 'b8cd8842259cc90f90be6d8640e057b98f17ec42'))
 ATOM = re.compile(r'([a-z][a-z0-9_]*)(==|!=|>=|<=|>|<)(-?\d+)')
 BLOCKED = {'is_exist_skill_id'}  # Deliberate upstream no-op, not implemented.
 # Metadata-only fields currently supplied by GameTora. A future mechanic at

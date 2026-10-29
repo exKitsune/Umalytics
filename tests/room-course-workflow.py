@@ -6,6 +6,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts' / 'proxy'))
 from race_extract import api_route, apply_race_times, apply_room_bindings, collect_race_times, collect_room_bindings, extract_races, remember_race_times, remember_room_bindings, saved_replay_route, stamp_race_clocks, trace_api_payload
 
+# Grand Live Career uses a distinct route and supplies program identity beside
+# the replay in race_start_info; no cross-response or time-based join is needed.
+career_endpoint='/\x75mamusume/single_mode_live/race_start'
+career_payload={'data':{'race_scenario':'SYNTHETIC_CAREER','race_start_info':{
+    'program_id':2224,'random_seed':1205189396,'race_horse_data':[{'frame_order':1}]}}}
+career=extract_races(career_payload,career_endpoint)[0]
+assert career['race_category']=='career'
+assert career['metadata']['umaTrace']['categorySource']=='endpoint'
+assert career['race_program_id']==2224
+assert 'race_instance_id' not in career, 'Program IDs are not race-instance IDs'
+assert extract_races(career_payload,career_endpoint,settings={'categories':{'career':False}})==[]
+
 endpoint = '/\x75mamusume/room_match/result'
 room = {'data': {'room_info': {'race_instance_id': 800018, 'random_seed': 1700647490, 'weather': 1, 'season': 4, 'ground_condition': 1},
     'auth': {'token': 'PRIVATE_ROOM_TOKEN'}}}

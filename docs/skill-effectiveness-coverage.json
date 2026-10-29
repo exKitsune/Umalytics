@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "scope": "All bundled localized installed Global skill definitions, including inherited and event-only records. Declaration/formula coverage; not achieved per-race coverage.",
   "source": {
-    "metadataSha256": "18df91a76f5ab3004e9613c3edfbcce29469139358d066da37b51b3b12ec8e61",
+    "metadataSha256": "e240c03a820c5fe2add5bf72393f919d1002cabd0b8dae47c1c9a389544c0c5a",
     "master": {
       "name": "Local Global master SQLite public metadata",
       "revision": "4ff8f53b4446adc922f74dadd14a238ac6fef430425be40776da8331f5ecae6c",
