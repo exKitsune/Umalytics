@@ -1,3 +1,4 @@
+import {motionSampleIndex} from './motion-sample-index';
 import type { MotionBand, RunnerMotion } from './race-motion';
 
 const channels=['min','mid','max'] as const;
@@ -22,8 +23,8 @@ export interface MotionBenefit {
  * comparison keeps selected acceleration on and isolates speed carryover. */
 export function measureMotionBenefit(withSkill:RunnerMotion,without:RunnerMotion,windows:{start:number;end:number}[],speedWithout:RunnerMotion|null=without,speedPotentialDistance:MotionBand|null=null):MotionBenefit {
   const distance=zero(),time=zero(),direct=zero(),carry=zero(),carryTime=zero(),blocked=zero();
-  const baseline=new Map(without.samples.map(p=>[p.time,p]));
-  const speedBaseline=speedWithout===without?baseline:speedWithout?new Map(speedWithout.samples.map(p=>[p.time,p])):null;
+  const baseline=motionSampleIndex(without);
+  const speedBaseline=speedWithout===without?baseline:speedWithout?motionSampleIndex(speedWithout):null;
   let duration=0,assessed=0,tailOpen=false,carryoverComplete=true,any=false;
   const reasons=new Set<string>();
   for(let i=1;i<withSkill.samples.length;i++){

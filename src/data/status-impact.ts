@@ -48,14 +48,19 @@ export function populateStatusImpacts(race: Race, runnerId: string, intervals: S
       return 20 * Math.max(0, speed - (20 - (race.distance! - 2000) / 1000) + 12) ** 2 / 144 * groundFactor * late;
     } : null;
   const canonical = selected(intervals), runaway = effectiveStrategyCode(runner, rows) === 5;
+  const byKind=new Map<string,StatusInterval[]>();
+  for(const interval of canonical){const name=kind(interval.kind);let windows=byKind.get(name);if(!windows)byKind.set(name,windows=[]);windows.push(interval);}
+  const multipliers=new Map<number,Map<string|null,number>>();
   function hpMultiplier(time: number, excluded: string | null): number {
-    const active = (name: string) => name !== excluded && canonical.some(i => kind(i.kind) === name && time >= i.start && time < (i.end ?? i.observedUntil ?? i.start));
+    let values=multipliers.get(time);if(!values)multipliers.set(time,values=new Map());
+    const cached=values.get(excluded);if(cached!==undefined)return cached;
+    const active = (name: string) => name !== excluded && (byKind.get(name)??[]).some(i => time >= i.start && time < (i.end ?? i.observedUntil ?? i.start));
     const rushed = active('rushed'), spot = active('spot-struggle');
     // These compound factors are not the product of the isolated factors.
     let multiplier = rushed && spot ? runaway ? 7.7 : 3.6 : spot ? runaway ? 3.5 : 1.4 : rushed ? 1.6 : 1;
     if (active('pace-down')) multiplier *= .6;
     if (active('downhill-mode')) multiplier *= .4;
-    return multiplier;
+    values.set(excluded,multiplier);return multiplier;
   }
   for (const interval of intervals) {
     const end = Math.min(interval.end ?? interval.observedUntil ?? interval.start, stop);
@@ -75,11 +80,11 @@ export function populateStatusImpacts(race: Race, runnerId: string, intervals: S
       if (a?.hp != null && b?.hp != null) { const delta = (b.hp - a.hp) * fraction; hpConsumed += Math.max(0, -delta); hpRecovered += Math.max(0, delta); hpSeconds += finish - start; }
       if (hpCurve && interval.model && !unresolvedSpeedBonus && a?.speed != null && b?.speed != null && a.distance != null && b.distance != null && a.hp != null && b.hp != null) {
         const lerp = (x: number, y: number, time: number) => x + (y - x) * (time - fa.time) / (fb.time - fa.time);
+        const full = hpMultiplier((start + finish) / 2, null), without = hpMultiplier((start + finish) / 2, kind(interval.kind));
         const deltaAt = (time: number) => {
           if (lerp(a.hp!, b.hp!, time) <= 0) return 0;
           const actualSpeed = lerp(a.speed!, b.speed!, time), speed=analysis?selfSpeedAt(race,analysis,runnerId,time,actualSpeed):null, d = lerp(a.distance!, b.distance!, time);
           if(speed===null)return null;
-          const full = hpMultiplier((start + finish) / 2, null), without = hpMultiplier((start + finish) / 2, kind(interval.kind));
           return hpCurve(speed, d) * full - hpCurve(Math.max(0, speed - bonus), d) * without;
         };
         const first=deltaAt(start),last=deltaAt(finish);if(first!==null&&last!==null){modeledHp += (first+last)/2*(finish-start);modeledSeconds+=finish-start;}

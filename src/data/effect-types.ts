@@ -92,6 +92,8 @@ export interface SkillImpactSummary extends EffectContribution {
   blockingDuration:number;blockingAssessedDuration:number;blockingDistanceLoss:number|null;assessedBlockingDistanceLoss:number|null;
 }
 export interface EffectUtilization {
+  /** Magnitude-weighted useful effect area / full possible effect area. */
+  potential?:{score:number|null;baseScore:number|null;bonusScore:number|null;maximumMagnitude:number|null;maximumDuration:number|null};
   kind:'target-speed'|'acceleration'|'current-speed';activeDuration:number|null;assessedDuration:number;afterFinishDuration:number;
   usefulDuration:number|null;cappedDuration:number|null;blockedDuration:number|null;
   /** User-selected scoring convention, separate from conditional distance gain. */

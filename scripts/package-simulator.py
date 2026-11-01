@@ -29,7 +29,7 @@ def main():
     module_spec.loader.exec_module(prepare_module)
     staged = ROOT / '.cache/globalsim-traced'
     instrumentation = prepare_module.validate_prepared_source(staged)
-    if b'umalytics-decisions-v1' not in binary:
+    if instrumentation['schema'].encode() not in binary:
         raise ValueError('Worker lacks decision instrumentation.')
     if b'GSIMRP01' not in binary:
         raise ValueError('Worker lacks the required binary replay protocol.')
@@ -58,7 +58,7 @@ def main():
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {'schemaVersion': 1, 'bundles': []}
     row = dict(kind='simulation', engine_id=ident, version='efc2decd-v74', profile='v74', artifact_sha256=artifact,
         persistentWorker=True, workerProtocol='binary-v1',
-        decisionTraceSchema='umalytics-decisions-v1', instrumentationSha256=instrumentation['sha256'],
+        decisionTraceSchema=instrumentation['schema'], instrumentationSha256=instrumentation['sha256'],
         data_sha256=references.fingerprint, artifact=(relative/'worker.exe').as_posix(),
         appRoot=(relative/'app').as_posix(), resourceRoot=(relative/'engine').as_posix())
     manifest['bundles'] = [item for item in manifest['bundles'] if item['engine_id'] != ident] + [row]

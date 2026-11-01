@@ -111,7 +111,7 @@ class SandboxService:
     def installed(self, expected=None):
         simulation = self.service.simulation
         _, manifest = simulation.config()
-        bundles = [b for b in manifest['bundles'] if b['kind']=='simulation' and b.get('profile')=='v74' and b.get('decisionTraceSchema')=='umalytics-decisions-v1']
+        bundles = [b for b in manifest['bundles'] if b['kind']=='simulation' and b.get('profile')=='v74' and b.get('decisionTraceSchema') in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
         if expected:
             bundles = [b for b in bundles if b['artifact_sha256']==expected['artifact_sha256'] and b['data_sha256']==expected['data_sha256']]
         if not bundles:

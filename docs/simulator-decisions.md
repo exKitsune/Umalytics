@@ -7,14 +7,40 @@ A matched simulator is now the primary mechanics source. The production path is 
 - Each equipped skill's actual initialization wit check: whether a roll was required, roll, threshold, result and shared-stream draw range. Exempt checks draw nothing. Ordinary wit failure and forced activation are distinct.
 - Static skill condition windows, sampled random triggers, each dynamic predicate actually evaluated, precondition latching, activation windows, cooldown readiness, activation, effect evaluation/application/defer/immunity/recipient delivery and effect-end callbacks.
 - Every last-spurt calculation's input, each feasibility search, each lottery actually drawn, its threshold/candidate/result, the fallback and the plan the state machine retains. An immediate maximum-speed plan needs no lottery. Recalculation does not necessarily replace the original start point.
-- Per-movement-tick target/base/section/pace values, acceleration, exact before/after values of both speed clamps, blocker/gap, HP, lane target, phase, spurt, rushing, downhill, position-keep mode, force-in, Spot Struggle, Duel, Conserve Power and continuous blocking/near-lane/overtake timers.
-- Actual raw draws from the retail shared RNG, with ordinal and execution context. These are observations of existing calls, not an extra RNG replay.
+- Per-movement-tick target/base/section/pace values, acceleration, exact before/after values of both speed clamps, blocker, HP, pre-displacement position/lane and phase. Spurt, rushing, downhill, position-keep, force-in, Spot Struggle, Duel and near-runner states are emitted when they change and expanded at exact native ticks by the readers.
+- Normal analysis retains specific skill/spurt rolls and sampled trigger windows. General shared-RNG history and unused motion diagnostics are available only with `traceDiagnostics: true`; these observe existing calls and never draw extra RNG.
 
 After a match, `simulation/project.ts` maps the engine output into the existing race results, animated replay, telemetry, runner panel and skill cards. It does not invoke the inference engine. Engine frames drive playback; tick states drive status intervals, target speed and the two separate blocking clamps. Conserve Power uses its activation/expiry callbacks; its precomputed acceleration magnitude is not an active-state flag. The original capture remains the race JSON export source. Comparison/provenance details are collapsed below the dashboard.
 
 The existing spurt popover shows actual rolls and retained targets. Skill dialogs include actual wit results, applied modifiers and a compact, expandable table of condition, prerequisite and cooldown checks. Initial effective stats are snapped after engine initialization; nested constructor effects retain the enclosing runner identity. Counterfactual skill effectiveness, distance/time gain, hill/corner losses and vision geometry remain unavailable where this trace does not measure them. They are never replaced with current unversioned inference. Export analysis includes the full trace and its authorization/provenance.
 
 A state snapshot is discrete and is never interpolated. Motion rows describe the pre-displacement movement calculation on that tick; the published replay frames describe the resulting race. Continuous timers use the engine's own update order. Identical checks on consecutive ticks are compressed into a series with count, first/last tick/time and first/last sequence. Intermediate within-tick ordering is not reconstructed from a compressed series. Successful predicates use a checkmark. Failed branches show the closest actually evaluated conjunction and its restricting predicates; earlier restrictions before a successful activation remain available. Latched prerequisites use their own successful tick. A static condition that first empties a conjunction’s course windows is identified separately from later skipped conditions. Target, cooldown, prerequisite and trigger-window failures retain their own labels. Skipped predicates remain skipped. `complete` means no observation was dropped under this schema, not that every CPU branch or every unknown game mechanic is instrumented.
+
+## Compact observation transport
+
+Normal workers emit `umalytics-decisions-v2`. Event context strings are interned
+once; coordinates and string IDs travel as rows. Boolean checks compare/update
+typed records before allocating JSON, preserving the same counts, skipped-tick
+boundaries and conjunction evidence. The 23 used movement scalars travel as
+little-endian float64 bytes encoded in base64. Nine mode/state columns travel
+as transitions; near-runner timers become positive/nonpositive state. Eleven
+unused diagnostic columns are omitted. Python validates dimensions, finite
+values, references, initial states, transition ticks and observation coverage.
+The browser/Node reader expands this into the established analysis layout
+without interpolating, rerolling or recomputing the executed movement pipeline.
+
+Legacy `v1` traces remain readable. Explicit diagnostic requests produce that
+full layout, including general RNG history, and are checked against the previous
+worker. Last-spurt probabilities continue to use exact decision inputs, feasible
+candidates, actual rolls and retained plans; candidate-search records are small
+and retained to preserve the existing probability graphs exactly. Skill
+applications, deferred follow-ups, recipients and extended expiries are retained.
+The mode does not change race decisions or results.
+
+`scripts/benchmark-race-simulation.py --include-trace` measures normal tracing;
+add `--diagnostic-trace` for exhaustive diagnostics. Dashboard parity checks
+compare all calculated fields, excluding only internal sequence coordinates
+that shrink when general RNG history is omitted.
 
 ## Meaning of a match
 
@@ -144,6 +170,37 @@ mathematical fields are restored; frames, effective stats, activations, hidden
 states and rolls are always projected from the freshly authorized trace. The
 service's authenticated simulator cache can reuse the baseline itself while
 rerunning the independent comparison. Both layers share cache settings.
+
+### Post-activation potential
+
+Supported additional-activation types use the matched definition and the pinned
+engine contract: passing a runner or activating another skill, capped at three
+increments (type 3: two). Duration usage 4 adds distance/1000 seconds per pass,
+up to three times. Each matched follow-up keeps its application time. The skill
+inspector separates base definitions, bonus rules and observed trigger times.
+
+For these skills, effectiveness is useful magnitude-time area divided by maximum
+magnitude times maximum nominal duration. It includes untriggered bonuses in the
+denominator and never changes the measured movement gain. The stacked score
+separates base credit from conditional strength/extended-duration credit. Active
+useful seconds remain unchanged. Missing provenance, unknown trigger types or
+unresolved magnitudes leave the potential score unavailable.
+
+### Analysis work sharing
+
+Runner/event partitions, exact-time motion indexes, healthy-HP physics and
+tick-invariant terrain/context are shared within one analysis. Effect sums keep
+their original evaluation order. Counterfactual traffic diagnostics and replaced
+skill-utilization estimates are evaluated only if consumed; baseline cards and
+unreplaced estimates remain available. Status HP integration reuses identical
+midpoint factors and interval searches retain the original endpoint rules.
+
+The bridge validates compact motion bytes directly, checking the same finite
+values, runners, timing, state transitions and coverage as expanded traces.
+Reference JSON parsing is bounded and cached by exact file content in read-only
+trees. Prepared requests get independent mutable copies. Reference/geometry pins
+and executable hashes are still checked on every evaluation; timestamps do not
+authorize cached reference contents.
 
 ## Inference fallback
 

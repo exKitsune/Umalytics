@@ -2,7 +2,7 @@ import type { Race } from './types';
 import type { RaceAnalysis } from './analytics';
 import type { ReferenceData } from './reference';
 import type { EffectUtilization } from './effect-types';
-import { motionSkillImpact, type MotionSkillImpact } from './motion-skill-impact';
+import { motionSkillImpact, procEffectiveness, type MotionSkillImpact } from './motion-skill-impact';
 import { motionBenefitFor } from './motion-analysis';
 import { preparedFor } from '../analysis/prepared';
 
@@ -11,7 +11,7 @@ import { preparedFor } from '../analysis/prepared';
 export function movementUse(effects:EffectUtilization[]){
   let active=0,assessed=0,credit=0;
   for(const effect of effects){active+=effect.activeDuration??0;assessed+=effect.assessedDuration;credit+=effect.usefulDuration??0;}
-  return {score:assessed>0?credit/assessed:null,coverage:active>0?Math.min(1,assessed/active):0,active,assessed};
+  return {score:effects.some(e=>e.potential)?procEffectiveness(effects):assessed>0?credit/assessed:null,coverage:active>0?Math.min(1,assessed/active):0,active,assessed};
 }
 
 const cache=new WeakMap<RaceAnalysis,Map<string,ReturnType<typeof buildTotals>>>();

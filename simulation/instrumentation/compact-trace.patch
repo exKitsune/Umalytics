@@ -1,0 +1,5 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1351,1 +1351,1 @@
+-            decision_trace::begin(spec_json.get("decisionTrace").and_then(Value::as_bool) == Some(true));
++            decision_trace::begin_mode(spec_json.get("decisionTrace").and_then(Value::as_bool) == Some(true), spec_json.get("traceDiagnostics").and_then(Value::as_bool) == Some(true));

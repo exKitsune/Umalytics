@@ -27,12 +27,18 @@ function lazyProperty(object:object,key:string,read:()=>unknown){
 
 interface Table {columns:{key:string;constant:boolean;band:boolean;values:unknown[]}[];length:number}
 function pack(rows:Record<string,any>[]):Table{
-  const keys=[...new Set(rows.flatMap(Object.keys))];
+  const names=new Set<string>();for(const row of rows)for(const key of Object.keys(row))names.add(key);
+  const keys=[...names];
   return {length:rows.length,columns:keys.map(key=>{
     let values=rows.map(row=>row[key]);
     const band=values.some(Boolean)&&values.every(v=>v==null||typeof v==='object'&&Object.keys(v).length===3&&v.min===v.mid&&v.mid===v.max);
     if(band)values=values.map(v=>v?.mid??null);
-    const first=JSON.stringify(values[0]),constant=values.every(value=>JSON.stringify(value)===first);
+    const first=values[0];
+    const scalar=(v:unknown)=>v===null||v===undefined||typeof v==='string'||typeof v==='boolean'||typeof v==='number'&&Number.isFinite(v);
+    // Exact scalar equality has the same JSON representation (including -0).
+    // Keep JSON comparison for objects and nonfinite numbers as before.
+    const encoded=scalar(first)?undefined:JSON.stringify(first);
+    const constant=scalar(first)?values.every(value=>value===first||!scalar(value)&&JSON.stringify(value)===JSON.stringify(first)):values.every(value=>JSON.stringify(value)===encoded);
     return {key,band,constant,values:constant?[values[0]]:values};
   })};
 }

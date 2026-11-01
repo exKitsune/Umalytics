@@ -24,8 +24,8 @@ const channels=['min','mid','max']as const,zero=():MotionBand=>({min:0,mid:0,max
 const exhaustionWindowCache=new WeakMap<RaceAnalysis,Map<string,{start:number;end:number;anchorStart:number;anchorEnd:number;onsetMin?:number;onsetMax?:number}[]>>();
 const envelope=(b:MotionBand):MotionBand=>({min:Math.min(b.min,b.mid,b.max),mid:b.mid,max:Math.max(b.min,b.mid,b.max)});
 const positiveLinearArea=(a:number,b:number,dt:number)=>a>=0&&b>=0?(a+b)*dt/2:a<=0&&b<=0?0:Math.max(a,b)**2*dt/(2*Math.abs(b-a));
-function sampleAt(samples:MotionSample[],time:number){let lo=0,hi=samples.length-1;while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(samples[mid].time<=time)lo=mid;else hi=mid-1;}return samples[lo];}
-function pointAt(samples:MotionSample[],time:number){const p=sampleAt(samples,time),i=samples.indexOf(p),q=samples[i+1];if(p.time===time||!q)return p;const f=(time-p.time)/(q.time-p.time),lerp=(a:number|null,b:number|null)=>a===null||b===null?null:a+(b-a)*f;return{...p,time,actual:lerp(p.actual,q.actual),selfActual:lerp(p.selfActual,q.selfActual)};}
+function sampleAt(samples:MotionSample[],time:number){let lo=0,hi=samples.length-1;while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(samples[mid].time<=time)lo=mid;else hi=mid-1;}return lo;}
+function pointAt(samples:MotionSample[],time:number){const i=sampleAt(samples,time),p=samples[i],q=samples[i+1];if(p.time===time||!q)return p;const f=(time-p.time)/(q.time-p.time),lerp=(a:number|null,b:number|null)=>a===null||b===null?null:a+(b-a)*f;return{...p,time,actual:lerp(p.actual,q.actual),selfActual:lerp(p.selfActual,q.selfActual)};}
 
 /** Traffic removal/healthy-HP paths are anchored at observed episode entry.
  * Recorded phase/grade, skill schedule and other runners remain fixed. */

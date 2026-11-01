@@ -18,7 +18,7 @@ export interface SkillReference {
   activateLot?: number; iconId?: number; tagId?:number; tagIds?:number[]; description?: string | null;
   branches: { condition: string; rawDuration: number; durationUsage: number;
     branchIndex?: number; precondition?: string; rawCooldown?: number;
-    effects: { type: number; rawValue: number; valueUsage: number; levelUsage: number; evaluatedValue?:number; appliedStart?:number; appliedEnd?:number;
+    effects: { type: number; rawValue: number; valueUsage: number; levelUsage: number; evaluatedValue?:number; appliedStart?:number; appliedEnd?:number; followUp?:boolean;
       targetType?: number; targetValue?: number; additionalActivateType?: number }[] }[];
 }
 export interface ReferenceMetadata {

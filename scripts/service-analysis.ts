@@ -11,6 +11,7 @@ import {projectSimulation,projectModeledRace} from '../src/simulation/project';
 import {initialRace,summarize} from '../src/sandbox/results';
 import {decodeSimulatorFrames} from '../src/sandbox/binary-frames';
 import {decisionTrace} from '../src/simulation/trace';
+import {expandTrace} from '../src/simulation/compact-trace';
 import {packDashboard} from '../src/analysis/dashboard-codec';
 import {enrichSimulation} from '../src/simulation/enrich';
 
@@ -36,8 +37,9 @@ let value:any;
 if(input.kind==='sandbox'){
   const race=initialRace(input.setup,input.run,input.jobId,input.engineVersion,reference);
   const frames=input.framesPath?decodeSimulatorFrames(readFileSync(input.framesPath),race.runners.map(r=>r.id)):undefined;
-  value=projectModeledRace(race,input.modeled,input.modeled.decisionTrace,reference,input.summaryOnly,frames);
-  await enrichSimulation(value,input.modeled.decisionTrace,reference,undefined,input.summaryOnly);
+  const trace=expandTrace(input.modeled.decisionTrace);
+  value=projectModeledRace(race,input.modeled,trace,reference,input.summaryOnly,frames);
+  await enrichSimulation(value,trace,reference,undefined,input.summaryOnly);
   writeFileSync(input.summaryOutput,JSON.stringify(summarize(value,input.run)));
   if(input.summaryOnly)return;
 }else if(input.report.mode==='verified_simulation'){

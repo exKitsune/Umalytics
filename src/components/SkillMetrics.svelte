@@ -3,7 +3,12 @@
   export let metrics:SkillMetric[]=[];
   export let expanded=false;
   export let activated=false;
-  $: meaningful=activated?metrics.filter(m=>!(m.label==='Wit check'&&(m.value==='Passed'||m.value==='Not required'))):metrics;
+  export let hideDefinitions=false;
+  // The overview's clickable heading already names the direct effects.
+  // Keep derived measurements (HP contribution, timing, probabilities, etc.).
+  const definitionLabels=new Set(['Speed stat','Stamina stat','Power stat','Guts stat','Wit stat','Vision distance','Vision modifier','Acceleration','Target speed','Current speed','Lane speed','Lane speed modifier','HP effect','Gate delay multiplier','Gate delay override','Target-lane setting','Rushed chance modifier','Rushed reset timer','Requested gold activations','Running style']);
+  $: distinct=hideDefinitions?metrics.filter(m=>!definitionLabels.has(m.label.split(' · ')[0])&&!/^Effect \d+$/.test(m.label)):metrics;
+  $: meaningful=activated?distinct.filter(m=>!(m.label==='Wit check'&&(m.value==='Passed'||m.value==='Not required'))):distinct;
   $: visible=expanded?meaningful:meaningful.filter(m=>m.value!==null).slice(0,4);
   function meaning(label:string){
     const name=label.split(' · ')[0];

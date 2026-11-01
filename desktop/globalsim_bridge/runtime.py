@@ -77,7 +77,7 @@ class RuntimeConfig:
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, Path(value).expanduser().resolve())
-        if self.decision_trace_schema not in (None, "umalytics-decisions-v1"):
+        if self.decision_trace_schema not in (None, "umalytics-decisions-v1", "umalytics-decisions-v2"):
             raise ValueError("Unsupported decision trace schema")
         if self.cache_auth_key is not None and (not isinstance(self.cache_auth_key, bytes) or len(self.cache_auth_key) != 32):
             raise ValueError("cache_auth_key must be a 32-byte installation secret")
@@ -118,6 +118,7 @@ def _code_identities() -> tuple[dict, bool]:
     paths = {
         "runtime": Path(__file__),
         "adapter": Path(adapter.__file__),
+        "referenceSnapshot": Path(__file__).with_name("reference_snapshot.py"),
         "comparator": Path(__file__).with_name("comparator.py"),
         "decisionTrace": Path(__file__).with_name("decision_trace.py"),
         "transport": Path(__file__).with_name("worker_pool.py"),

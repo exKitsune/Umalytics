@@ -52,6 +52,10 @@ test('workspace sessions restore unfinished simulator edits and dashboard contex
   await run(process.execPath,['--import','tsx','tests/workspace-session-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
 });
 
+test('compact native traces preserve dashboard inputs and reject malformed wire packets',async()=>{
+  await run(process.execPath,['--import','tsx','tests/compact-trace-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
+});
+
 test('independent app components preserve capture and serve updated frontend assets',async()=>{
   await run('python',['tests/app-components-workflow.py'],{cwd:root,windowsHide:true,timeout:15000});
 });

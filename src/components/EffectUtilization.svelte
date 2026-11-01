@@ -17,11 +17,16 @@
   $: carryMeters=effect.carryoverDistance??0;
   $: scenario=effect.scenarioUtilization;
   $: coverage=effect.coverageRate??0;
-  $: result=score===null?'Unavailable':scenario&&coverage>0&&percentage(scenario.min/coverage)!==percentage(scenario.max/coverage)?`${percentage(scenario.min/coverage)}–${percentage(scenario.max/coverage)}% effective`:`${percentage(score)}% effective`;
+  $: result=effect.potential?(effect.potential.score===null?'Unavailable':`${percentage(effect.potential.score)}% effective`):score===null?'Unavailable':scenario&&coverage>0&&percentage(scenario.min/coverage)!==percentage(scenario.max/coverage)?`${percentage(scenario.min/coverage)}–${percentage(scenario.max/coverage)}% effective`:`${percentage(score)}% effective`;
 </script>
 <div class="effect-use" class:expanded data-effect-kind={effect.kind}>
-  <div class="heading"><span>{label}</span><strong>{result}{#if carryMeters>0.05} <b class="carry-figure">Carryover gain +{carryMeters.toFixed(2)} m</b>{/if}{#if carry>0.02} <b class="carry-figure">+{Math.round(carry*100)}%</b>{/if}</strong></div>
-  {#if total!==null&&total>0}<div class="meter" role="img" aria-label={`${label} use: ${result}`}>
+  <div class="heading"><span>{label}{#if effect.potential} · full potential{/if}</span><strong>{result}{#if carryMeters>0.05} <b class="carry-figure">Carryover gain +{carryMeters.toFixed(2)} m</b>{/if}{#if carry>0.02} <b class="carry-figure">+{Math.round(carry*100)}%</b>{/if}</strong></div>
+  {#if effect.potential}
+    <div class="meter potential" role="img" aria-label={`${label} full potential: ${result}`} title="Useful effect strength and duration compared with the maximum possible. Blue includes added strength and extended duration from conditional bonuses.">
+      <i class="used" style:width={`${(effect.potential.baseScore??0)*100}%`}></i><i class="bonus" style:width={`${(effect.potential.bonusScore??0)*100}%`}></i>
+    </div>
+    {#if effect.potential.score!==null}<div class="potential-key"><span>Base {percentage(effect.potential.baseScore??0)}%</span><span>Conditional gains {percentage(effect.potential.bonusScore??0)}%</span></div>{/if}
+  {:else if total!==null&&total>0}<div class="meter" role="img" aria-label={`${label} use: ${result}`}>
     <i class="used" style:width={`${share(full)}%`} title={`${full.toFixed(2)} s ${effect.kind==='acceleration'?'benefiting from extra acceleration':'at the boosted speed'}.`}></i>
     {#if half>0.01}<i class="half" style:width={`${share(half)}%`} title={`${half.toFixed(2)} s accelerating toward the boosted speed.`}></i>{/if}
     {#if blocked>0.01}<i class="blocked" style:width={`${share(blocked)}%`} title={`${blocked.toFixed(2)} s blocked by another runner.`}></i>{/if}
@@ -39,5 +44,5 @@
   </div>
 </div>
 <style>
-.effect-use{margin-top:8px;font-size:var(--font-11);line-height:1.4}.effect-use:first-child{margin-top:0}.heading{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;color:var(--muted)}strong{color:var(--text);font-weight:550;font-variant-numeric:tabular-nums}.meter{display:flex;height:6px;border-radius:2px;background:var(--border);overflow:visible}.meter i{display:block;height:100%;border-radius:0;flex:none}.meter .used{background:var(--accent)}.meter .half{background:color-mix(in srgb,var(--accent) 45%,var(--border))}.meter .blocked,.meter .wasted{background:#c44747}.carry-figure{display:inline-block;margin-left:8px;color:#8ec8f0;font-size:var(--font-13);font-weight:750;letter-spacing:.01em}.times{display:flex;gap:3px 9px;flex-wrap:wrap;margin-top:4px;color:var(--muted);font-variant-numeric:tabular-nums}.unknown-time{text-decoration:underline dotted;text-underline-offset:2px;cursor:help}.expanded{margin-top:13px;font-size:var(--font-12)}.expanded .meter{height:8px}.expanded .times{font-size:var(--font-11);margin-top:5px}
+.effect-use{margin-top:8px;font-size:var(--font-11);line-height:1.4}.effect-use:first-child{margin-top:0}.heading{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;color:var(--muted)}strong{color:var(--text);font-weight:550;font-variant-numeric:tabular-nums}.meter{display:flex;height:6px;border-radius:2px;background:var(--border);overflow:visible}.meter i{display:block;height:100%;border-radius:0;flex:none}.meter .used{background:var(--accent)}.meter .bonus{background:#69b9e8}.potential-key{display:flex;gap:12px;margin:4px 0;color:var(--muted);font-size:var(--font-11)}.potential-key span:first-child{color:var(--accent-text,var(--accent))}.potential-key span:last-child{color:#69b9e8}.meter .half{background:color-mix(in srgb,var(--accent) 45%,var(--border))}.meter .blocked,.meter .wasted{background:#c44747}.carry-figure{display:inline-block;margin-left:8px;color:#8ec8f0;font-size:var(--font-13);font-weight:750;letter-spacing:.01em}.times{display:flex;gap:3px 9px;flex-wrap:wrap;margin-top:4px;color:var(--muted);font-variant-numeric:tabular-nums}.unknown-time{text-decoration:underline dotted;text-underline-offset:2px;cursor:help}.expanded{margin-top:13px;font-size:var(--font-12)}.expanded .meter{height:8px}.expanded .times{font-size:var(--font-11);margin-top:5px}
 </style>

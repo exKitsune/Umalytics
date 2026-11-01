@@ -1,3 +1,5 @@
+import {postProcPotential} from './post-proc';
+import {motionSampleIndex} from './motion-sample-index';
 import type { Race } from './types';
 import { preparedFor } from '../analysis/prepared';
 import type { RaceAnalysis,SkillActivation } from './analytics';
@@ -16,6 +18,10 @@ export interface MotionSkillImpact extends MotionBenefit {
   effectivenessScore?:number|null;
 }
 export function procEffectiveness(effects:EffectUtilization[]):number|null {
+  if(effects.some(e=>e.potential)){
+    const scores=effects.map(e=>e.potential?e.potential.score:e.assessedDuration>0?(e.usefulDuration??0)/e.assessedDuration:null);
+    return scores.length&&scores.every(s=>s!==null)?scores.reduce<number>((n,s)=>n+s!,0)/scores.length:null;
+  }
   const assessed=effects.reduce((n,e)=>n+e.assessedDuration,0);
   return assessed>0?effects.reduce((n,e)=>n+(e.usefulDuration??0),0)/assessed:null;
 }
@@ -56,15 +62,17 @@ export function activationImpact(race:Race,reference:ReferenceData|null,analysis
   const value=calculateActivationImpact(race,reference,analysis,runnerId,a,courseId);entries.set(a,value);return value;
 }
 function calculateActivationImpact(race:Race,reference:ReferenceData|null,analysis:RaceAnalysis,runnerId:string,a:SkillActivation,courseId?:number|null):MotionSkillImpact|null {
+  const branch=reference?.metadata.skills[a.referenceSkillId??a.skillId]?.branches.find((b,i)=>(b.branchIndex??i)===a.effectBranch);
+  const postProc=!!branch&&(branch.durationUsage===4||branch.effects.some(e=>(e.additionalActivateType??0)!==0));
   const effects=a.effects.filter(e=>(e.targetType??1)===1&&[21,22,27,31].includes(e.type));
   const laneGain=race.analysisSource==='simulation'&&a.effects.some(e=>(e.targetType??1)===1&&e.type===28);
-  if((!effects.length&&!laneGain)||a.effectiveEnd===null||a.effectiveEnd<=a.start)return null;
+  if((!effects.length&&!laneGain&&!postProc)||a.effectiveEnd===null||a.effectiveEnd<=a.start)return null;
   const withSkill=motionFor(race,reference,analysis,runnerId,courseId,undefined,true),without=motionFor(race,reference,analysis,runnerId,courseId,activationMotionKey(runnerId,a),true);
   const capUse=accelerationUse(race,runnerId,withSkill);
   const stop=withSkill.samples.at(-1)?.time??race.duration,end=Math.min(stop,a.effectiveEnd);
   const benefit=motionBenefitFor(race,reference,analysis,runnerId,[a],courseId);
   const activationKey=activationMotionKey(runnerId,a);
-  const reasons=new Set<string>(),types=[...new Set(effects.map(e=>e.type===27?'target-speed':e.type===31?'acceleration':'current-speed'))] as EffectUtilization['kind'][];
+  const reasons=new Set<string>(),types=[...new Set([...effects,...(postProc?branch!.effects.filter(e=>(e.targetType??1)===1&&[21,22,27,31].includes(e.type)):[])].map(e=>e.type===27?'target-speed':e.type===31?'acceleration':'current-speed'))] as EffectUtilization['kind'][];
   // Matched traces clip visible windows at the finish. Preserve the reported
   // full duration as the scoring budget so a late repeat cannot earn 100%
   // from only its brief pre-finish portion.
@@ -76,7 +84,20 @@ function calculateActivationImpact(race:Race,reference:ReferenceData|null,analys
   const components:EffectUtilization[]=types.map(kind=>({kind,activeDuration:scheduled,assessedDuration:afterFinish,afterFinishDuration:afterFinish,usefulDuration:0,cappedDuration:0,blockedDuration:0,utilization:null,coverageRate:null,usefulAmongAssessed:null,
     ...(kind==='target-speed'?{scoringConvention:'target-speed-half-credit' as const,acceleratingDuration:0,deceleratingEffectiveDuration:0,fullyEffectiveDuration:0,belowBaselineDuration:0,wastedDuration:0,carryoverEfficiency:null}:{})} satisfies EffectUtilization));
   const credited=new Map(components.map(c=>[c,zero()]));
-  const withoutByTime=new Map(without.samples.map(s=>[s.time,s]));
+  const effectTypes=(kind:EffectUtilization['kind'])=>kind==='acceleration'?[31]:kind==='target-speed'?[27]:[21,22];
+  const potential=new Map(components.map(c=>[c,branch?postProcPotential(branch,runner,a.referenceSkillId??a.skillId,race.distance,a,effectTypes(c.kind)):null]));
+  const areas=new Map(components.map(c=>[c,{base:0,bonus:0}]));
+  function credit(component:EffectUtilization,channel:keyof MotionBand,useful:number,start:number,dt:number){
+    credited.get(component)![channel]+=useful;
+    const plan=potential.get(component);if(channel!=='mid'||!plan||plan.maximum===null||plan.duration===null)return;
+    const selected=effects.filter(e=>effectTypes(component.kind).includes(e.type)&&start>=(e.appliedStart??a.start)-1e-8&&start<(e.appliedEnd??a.effectiveEnd!)-1e-8);
+    const magnitude=selected.reduce((n,e)=>n+(effectValue(runner,a.referenceSkillId??a.skillId,e)??0),0);
+    const baseMagnitude=selected.filter(e=>!e.followUp).reduce((n,e)=>n+(effectValue(runner,a.referenceSkillId??a.skillId,e)??0),0);
+    const baseFraction=dt>0?Math.max(0,Math.min(1,(a.start+(plan.baseDuration??0)-start)/dt)):0;
+    const baseArea=useful*Math.min(baseMagnitude,plan.baseValue)*baseFraction,total=useful*magnitude;
+    areas.get(component)!.base+=baseArea;areas.get(component)!.bonus+=Math.max(0,total-baseArea);
+  }
+  const withoutByTime=motionSampleIndex(without);
   for(let i=1;i<withSkill.samples.length;i++){
     const p=withSkill.samples[i-1],q=withSkill.samples[i],u=withoutByTime.get(p.time),v=withoutByTime.get(q.time);
     const start=Math.max(a.start,p.time),finish=Math.min(end,q.time),dt=finish-start;
@@ -99,7 +120,7 @@ function calculateActivationImpact(race:Race,reference:ReferenceData|null,analys
         const fraction=p.blockingClamps&&p.constrained&&u.constrained&&Math.abs(delta)>.00001?Math.min(1,Math.abs(p.constrained.mid-u.constrained.mid)/Math.abs(delta)):Math.abs(delta)>.00001?1:0;
         component.assessedDuration+=dt;const useful=dt*fraction;component.usefulDuration!+=useful;
         if(p.blockingClamps)component.blockedDuration!+=dt-useful;
-        for(const c of channels)credited.get(component)![c]+=useful;continue;
+        for(const c of channels)credit(component,c,useful,start,dt);continue;
       }
       if(component.kind==='acceleration'){
         const rate=(q.selfActual-p.selfActual)/dt;
@@ -117,14 +138,14 @@ function calculateActivationImpact(race:Race,reference:ReferenceData|null,analys
             useful=acceleration>0?Math.min(dt,Math.max(0,target-p.selfActual)/acceleration):0;capped=dt-useful;
           }else if(Math.abs(p.selfActual-target)<.03&&Math.abs(q.selfActual-targetAfter)<.03&&Math.abs(rate)<.05)capped=dt;
           else if(p.selfActual<target&&rate>.001)useful=dt;
-          credited.get(component)![c]+=useful;
+          credit(component,c,useful,start,dt);
           if(c==='mid'){component.usefulDuration!+=useful;component.cappedDuration!+=capped;}
         }
         continue;
       }
       component.assessedDuration+=dt;
       for(const c of channels){
-        if(p.targetActive[c]<u.targetActive[c]-.00001){const useful=p.constrained&&u.constrained&&p.constrained[c]<u.constrained[c]-.001?dt:0;credited.get(component)![c]+=useful;if(c==='mid')component.usefulDuration!+=useful;continue;}
+        if(p.targetActive[c]<u.targetActive[c]-.00001){const useful=p.constrained&&u.constrained&&p.constrained[c]<u.constrained[c]-.001?dt:0;credit(component,c,useful,start,dt);if(c==='mid')component.usefulDuration!+=useful;continue;}
         const stack=p.targetStack,nextStack=q.intervalTargetStack;
         const ceiling=stack?.ceilings[activationKey],nextCeiling=nextStack?.ceilings[activationKey];
         if(ceiling&&stack&&ceiling[c]<=stack.floors[activationKey][c]+.00001){if(c==='mid')component.cappedDuration!+=dt;continue;}
@@ -134,7 +155,7 @@ function calculateActivationImpact(race:Race,reference:ReferenceData|null,analys
         const boostedAfter=nextCeiling?.[c]??(q.time>=a.effectiveEnd-1e-8?v.targetActive[c]+p.targetActive[c]-u.targetActive[c]:q.targetActive[c]);
         const benefit=p.constrained&&u.constrained?p.constrained[c]-u.constrained[c]:0,benefitAfter=q.constrained&&v.constrained?q.constrained[c]-v.constrained[c]:0;
         const score=targetCredit(p.selfActual,q.selfActual,normal,normalAfter,boosted,boostedAfter,benefit,benefitAfter,dt);
-        credited.get(component)![c]+=score.credit;
+        credit(component,c,score.credit,start,dt);
         if(c==='mid'){component.usefulDuration!+=score.credit;component.acceleratingDuration!+=score.accelerating;component.deceleratingEffectiveDuration!+=score.decelerating;component.fullyEffectiveDuration!+=score.full;component.belowBaselineDuration!+=score.below;component.wastedDuration!+=score.wasted;component.cappedDuration!+=score.capped;}
       }
     }
@@ -143,6 +164,13 @@ function calculateActivationImpact(race:Race,reference:ReferenceData|null,analys
     c.assessedDuration=Math.min(scheduled,c.assessedDuration);c.coverageRate=scheduled>0?Math.min(1,c.assessedDuration/scheduled):0;c.usefulAmongAssessed=c.assessedDuration>0?c.usefulDuration!/c.assessedDuration:null;
     const scores=credited.get(c)!;if(c.assessedDuration>0&&scheduled>0){c.scenarioUtilization=envelope({min:scores.min/scheduled,mid:scores.mid/scheduled,max:scores.max/scheduled});}
     c.utilization=c.coverageRate>=.999&&c.scenarioUtilization&&c.scenarioUtilization.max-c.scenarioUtilization.min<.00001?c.usefulAmongAssessed:null;
+    const plan=potential.get(c);
+    if(plan){
+      const area=areas.get(c)!,budget=plan.maximum!==null&&plan.duration!==null?plan.maximum*plan.duration:null;
+      const complete=c.coverageRate>=.999&&budget!==null&&budget>0;
+      const baseScore=complete?Math.max(0,Math.min(1,area.base/budget!)):null,bonusScore=complete?Math.max(0,Math.min(1-baseScore!,area.bonus/budget!)):null;
+      c.potential={score:baseScore===null||bonusScore===null?null:baseScore+bonusScore,baseScore,bonusScore,maximumMagnitude:plan.maximum,maximumDuration:plan.duration};
+    }
     if(c.assessedDuration===0){c.usefulDuration=null;c.cappedDuration=null;c.blockedDuration=null;}
   }
   return {...benefit,effects:components,effectivenessScore:procEffectiveness(components),reasons:[...new Set([...benefit.reasons,...reasons])],
@@ -166,7 +194,13 @@ function combineImpacts(values:MotionSkillImpact[],benefit:MotionBenefit):Motion
     const scored=rows.some(r=>r.scoringConvention==='target-speed-half-credit');
     const useful=num('usefulDuration'),full=num('fullyEffectiveDuration'),half=num('acceleratingDuration');
     const scenario=rows.every(r=>r.scenarioUtilization)?envelope({min:rows.reduce((n,r)=>n+r.scenarioUtilization!.min*(r.activeDuration??0),0)/active,mid:useful/active,max:rows.reduce((n,r)=>n+r.scenarioUtilization!.max*(r.activeDuration??0),0)/active}):undefined;
-    return {kind,activeDuration:active,assessedDuration:assessed,afterFinishDuration:num('afterFinishDuration'),usefulDuration:useful,cappedDuration:num('cappedDuration'),blockedDuration:num('blockedDuration'),
+    const potential=rows.some(r=>r.potential)?{
+      score:rows.every(r=>r.potential?.score!=null)?rows.reduce((n,r)=>n+r.potential!.score!,0)/rows.length:null,
+      baseScore:rows.every(r=>r.potential?.baseScore!=null)?rows.reduce((n,r)=>n+r.potential!.baseScore!,0)/rows.length:null,
+      bonusScore:rows.every(r=>r.potential?.bonusScore!=null)?rows.reduce((n,r)=>n+r.potential!.bonusScore!,0)/rows.length:null,
+      maximumMagnitude:null,maximumDuration:rows.every(r=>r.potential?.maximumDuration!=null)?rows.reduce((n,r)=>n+r.potential!.maximumDuration!,0):null,
+    }:undefined;
+    return {...(potential?{potential}:{}),kind,activeDuration:active,assessedDuration:assessed,afterFinishDuration:num('afterFinishDuration'),usefulDuration:useful,cappedDuration:num('cappedDuration'),blockedDuration:num('blockedDuration'),
       coverageRate:active>0?Math.min(1,assessed/active):0,usefulAmongAssessed:assessed>0?useful/assessed:null,
       utilization:active>0&&Math.abs(active-assessed)<1e-3&&scenario&&scenario.max-scenario.min<1e-5?useful/active:null,scenarioUtilization:scenario,
       ...(scored?{scoringConvention:'target-speed-half-credit' as const,acceleratingDuration:half,deceleratingEffectiveDuration:num('deceleratingEffectiveDuration'),fullyEffectiveDuration:full,belowBaselineDuration:num('belowBaselineDuration'),wastedDuration:num('wastedDuration')}:{})};

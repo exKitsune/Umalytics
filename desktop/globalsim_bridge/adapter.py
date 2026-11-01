@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from functools import lru_cache
 import hashlib
 import json
 import math
@@ -22,6 +23,7 @@ from pathlib import Path
 import re
 from typing import Any
 from .skill_additions import definitions as skill_additions, SOURCE as SKILL_ADDITIONS_SOURCE
+from .reference_snapshot import freeze
 
 
 ADAPTER_VERSION = "umalytics-globalsim-initial-v2"
@@ -83,7 +85,10 @@ def _hash(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+@lru_cache(maxsize=16)
 def _json(raw: bytes) -> dict:
+    # Cache by exact content, never by timestamps. All file hashes and engine
+    # pins are still checked on every load. Callers cannot mutate cached trees.
     def pairs(values):
         obj = {}
         for key, value in values:
@@ -98,7 +103,7 @@ def _json(raw: bytes) -> dict:
     value = json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant)
     if not isinstance(value, dict):
         raise ReferenceDataError("Reference JSON must contain an object")
-    return value
+    return freeze(value)
 
 
 @dataclass(frozen=True)

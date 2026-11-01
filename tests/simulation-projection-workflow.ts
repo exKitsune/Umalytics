@@ -342,7 +342,7 @@ baseMetadata.skills[100531]={name:'Red-Hot Discipline!',rarity:5,activateLot:0,b
   {type:31,rawValue:1000,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:0},
   {type:31,rawValue:1000,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:1}]}]};
 const bambooReference=assembleReferenceData(baseMetadata,JSON.parse(readFileSync('public/data/courses.json','utf8')),JSON.parse(readFileSync('public/data/reference-source.json','utf8')),[]);
-let previousBambooGain=0;
+let previousBambooGain=0,previousBambooScore=0;
 for(const passes of [0,1,2,3]){
   const ev:DecisionEvent[]=[],emit=(kind:string,time:number,data:DecisionEvent['data'])=>ev.push(event(kind,time,data,'100531'));
   const expiry=3.4+passes*1.2;
@@ -384,6 +384,15 @@ for(const passes of [0,1,2,3]){
   assert.ok(Math.abs(impact.effects[0].activeDuration!-(expiry-1))<1e-6,'Effectiveness includes the extended scoring window');
   assert.ok(impact.distance!==null&&impact.distance.mid>0,'Effectiveness gain includes the full acceleration path');
   assert.ok(impact.distance!.mid>previousBambooGain,'Each additional boost increases the measured gain in the same uncapped scenario');
+  const potential=impact.effects[0].potential!;
+  assert.ok(potential,'Post-proc skills use full potential scoring');
+  assert.equal(potential.maximumDuration,6,'All three possible duration extensions belong to the denominator');
+  assert.ok(Math.abs(potential.maximumMagnitude!-.4)<1e-8,'Maximum strength includes all three possible bonuses');
+  assert.ok(potential.score!==null&&potential.score>previousBambooScore,'Fulfilled conditions increase full-potential effectiveness');
+  assert.ok(Math.abs(potential.score!-potential.baseScore!-potential.bonusScore!)<1e-10);
+  if(passes===0){assert.equal(potential.bonusScore,0);assert.ok(potential.score!<=.101,'A base-only proc cannot claim full potential');}
+  assert.ok(activation.effects.filter(e=>e.followUp).length===passes,'Each actual bonus retains its trigger time');
+  previousBambooScore=potential.score!;
   previousBambooGain=impact.distance!.mid;
 }
 console.log('Deferred overtake effects: zero through three boosts, timer extensions, removal and effectiveness passed.');
@@ -413,3 +422,20 @@ for(const [id,count] of [[110211,2],[910211,2],[110351,3],[910351,3]]){
   assert.ok(Math.abs(activation.effects.reduce((n,e)=>n+e.evaluatedValue!,0)-(.15+.05*count))<1e-9);
 }
 console.log('Skill-triggered follow-ups: two/three increments and inherited versions passed.');
+
+// The same definition contract covers own-skill triggers, inherited strengths,
+// unsupported future trigger kinds and captures without matched provenance.
+const {postProcDefinition,postProcPotential}=await import('../src/data/post-proc');
+for(const [kind,cap] of [[1,3],[2,3],[3,2]]){
+  const branch={condition:'always==1',rawDuration:50000,durationUsage:1,effects:[
+    {type:27,rawValue:1500,valueUsage:1,levelUsage:1},
+    {type:27,rawValue:500,valueUsage:1,levelUsage:1,additionalActivateType:kind}]};
+  const runner={...runners[0],skills:[{id:110211,level:1}]};
+  const activation={activationEvidence:'simulated'} as any;
+  const plan=postProcPotential(branch,runner,110211,1000,activation,[27])!;
+  assert.ok(Math.abs(plan.maximum!-(.15+.05*cap))<1e-10);
+  assert.equal(plan.duration,5,'Own-skill trigger bonuses do not invent duration extensions');
+  assert.equal(postProcPotential(branch,runner,110211,1000,{...activation,activationEvidence:'recorded'},[27])!.maximum,null);
+  assert.equal(postProcPotential({...branch,effects:[branch.effects[0],{...branch.effects[1],additionalActivateType:99}]},runner,110211,1000,activation,[27])!.maximum,null);
+}
+console.log('Full-potential contracts: overtake/own-skill caps, duration, provenance and unknown triggers passed.');

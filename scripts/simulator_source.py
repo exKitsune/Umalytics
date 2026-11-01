@@ -14,7 +14,8 @@ def source_lock():
             or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', lock.get('repository', ''))
             or not re.fullmatch(r'[0-9a-f]{40}', lock.get('revision', ''))
             or not re.fullmatch(r'[0-9a-f]{40}', lock.get('upstreamRevision', ''))
-            or not re.fullmatch(r'[0-9a-f]{64}', lock.get('sourceSha256', ''))):
+            or not re.fullmatch(r'[0-9a-f]{64}', lock.get('sourceSha256', ''))
+            or 'preparedSourceSha256' in lock and not re.fullmatch(r'[0-9a-f]{64}', lock['preparedSourceSha256'])):
         raise ValueError('Invalid saved simulator source lock.')
     return lock
 

@@ -493,6 +493,24 @@ class AdapterBoundaryTests(unittest.TestCase):
 
 
 class ReferenceLoadingTests(unittest.TestCase):
+    def test_content_cache_is_read_only_and_copies_are_independent(self):
+        before=adapter._json.cache_info().hits
+        first=adapter.ReferenceData.load(self.app,self.engine)
+        second=adapter.ReferenceData.load(self.app,self.engine)
+        self.assertGreater(adapter._json.cache_info().hits,before)
+        self.assertIs(first.metadata,second.metadata)
+        with self.assertRaises(TypeError):
+            first.metadata['source']['revision']='contaminated'
+        with self.assertRaises(TypeError):
+            first.settings.update({'seed':99})
+        document=adapter._json(b'{"nested":[{"value":1}]}')
+        with self.assertRaises(TypeError):
+            document['nested'].append(2)
+        from copy import deepcopy
+        copied=deepcopy(document);copied['nested'][0]['value']=2
+        self.assertEqual(document['nested'][0]['value'],1)
+        self.assertEqual(json.loads(json.dumps(document)),{'nested':[{'value':1}]})
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

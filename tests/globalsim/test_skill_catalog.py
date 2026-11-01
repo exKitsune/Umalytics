@@ -135,7 +135,8 @@ class InstalledCatalogTests(unittest.TestCase):
         spec,_=prepare(value,refs);spec['retainAllFrames']=False
         modeled,_,_=_run_worker(config,_canonical(spec)+b'\n')
         self.assertNotIn('error',modeled);self.assertEqual(len(modeled['results']),9)
-        events=modeled['decisionTrace']['events']
+        from globalsim_bridge.decision_trace import expand_trace
+        events=expand_trace(modeled['decisionTrace'])['events']
         for sid in ids:
             definitions=[e for e in events if e['kind']=='skill-definition' and e['skillId']==sid]
             self.assertEqual(len(definitions),len(refs.skill_data[sid]['alternatives']),sid)
@@ -179,6 +180,18 @@ class InstalledCatalogTests(unittest.TestCase):
         for p in value['participants']:p['uma']['skills']=[{'id':1234567,'level':1}]
         job={'id':'catalog-dashboard-test','setup':value,'engine':bundle,'referenceKey':inference['data_sha256']}
         summary,packed=store.execute(job,config,refs,0,False)
+        if bundle.get('decisionTraceSchema') == 'umalytics-decisions-v2':
+            from unittest.mock import patch
+            def diagnostic_worker(config,payload):
+                request=json.loads(payload);request['traceDiagnostics']=True
+                return _run_worker(config,_canonical(request)+b'\n')
+            with patch('sandbox_service._run_worker',side_effect=diagnostic_worker):
+                diagnostic_summary,diagnostic_packed=store.execute(job,config,refs,0,False)
+            def clean(value):
+                if isinstance(value,dict):return {k:clean(v) for k,v in value.items() if k not in ('sequence','lastSequence')}
+                return [clean(v) for v in value] if isinstance(value,list) else value
+            self.assertEqual(clean(summary),clean(diagnostic_summary))
+            self.assertEqual(clean(json.loads(gzip.decompress(packed))),clean(json.loads(gzip.decompress(diagnostic_packed))))
         self.assertEqual(len(summary['runners']),9)
         dashboard=json.loads(gzip.decompress(packed));path=self.sim.skill_catalog.path(dashboard['referenceKey'],True)
         display=json.loads(path.read_bytes())

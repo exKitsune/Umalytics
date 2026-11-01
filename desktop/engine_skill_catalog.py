@@ -43,7 +43,7 @@ class EngineSkillCatalog:
 
     def extend(self, manifest):
         candidates = [b for b in manifest['bundles'] if b.get('kind') == 'simulation' and b.get('profile') == 'v74'
-                      and b.get('decisionTraceSchema') == 'umalytics-decisions-v1']
+                      and b.get('decisionTraceSchema') in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
         if not candidates: return manifest
         base = candidates[-1]
         build_path = self.simulation.path(base['artifact']).parent / 'build.json'

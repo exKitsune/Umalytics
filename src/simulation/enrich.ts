@@ -1,3 +1,4 @@
+import {traceIndex} from './trace-index';
 import type {PreparedRace} from '../analysis/prepared';
 import type {ReferenceData} from '../data/reference';
 import type {RaceAnalysis,StatusInterval} from '../data/analytics';
@@ -32,7 +33,7 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
   const {race,analysis}=value,course=reference.courses[race.courseId??-1]??null;
   const calculation:RaceAnalysis={runners:{},debuffs:[],warnings:[]};
   for(const runner of race.runners){
-    const detail=analysis.runners[runner.id],rows=trace.motion.filter(r=>r[m.horse]===runner.index);
+    const detail=analysis.runners[runner.id],rows=traceIndex(trace).motion.get(runner.index)??[];
     const breakdown=statBreakdownFor(race,runner,course,reference,detail.skillRows);
     for(const key of ['speed','stamina','power','guts','wisdom'] as const){
       const final=detail.statBreakdown.stats[key].final,modeled=breakdown.stats[key].final;
@@ -73,7 +74,7 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
   }
   // Summary batches still calculate motion, effectiveness and carryover. The
   // detailed per-activation explanations/HP cards are built only when opened.
-  if(!summaryOnly){await checkpoint();populateSkillImpacts(race,reference,course,calculation);}
+  if(!summaryOnly){await checkpoint();populateSkillImpacts(race,reference,course,calculation,true);}
   for(const runner of race.runners){
     await checkpoint();const detail=calculation.runners[runner.id],ready=value.runners[runner.id],display=analysis.runners[runner.id];
     const motion=engine.build({runnerId:runner.id}).runners[runner.id];
@@ -98,7 +99,8 @@ export async function enrichSimulation(value:PreparedRace,trace:DecisionTrace,re
           summary.unavailableReasons=impact.reasons;summary.detail=impact.detail;
           const use=movementUse(impact.effects);
           summary.utilization=summary.usefulAmongAssessed=use.score;summary.usefulRate=use.coverage===1?use.score:null;
-          summary.assessableDuration=impact.assessedDuration;summary.usefulDuration=use.score===null?null:use.score*impact.assessedDuration;
+          const assessed=impact.effects.reduce((n,e)=>n+e.assessedDuration,0),useful=impact.effects.reduce((n,e)=>n+(e.usefulDuration??0),0);
+          summary.assessableDuration=impact.assessedDuration;summary.usefulDuration=assessed>0?useful/assessed*impact.assessedDuration:null;
           summary.effectiveness=use.score===null?'unresolved':use.score===0?'not-useful':use.score>=.999?'useful':'partial';
           summary.evidence='estimated';summary.utilizationKind='movement-active-time';
           summary.blockingDistanceLoss=summary.assessedBlockingDistanceLoss=impact.blockedDistance?.mid??null;

@@ -1,3 +1,4 @@
+import {traceIndex,eventsOf} from './trace-index';
 /** Display adapter for a freshly authorized engine result. No inference engine,
  * effect formula, condition evaluator, random draw or counterfactual runs here. */
 import type { Race, Runner, Frame } from '../data/types';
@@ -62,10 +63,17 @@ function internalIntervals(events:DecisionEvent[],stop:number):StatusInterval[] 
 
 function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,reference:ReferenceData|null,stop:number,runners:Runner[],allEvents:DecisionEvent[],motion:number[][]) {
   const reported=objects(modeled.skillEvents).filter(e=>e.horseIndex===runner.index);
+  const bySkill=new Map<number,DecisionEvent[]>();
+  const add=(id:number,event:DecisionEvent)=>{let rows=bySkill.get(id);if(!rows)bySkill.set(id,rows=[]);rows.push(event);};
+  for(const event of events){const id=Number(event.skillId);add(id,event);
+    if(event.kind==='cooldown-start'&&String(event.data.key)!==String(id)){
+      const key=String(event.data.key);if(String(Number(key))===key&&Number(key)!==id)add(Number(key),event);
+    }
+  }
   const ids=[...new Set([...(runner.skills??[]).map(s=>s.id),...events.filter(e=>e.skillId&&['skill-definition','skill-wit','skill-activated'].includes(e.kind)).map(e=>Number(e.skillId)),...reported.map(e=>Number(e.skillId))])].filter(Number.isFinite);
   const metrics:Record<number,SkillMetric[]>={},rows:SkillRow[]=[];
   for(const id of ids){
-    const own=events.filter(e=>Number(e.skillId)===id||e.kind==='cooldown-start'&&String(e.data.key)===String(id));
+    const own=bySkill.get(id)??[];
     const wit=own.filter(e=>e.kind==='skill-wit'),activated=own.filter(e=>e.kind==='skill-activated');
     const ownApplied:DecisionEvent[]=[];
     const activations:SkillActivation[]=activated.map((e,index)=>{
@@ -73,8 +81,8 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
       // Received copies also use followUp; only a proc with its own deferred
       // effect can own later evaluations. Foreign deliveries stay separate.
       const deferred=own.some(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-deferred');
-      const deliveries=deferred?allEvents.filter(x=>x.kind==='effect-queued'&&x.skillId===e.skillId&&x.horseIndex!==runner.index&&Array.isArray(x.data.targets)&&x.data.targets.includes(runner.index)).map(queue=>({
-        end:queue.sequence,start:allEvents.filter(x=>x.kind==='effect-evaluated'&&x.skillId===e.skillId&&x.horseIndex===queue.horseIndex&&x.tick===queue.tick&&x.sequence<queue.sequence).at(-1)?.sequence??queue.sequence
+      const deliveries=deferred?eventsOf(allEvents,'effect-queued',e.skillId).filter(x=>x.horseIndex!==runner.index&&Array.isArray(x.data.targets)&&x.data.targets.includes(runner.index)).map(queue=>({
+        end:queue.sequence,start:eventsOf(allEvents,'effect-evaluated',e.skillId,queue.horseIndex).filter(x=>x.tick===queue.tick&&x.sequence<queue.sequence).at(-1)?.sequence??queue.sequence
       })):[];
       const effects=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.kind==='effect-evaluated'&&(x.tick===e.tick||deferred&&x.data.followUp===true&&!deliveries.some(d=>x.sequence>d.start&&x.sequence<d.end)));
       const belongs=(x:DecisionEvent,evaluated:DecisionEvent)=>x.tick===evaluated.tick&&x.data.ability===evaluated.data.ability&&x.sequence>evaluated.sequence&&x.sequence<(effects.find(p=>p.sequence>evaluated.sequence)?.sequence??next);
@@ -94,14 +102,14 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
         // Follow-up durations contain the remaining extended window. Expiry
         // callbacks have no ability ID, so consume them in application order.
         const expected=Math.max(event.time+seconds,extendedEnd??-Infinity);
-        const ended=allEvents.find(x=>x.kind==='effect-ended'&&x.horseIndex===recipient&&x.skillId===e.skillId&&x.sequence>event.sequence&&x.sequence<next&&!usedExpiries.has(x.sequence)&&x.time>=expected-(extended ? .1 : .001)&&x.time<=expected+.2);
+        const ended=eventsOf(allEvents,'effect-ended',e.skillId,recipient).find(x=>x.sequence>event.sequence&&x.sequence<next&&!usedExpiries.has(x.sequence)&&x.time>=expected-(extended ? .1 : .001)&&x.time<=expected+.2);
         if(extended&&ended)usedExpiries.add(ended.sequence);
         return Math.min(stop,ended?.time??expected);
       };
       // Reference effects supply labels/icons only. Magnitudes below are copied
       // from evaluated engine modifiers, never scaled by the UI formula engine.
       const displayEffects=effects.filter(x=>applied.some(p=>belongs(p,x))||queued.some(p=>belongs(p,x))).map(x=>({type:Number(x.data.type),rawValue:Number(x.data.modifier)*10000,valueUsage:1,levelUsage:0,evaluatedValue:Number(x.data.modifier),
-        appliedStart:x.time,appliedEnd:effectEnd(x),
+        appliedStart:x.time,appliedEnd:effectEnd(x),...(x.data.followUp===true?{followUp:true}:{}),
         targetType:ref?.effects[Number(x.data.ability)]?.targetType??(queued.some(p=>p.data.ability===x.data.ability)?2:1)}));
       const simulatedRecipients:NonNullable<SkillActivation['simulatedRecipients']>={};
       for(const queue of queued){
@@ -109,7 +117,7 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
         const previousQueue=queued.filter(q=>q.sequence<queue.sequence).at(-1)?.sequence??e.sequence;
         for(const target of Array.isArray(queue.data.targets)?queue.data.targets:[]){
           const recipient=runners.find(r=>r.index===target);if(!recipient||recipient.id===runner.id)continue;
-          const delivered=allEvents.find(x=>x.horseIndex===target&&x.kind==='effect-applied'&&x.skillId===e.skillId&&x.tick===queue.tick&&x.sequence>previousQueue&&x.sequence<queue.sequence&&x.data.type===evaluated.data.type);
+          const delivered=eventsOf(allEvents,'effect-applied',e.skillId,Number(target)).find(x=>x.tick===queue.tick&&x.sequence>previousQueue&&x.sequence<queue.sequence&&x.data.type===evaluated.data.type);
           if(delivered)(simulatedRecipients[recipient.id]??=[]).push({type:Number(delivered.data.type),rawValue:Number(delivered.data.modifier)*10000,evaluatedValue:Number(delivered.data.modifier),valueUsage:1,levelUsage:0,appliedStart:delivered.time,appliedEnd:effectEnd(delivered,Number(target)),targetType:ref?.effects[Number(queue.data.ability)]?.targetType??2});
         }
       }
@@ -187,7 +195,7 @@ export function projectModeledRace(recorded:Race,modeled:JsonObject,trace:NonNul
   const analysis:RaceAnalysis={source:'simulation',runners:{},debuffs:[],warnings:[]},prepared:PreparedRace={race,analysis,runners:{}};
   const sampleRanks=new Map(frames.map(f=>[f,rankSamples(race,f.runners,f.time)]));
   for(const runner of runners){
-    const events=trace.events.filter(e=>e.horseIndex===runner.index),rows=trace.motion.filter(r=>r[m.horse]===runner.index),stop=runner.finishTimeRaw??race.duration;
+    const events=traceIndex(trace).events.get(runner.index)??[],rows=traceIndex(trace).motion.get(runner.index)??[],stop=runner.finishTimeRaw??race.duration;
     if(!rows.length)throw new Error('Simulator motion is incomplete.');
     const power=powerSummary(events,objects(modeled.conservePowerDiagnostics).find(d=>d.horseIndex===runner.index),stop);
     const {rows:skillRows,metrics}=skills(runner,events,modeled,reference,stop,runners,trace.events,rows),activations=skillRows.flatMap(s=>s.activations);

@@ -1,4 +1,5 @@
 import { canUseSimulatedCapability, type AnalysisGateReport, type JsonObject } from './contracts';
+import {expandTrace,COMPACT_TRACE_SCHEMA} from './compact-trace';
 export const TRACE_SCHEMA = 'umalytics-decisions-v1';
 export interface DecisionEvent {
   sequence:number; lastSequence:number; tick:number; lastTick:number; time:number; lastTime:number;
@@ -19,10 +20,11 @@ export const motionIndex = {
 export const paceModes = ['Normal','Speed up','Overtake','Pace up','Pace down','Pace up EX'];
 /** Simulated execution trace, never original hidden game telemetry. */
 export function decisionTrace(report:AnalysisGateReport|null):DecisionTrace|null {
-  const value=report?.simulation?.modeled?.decisionTrace;
+  const raw=report?.simulation?.modeled?.decisionTrace;
   if(!canUseSimulatedCapability(report,'recordedResults',report?.binding)
       ||report?.simulation?.capabilities.hiddenState!=='simulated_trace'
-      ||!value||typeof value!=='object'||Array.isArray(value))return null;
+      ||!raw||typeof raw!=='object'||Array.isArray(raw))return null;
+  const value=raw.schema===COMPACT_TRACE_SCHEMA?expandTrace(raw):raw;
   if(value.schema!==TRACE_SCHEMA||value.complete!==true||value.dropped!==0
       ||!Array.isArray(value.events)||!Array.isArray(value.motion)||!Array.isArray(value.motionColumns))return null;
   return value as unknown as DecisionTrace;

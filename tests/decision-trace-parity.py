@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'desktop'))
 from globalsim_bridge.adapter import ReferenceData, prepare_capture, normalize_capture
 from globalsim_bridge.comparator import compare_observations, decode_scenario
-from globalsim_bridge.decision_trace import validate_trace
+from globalsim_bridge.decision_trace import validate_trace, expand_trace
 
 
 def main():
@@ -70,6 +70,7 @@ def main():
             assert all(isinstance(row['timeline'],list) for row in power)
             assert baseline==off==on, 'Observation instrumentation changed race output'
             assert validate_trace(trace,len(initial['horses'])) is None
+            trace = expand_trace(trace)
             for event in trace['events']:
                 data=event['data']
                 if event['kind'] in ('skill-activated','effect-applied','condition','initial-stats'):

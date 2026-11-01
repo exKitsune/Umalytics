@@ -58,7 +58,7 @@ class SimulationService:
             manifest = self.skill_catalog.extend(manifest) if self.skill_catalog else manifest
         if registry.get('allowUnknownVersionSimulation') is True:
             candidates = [row for row in manifest['bundles'] if row.get('kind') == 'simulation'
-                          and row.get('profile') == 'v74' and row.get('decisionTraceSchema') == 'umalytics-decisions-v1']
+                          and row.get('profile') == 'v74' and row.get('decisionTraceSchema') in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
             # The last packaged trace-capable build is the preferred trial. This
             # is app-owned configuration; browser/capture inputs cannot select it.
             registry = {**registry, 'unknownVersionSimulators': [{

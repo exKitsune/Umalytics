@@ -1,3 +1,4 @@
+import {motionSampleIndex} from './motion-sample-index';
 import type { Race } from './types';
 import type { RaceAnalysis } from './analytics';
 import type { ReferenceData } from './reference';
@@ -43,7 +44,7 @@ export function modeImpactsFor(race: Race, reference: ReferenceData | null, anal
     const duration = union.reduce((n, w) => n + w[1] - w[0], 0), without = entry.engine.build({ runnerId, applyInferredModes: true, excludeStatusKey: `kind:${kind}` }).runners[runnerId];
     const totals = [0, 1, 2].map(() => ({ distance: 0, time: 0, hp: 0 })), channels = ['min', 'mid', 'max'] as const;
     let assessed = 0, carryover = 0, any = false, complete = true, hpKnown = Boolean(course && race.distance === course.distance && [1, 2, 3, 4].includes(Number(race.conditions?.ground)) && full.initialStats.guts), tail = false;
-    const other = new Map(without.samples.map(s => [s.time, s]));
+    const other = motionSampleIndex(without);
     const hills=kind==='downhill-mode'?detail.hillImpacts.filter(h=>h.kind==='downhill').map(h=>({
       distanceStart:h.distanceStart,distanceEnd:h.distanceEnd,start:h.start,end:h.end,
       duration:h.start==null||h.end==null?0:union.reduce((sum,w)=>sum+Math.max(0,Math.min(w[1],h.end!)-Math.max(w[0],h.start!)),0),

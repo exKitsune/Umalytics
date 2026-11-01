@@ -108,7 +108,7 @@ class SavedSourceTests(unittest.TestCase):
         identity = {**prepare_simulator.instrumentation(), 'sourceSha256': digest}
         manifest = stage / 'instrumentation.json'
         manifest.write_text(json.dumps(identity), encoding='utf-8')
-        lock = {**source_lock(), 'sourceSha256': digest}
+        lock = {**source_lock(), 'sourceSha256': digest, 'preparedSourceSha256': digest}
         with patch.object(prepare_simulator, 'source_lock', return_value=lock):
             self.assertEqual(prepare_simulator.validate_prepared_source(stage), identity)
             changed = b'fn changed_mechanics() {}\n'

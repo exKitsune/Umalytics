@@ -14,9 +14,11 @@ source remains in its Git history; a separate original branch is unnecessary.
 files and third-party notices are preserved. Tracing does not intentionally alter
 race decisions, RNG draws or physics.
 
-Builds stage a clean Git archive of the traced commit, verify its instrumentation
-manifest against the reviewed patch and source hash, and compile a local path
-dependency with `cargo build --offline --locked`. The patch is not applied again.
+Builds authenticate a clean Git archive against `sourceSha256`, then apply the
+app-owned compact-observer module and `compact-trace.patch`. The prepared tree
+must match `preparedSourceSha256` and its instrumentation manifest before it is
+compiled with `cargo build --offline --locked`. The original instrumentation
+patch is not applied again; the saved private checkout is never modified.
 The archived patch remains in Umalytics as provenance and for upgrade review.
 Packaging separately records both the original and traced commit identities.
 
