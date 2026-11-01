@@ -58,6 +58,73 @@ def wait_health(port, version=None):
     raise AssertionError(f'Synthetic collector did not become ready: {version}')
 
 
+def stop_fixture_desktops(install):
+    """Wait for all relaunched native fixtures, including detached rollback apps."""
+    (install / 'fixture-stop').touch()
+    if os.name != 'nt':
+        return
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    for receipt in (install / 'fixture-processes').glob('*'):
+        pid = int(receipt.name)
+        handle = kernel.OpenProcess(0x1000 | 0x100000 | 0x0001, False, pid)
+        if not handle:
+            if ctypes.get_last_error() == 87:  # Already exited.
+                continue
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            if kernel.WaitForSingleObject(handle, 0) == 0:
+                continue
+            image, length = ctypes.create_unicode_buffer(32768), wintypes.DWORD(32768)
+            if not kernel.QueryFullProcessImageNameW(handle, 0, image, ctypes.byref(length)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            # A recycled PID must never authorize terminating another app.
+            if Path(image.value).resolve().parent != install.resolve():
+                continue
+            result = kernel.WaitForSingleObject(handle, 5000)
+            if result == 258:
+                if not kernel.TerminateProcess(handle, 1):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                result = kernel.WaitForSingleObject(handle, 5000)
+            assert result == 0, 'Owned fixture did not exit before temporary cleanup.'
+        finally:
+            kernel.CloseHandle(handle)
+
+
+def delayed_exit_cleanup(harness, root):
+    """A child retaining stdout beyond the former fixed sleep must be reaped."""
+    install = root / 'delayed-exit-cleanup'
+    install.mkdir()
+    executable = install / 'Umalytics.exe'
+    shutil.copyfile(harness, executable)
+    output_path = install / 'helper-output.txt'
+    with output_path.open('w') as output:
+        child = subprocess.Popen([str(executable), '--delayed-exit-fixture'],
+            env={**os.environ, 'UMALYTICS_WORKFLOW_INSTALL': str(install)},
+            creationflags=FLAGS, stdout=output, stderr=output)
+        try:
+            deadline = time.monotonic() + 10
+            while not (install / 'delayed-ready').exists():
+                assert child.poll() is None and time.monotonic() < deadline
+                time.sleep(.025)
+            started = time.monotonic()
+            stop_fixture_desktops(install)
+            assert child.wait(timeout=1) == 0
+            assert time.monotonic() - started >= 1, 'Cleanup did not await delayed fixture exit.'
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
+    output_path.unlink()  # Windows rejects this while any inherited handle remains.
+
+
 def owned_service(payload, install, port):
     payload = json.loads(payload)
     install = Path(install)
@@ -151,6 +218,8 @@ def main(harness, cross_drive_root=None, startup_only=False):
     with tempfile.TemporaryDirectory(prefix='umalytics-updater-workflow-') as temporary:
         root = Path(temporary).resolve()
         assert root.parent == Path(tempfile.gettempdir()).resolve()
+        if os.name == 'nt':
+            delayed_exit_cleanup(harness, root)
 
         # An installed older helper may replace the file before the old window
         # exits. The new app must wait before acquiring its single-instance lock.
@@ -426,15 +495,20 @@ def main(harness, cross_drive_root=None, startup_only=False):
                 if old_desktop and old_desktop.poll() is None:
                     old_desktop.kill()
                     old_desktop.wait(timeout=5)
+                if wrapper and wrapper.poll() is None:
+                    wrapper.kill()
+                    wrapper.wait(timeout=5)
                 if initial.poll() is None:
                     try:
                         initial.wait(timeout=3)
                     except subprocess.TimeoutExpired:
                         initial.terminate()
                         initial.wait(timeout=3)
-                time.sleep(.6)
-                for output in outputs:
-                    output.close()
+                try:
+                    stop_fixture_desktops(install)
+                finally:
+                    for output in outputs:
+                        output.close()
 
         scenario('success')
         scenario('hot-active-game')
@@ -472,6 +546,7 @@ def main(harness, cross_drive_root=None, startup_only=False):
     print(json.dumps({'cases': cases, 'signedReplacement': 'passed', 'rollback': 'passed',
                       'crashRecovery': 'passed', 'unknownFiles': 'unchanged', 'userData': 'unchanged',
                       'restartAbort': 'passed', 'temporaryCleanup': 'passed',
+                      'delayedExitCleanup': 'passed' if os.name == 'nt' else 'not-applicable',
                       'independentRestartEnvironment': 'passed'}))
 
 

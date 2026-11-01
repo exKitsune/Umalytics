@@ -6,7 +6,21 @@ use std::{path::Path, process::{Command, Stdio}};
 #[path="../../../src-tauri/src/tray_policy.rs"]mod tray_policy;
 #[cfg(windows)]use std::os::windows::process::CommandExt;
 fn main(){
+    // Every relaunched fixture belongs to one disposable installation. Let the
+    // Python owner stop and reap it before removing inherited log handles.
+    let fixture_install=std::env::var("UMALYTICS_WORKFLOW_INSTALL").ok().map(std::path::PathBuf::from);
+    if let Some(install)=&fixture_install{
+        if install.join("fixture-stop").exists(){return;}
+        let receipts=install.join("fixture-processes");std::fs::create_dir_all(&receipts).unwrap();
+        std::fs::write(receipts.join(std::process::id().to_string()),"owned fixture").unwrap();
+    }
     let arguments:Vec<String>=std::env::args().skip(1).collect();
+    if arguments.first().is_some_and(|arg|arg=="--delayed-exit-fixture"){
+        let install=fixture_install.as_ref().unwrap();
+        std::fs::write(install.join("delayed-ready"),"ready").unwrap();
+        while !install.join("fixture-stop").exists(){std::thread::sleep(std::time::Duration::from_millis(25));}
+        std::thread::sleep(std::time::Duration::from_millis(1500));return;
+    }
     if arguments.first().is_some_and(|arg|arg=="--hold-desktop-fixture"){
         let folder=Path::new(&arguments[1]);std::fs::write(folder.join("old-ready"),"running").unwrap();
         while !folder.join("old-exit").exists(){std::thread::sleep(std::time::Duration::from_millis(25));}return;
@@ -63,7 +77,9 @@ fn main(){
         updater::wait_replacement_turn(Path::new(&data)).unwrap();
         if payload["desktopExit"]==true{return;}
         updater::desktop_ready(Path::new(&data)).unwrap();
-        let _=std::fs::write(Path::new(&std::env::var("UMALYTICS_WORKFLOW_INSTALL").unwrap()).join("app-attached.txt"),"owned collector reused");while endpoint.health().is_some(){std::thread::sleep(std::time::Duration::from_millis(100));}return;}
+        let install=fixture_install.as_ref().unwrap();
+        let _=std::fs::write(install.join("app-attached.txt"),"owned collector reused");
+        while !install.join("fixture-stop").exists()&&endpoint.health().is_some(){std::thread::sleep(std::time::Duration::from_millis(100));}return;}
     let mut command=Command::new(std::env::var("UMALYTICS_WORKFLOW_PYTHON").unwrap());
     command.arg(std::env::var("UMALYTICS_WORKFLOW_SCRIPT").unwrap()).arg("--owned-service").arg(version)
         .arg(std::env::var("UMALYTICS_WORKFLOW_INSTALL").unwrap()).arg(std::env::var("UMALYTICS_WORKFLOW_PORT").unwrap())
