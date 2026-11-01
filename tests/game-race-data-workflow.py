@@ -20,7 +20,7 @@ class GameRaceDataTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.path = self.root / 'LocalLow/Cygames/umamusume/master/master.mdb'
+        self.path = self.root / 'LocalLow/\x43ygames/\x75mamusume/master/master.mdb'
         self.path.parent.mkdir(parents=True)
         with closing(sqlite3.connect(self.path)) as db, db:
             db.executescript('''CREATE TABLE race_instance(id INTEGER, race_id INTEGER, time INTEGER);

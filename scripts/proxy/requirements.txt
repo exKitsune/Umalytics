@@ -1,3 +1,4 @@
-# The official standalone executable lacks msgpack in its embedded environment.
-# Install these into a private venv; do not change the system Python packages.
-mitmproxy==12.2.3
+# Install into a private venv; do not change system Python packages.
+mitmproxy==12.3.1
+# The API envelope decoder uses MessagePack independently of mitmproxy.
+msgpack==1.2.4

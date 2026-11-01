@@ -2,7 +2,7 @@
 
 One workflow, `.github/workflows/release.yml`, runs on each push to `master` and
 publishes both Pages and Windows releases. Keeping this workflow file preserves
-its increasing release run number. Node.js 22.20.0, Python 3.12.10 and Rust 1.90.0
+its increasing release run number. Node.js 22.20.0, Python 3.15.2 and Rust 1.90.0
 are pinned; Rust builds use `Cargo.lock` with `--locked`.
 
 The web build and full platform-neutral validation run concurrently on Linux.

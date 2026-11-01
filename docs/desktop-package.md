@@ -171,10 +171,10 @@ building or committing. `--check` verifies the committed manifest.
 ## Developer build
 
 The build requires Windows x64, Visual Studio C++ build tools, current stable
-Rust, Node.js, and Python 3.12. Use a local build environment:
+Rust, Node.js, and Python 3.15.2 (pinned in `.python-version`). Use a local build environment:
 
 ```powershell
-python -m venv .cache/proxy-venv
+py -3.15 -m venv .cache/proxy-venv
 .cache/proxy-venv/Scripts/python.exe -m pip install -r desktop/requirements-build.txt
 npm ci
 # Restore the pinned simulator checkout as described in simulator-backup.md first.

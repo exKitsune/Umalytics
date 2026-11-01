@@ -72,10 +72,10 @@ The standard environment variable is supported only by participating TLS impleme
 
 ## Runtime setup
 
-The installed Windows executable runs, but its embedded Python environment lacks `msgpack`, needed by this addon. Use the official PyPI package in a workspace virtual environment. Python 3.12 is installed here at `C:\Python312\python.exe`; adapt that path for another machine.
+The installed Windows executable runs, but its embedded Python environment lacks `msgpack`, needed by this addon. Use the official PyPI package in a workspace virtual environment. Use Python 3.15.2, as pinned in `.python-version`.
 
 ```powershell
-C:\Python312\python.exe -m venv .cache/proxy-venv
+py -3.15 -m venv .cache/proxy-venv
 .\.cache\proxy-venv\Scripts\python.exe -m pip install -r scripts/proxy/requirements.txt
 npm test
 ```

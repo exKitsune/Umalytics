@@ -14,7 +14,7 @@ def master_candidates():
         roots.append(Path(os.environ['LOCALAPPDATA']).parent / 'LocalLow')
     if os.environ.get('USERPROFILE'):
         roots.append(Path(os.environ['USERPROFILE']) / 'AppData' / 'LocalLow')
-    return tuple(dict.fromkeys(root / 'Cygames' / 'umamusume' / 'master' / 'master.mdb' for root in roots))
+    return tuple(dict.fromkeys(root / '\x43ygames' / '\x75mamusume' / 'master' / 'master.mdb' for root in roots))
 
 
 class GameRaceData:

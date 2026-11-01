@@ -123,7 +123,7 @@ def case(folder, runtime, helper, legacy):
             wait_for_helper_exit(result['helperPid'])
             assert result['parentExtractionRemoved'] and result['inheritedReset'] == '1', result
             if legacy:
-                assert result['exitCode'] != 0 and 'python312.dll' in result['error'].lower(), result
+                assert result['exitCode'] != 0 and f'python{sys.version_info.major}{sys.version_info.minor}.dll' in result['error'].lower(), result
             else:
                 assert result['exitCode'] == 0, result
         finally:

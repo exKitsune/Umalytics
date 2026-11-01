@@ -9,7 +9,7 @@ The source SHA-256 and modification timestamp travel with the data. Unknown IDs
 remain visible as IDs. Inherited unique names are explicitly labeled inherited.
 
 The desktop also discovers the official Global client's
-`LocalLow/Cygames/umamusume/master/master.mdb` under the Windows user's AppData.
+`LocalLow/<publisher>/<game>/master/master.mdb` under the Windows user's AppData.
 It opens the file read-only and selects public race-instance, race and course
 definitions to fill missing lookup entries, including CM IDs received through
 the capture API. The projection refreshes when the file changes and carries

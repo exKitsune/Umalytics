@@ -1,2 +1,2 @@
 @echo off
-"C:\Python312\pythonw.exe" "%~dp0service.py" --data-dir "%LOCALAPPDATA%\Umalytics" --launch-game -- %*
+"%~dp0..\.cache\proxy-venv\Scripts\pythonw.exe" "%~dp0service.py" --data-dir "%LOCALAPPDATA%\Umalytics" --launch-game -- %*

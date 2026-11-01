@@ -5,6 +5,9 @@ $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location -LiteralPath $workspace
 $python = Join-Path $workspace '.cache/proxy-venv/Scripts/python.exe'
 if (-not (Test-Path -LiteralPath $python)) { throw 'Build Python environment is missing; see docs/desktop-package.md.' }
+$requiredPython = (Get-Content -LiteralPath (Join-Path $workspace '.python-version') -Raw).Trim()
+$actualPython = (& $python -c "import platform; print(platform.python_version())").Trim()
+if ($LASTEXITCODE -ne 0 -or $actualPython -ne $requiredPython) { throw "Recreate .cache/proxy-venv with Python $requiredPython; found $actualPython." }
 $simSource = Join-Path $workspace '.cache/globalsim-saved'
 # CI supplies this exact checkout from the private backup repository. Local
 # builds can restore the same checkout from backups; never fetch public upstream.

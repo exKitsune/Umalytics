@@ -90,7 +90,7 @@ jobs:
           node-version: '22.20.0'
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12.10'
+          python-version-file: '.python-version'
       - name: Restore npm downloads
         id: npm-cache
         uses: actions/cache/restore@v4
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12.10'
+          python-version-file: '.python-version'
       - name: Read saved simulator source lock
         id: simulator-source
         env:
@@ -171,14 +171,14 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .cache/proxy-venv
-          key: Windows-2022-x64-python3.12.10-venv-v1-${{ hashFiles('desktop/requirements-build.txt') }}
+          key: Windows-2022-x64-python-${{ hashFiles('.python-version') }}-venv-v1-${{ hashFiles('desktop/requirements-build.txt') }}
       - name: Restore pip downloads
         id: pip-cache
         if: steps.python-cache.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v4
         with:
           path: .cache/pip
-          key: Windows-2022-x64-python3.12.10-pip-v1-${{ hashFiles('desktop/requirements-build.txt') }}
+          key: Windows-2022-x64-python-${{ hashFiles('.python-version') }}-pip-v1-${{ hashFiles('desktop/requirements-build.txt') }}
       - name: Restore Cargo registry sources
         id: cargo-sources
         uses: actions/cache/restore@v4
@@ -451,18 +451,18 @@ jobs:
       - uses: actions/setup-python@v5
         if: steps.latest.outputs.current == 'true'
         with:
-          python-version: '3.12.10'
+          python-version-file: '.python-version'
       - name: Restore signing dependency downloads
         id: signing-cache
         if: steps.latest.outputs.current == 'true'
         uses: actions/cache/restore@v4
         with:
           path: .cache/pip
-          key: Linux-python3.12.10-signing-cryptography48.0.1-v1
+          key: Linux-python-${{ hashFiles('.python-version') }}-signing-cryptography50.0.2-v1
       - name: Install only the signing dependency
         id: signing-deps
         if: steps.latest.outputs.current == 'true'
-        run: python -m pip install cryptography==48.0.1
+        run: python -m pip install cryptography==50.0.2
       - uses: actions/download-artifact@v4
         if: steps.latest.outputs.current == 'true'
         with:
