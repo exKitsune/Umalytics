@@ -218,3 +218,7 @@ Tests cover the mathematical oracle, blocking caps, candidate probabilities,
 cache key invalidation, restoration without hidden-state substitution, dashboard
 projection, the version-bound fallback and existing inference workflows. The
 manual acceptance cases are in `simulator-ui-test-plan.md`.
+
+### Hybrid movement effectiveness
+
+Consolidated acceleration + speed scores add the independently scored components: acceleration supplies the primary effectiveness and speed supplies bonus credit. Target-speed and current-speed components retain their existing average within the speed group; this group adds once when acceleration is also present. A fully useful acceleration effect with unused target speed scores 100%; both fully useful score 200%. Repeated activations still add their individual scores. Each component retains its existing denominator, including maximum potential for post-activation bonuses. Component bars and joint distance/time comparisons remain separate from this scoring convention. HP and lane effects do not supply a movement effectiveness percentage.

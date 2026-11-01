@@ -336,7 +336,27 @@ assert.deepEqual(lazy.runners.r0.motion.samples,special.runners.r0.motion.sample
 const {assembleReferenceData}=await import('../src/data/reference');
 const {createTraceMotionEngine}=await import('../src/simulation/replay-motion');
 const {registerReplayMotion,activationMotionKey}=await import('../src/data/race-motion');
-const {activationImpact}=await import('../src/data/motion-skill-impact');
+const {activationImpact,procEffectiveness}=await import('../src/data/motion-skill-impact');
+const {movementUse}=await import('../src/data/skill-totals');
+type EffectUse=import('../src/data/effect-types').EffectUtilization;
+function hybridUse(kind:EffectUse['kind'],score:number,seconds=4):EffectUse {
+  return {kind,activeDuration:seconds,assessedDuration:seconds,afterFinishDuration:0,usefulDuration:score*seconds,cappedDuration:0,blockedDuration:0,utilization:score,coverageRate:1,usefulAmongAssessed:score};
+}
+for(const [accel,speed,expected] of [[1,0,1],[1,.5,1.5],[1,1,2],[.25,.75,1],[0,0,0]]){
+  const effects=[hybridUse('acceleration',accel,2),hybridUse('target-speed',speed,5)];
+  assert.equal(procEffectiveness(effects),expected,'Speed is bonus credit, independent of acceleration duration');
+  assert.equal(movementUse(effects).score,expected,'Consolidated and per-proc summaries share hybrid scoring');
+  assert.equal(procEffectiveness([...effects].reverse()),expected,'Effect ordering cannot change hybrid scores');
+}
+assert.equal(procEffectiveness([hybridUse('acceleration',.7)]),.7);
+assert.equal(procEffectiveness([hybridUse('target-speed',.4)]),.4);
+assert.equal(procEffectiveness([hybridUse('target-speed',1),hybridUse('current-speed',0)]),.5,'Target and current speed keep their existing average');
+assert.equal(procEffectiveness([hybridUse('acceleration',1),hybridUse('current-speed',.5)]),1.5,'Current speed is bonus credit on an acceleration hybrid');
+assert.equal(procEffectiveness([hybridUse('acceleration',1),hybridUse('target-speed',1),hybridUse('current-speed',0)]),1.5,'Three-effect hybrids add the averaged speed group once');
+assert.equal(procEffectiveness([hybridUse('acceleration',1),hybridUse('target-speed',0,0)]),null,'Missing bonus coverage cannot silently become zero');
+const conditionalHybrid=hybridUse('acceleration',1);
+conditionalHybrid.potential={score:.2,baseScore:.1,bonusScore:.1,maximumMagnitude:.4,maximumDuration:6};
+assert.equal(procEffectiveness([conditionalHybrid,hybridUse('target-speed',.5)]),.7,'Post-proc maximum potential remains the acceleration denominator');
 const baseMetadata=JSON.parse(readFileSync('public/data/metadata.json','utf8'));
 baseMetadata.skills[100531]={name:'Red-Hot Discipline!',rarity:5,activateLot:0,branches:[{branchIndex:0,condition:'always==1',rawDuration:20000,durationUsage:4,effects:[
   {type:31,rawValue:1000,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:0},

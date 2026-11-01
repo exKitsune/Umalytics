@@ -3,7 +3,7 @@
   export let color='var(--accent)';
   $: segments=Array.from({length:Math.max(1,Math.ceil(score??0))},(_,i)=>Math.max(0,Math.min(1,(score??0)-i)));
 </script>
-<span class="score-meter" role="img" aria-label={score===null?'Effectiveness unavailable':`${Math.round(score*100)}% effective`} title="100% is one fully effective proc; repeat procs add to the score.">
+<span class="score-meter" role="img" aria-label={score===null?'Effectiveness unavailable':`${Math.round(score*100)}% effective`} title="100% is one fully effective primary effect. Speed bonuses on acceleration hybrids and repeat procs add to the score.">
   {#each segments as fill}<span class="score-segment"><span class="score-fill" style:width={`${fill*100}%`} style:background={color}></span></span>{/each}
 </span>
 <style>

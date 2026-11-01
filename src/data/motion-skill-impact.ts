@@ -18,6 +18,13 @@ export interface MotionSkillImpact extends MotionBenefit {
   effectivenessScore?:number|null;
 }
 export function procEffectiveness(effects:EffectUtilization[]):number|null {
+  // Acceleration supplies the primary score; the speed group adds bonus credit.
+  // Target-speed + current-speed components retain their existing average.
+  const acceleration=effects.filter(e=>e.kind==='acceleration'),speed=effects.filter(e=>e.kind!=='acceleration');
+  if(acceleration.length&&speed.length){
+    const base=procEffectiveness(acceleration),bonus=procEffectiveness(speed);
+    return base===null||bonus===null?null:base+bonus;
+  }
   if(effects.some(e=>e.potential)){
     const scores=effects.map(e=>e.potential?e.potential.score:e.assessedDuration>0?(e.usefulDuration??0)/e.assessedDuration:null);
     return scores.length&&scores.every(s=>s!==null)?scores.reduce<number>((n,s)=>n+s!,0)/scores.length:null;

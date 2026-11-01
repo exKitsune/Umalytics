@@ -6,12 +6,12 @@ import { motionSkillImpact, procEffectiveness, type MotionSkillImpact } from './
 import { motionBenefitFor } from './motion-analysis';
 import { preparedFor } from '../analysis/prepared';
 
-/** Component seconds have a common denominator. HP capacity, stat coefficients
- * and lane travel do not, and must not be averaged into a movement score. */
+/** HP capacity, stat coefficients and lane travel have separate measures and
+ * do not contribute to a movement effectiveness score. */
 export function movementUse(effects:EffectUtilization[]){
-  let active=0,assessed=0,credit=0;
-  for(const effect of effects){active+=effect.activeDuration??0;assessed+=effect.assessedDuration;credit+=effect.usefulDuration??0;}
-  return {score:effects.some(e=>e.potential)?procEffectiveness(effects):assessed>0?credit/assessed:null,coverage:active>0?Math.min(1,assessed/active):0,active,assessed};
+  let active=0,assessed=0;
+  for(const effect of effects){active+=effect.activeDuration??0;assessed+=effect.assessedDuration;}
+  return {score:procEffectiveness(effects),coverage:active>0?Math.min(1,assessed/active):0,active,assessed};
 }
 
 const cache=new WeakMap<RaceAnalysis,Map<string,ReturnType<typeof buildTotals>>>();
