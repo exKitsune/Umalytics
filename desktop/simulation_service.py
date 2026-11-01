@@ -151,7 +151,11 @@ class SimulationService:
         paths.extend((self.service.data_dir / 'analysis-evidence').glob('*.json'))
         catalog_file = self.service.data_dir / 'cache/catalog/current.json'
         paths.append(catalog_file)
-        stamp = (digest(context), tuple((str(p), st.st_mtime_ns, st.st_ctime_ns, st.st_size) if (st := p.stat() if p.exists() else None) else (str(p), None) for p in paths)) if hasattr(self.service, 'inbox') else None
+        master = getattr(self.service, 'game_race_data', None)
+        projection = master.read() if master else {}
+        master_identity = projection.get('installedGameRaceSource')
+        requested_context = context
+        stamp = (digest([requested_context, master_identity]), tuple((str(p), st.st_mtime_ns, st.st_ctime_ns, st.st_size) if (st := p.stat() if p.exists() else None) else (str(p), None) for p in paths)) if hasattr(self.service, 'inbox') else None
         with self.lock:
             cached = self.snapshots.get(race_id)
             if stamp is not None and cached and cached[0] == stamp:
@@ -160,15 +164,18 @@ class SimulationService:
                 self.snapshots.move_to_end(race_id)
                 return cached[1]
         capture, entry_hash = self.selected(race_id, expected)
+        context = master.context(capture, requested_context, projection) if master else requested_context
         registry, manifest = self.config()
         sidecar_path = self.service.data_dir / 'analysis-evidence' / (capture_hash(capture) + '.json')
         sidecar = read_json(sidecar_path) if sidecar_path.is_file() else None
         evidence, notes = map_evidence(capture, registry, sidecar)
         selection = select_compatibility(capture_hash(capture), evidence, registry)
         identity = digest({'selection': selection, 'context': context, 'manifest': manifest,
-                           'sidecar': sidecar, 'mapper': 1})
+                           'sidecar': sidecar, 'master': master_identity, 'mapper': 2})
         snap = dict(capture=capture, entry_hash=entry_hash, registry=registry, manifest=manifest,
-                    evidence=evidence, notes=notes, identity=identity, context=context, selection=selection)
+                    evidence=evidence, notes=notes, identity=identity, context=context,
+                    requested_context=requested_context, selection=selection)
+        snap['master_reference'] = projection
         with self.lock:
             self.snapshots[race_id] = (stamp, snap)
             while len(self.snapshots) > 8:
@@ -220,7 +227,7 @@ class SimulationService:
         try:
             # A queued job may have waited while the capture or policy changed.
             # Recheck before binding resources, opening caches or launching a worker.
-            current = self.snapshot(job['raceId'], job['entrySha256'], snap['context'])
+            current = self.snapshot(job['raceId'], job['entrySha256'], snap.get('requested_context'))
             if current['identity'] != job['identity']:
                 raise StaleAnalysis('Queued selection changed before execution.')
             decision = select_compatibility(capture_hash(snap['capture']), snap['evidence'], snap['registry'])
@@ -235,7 +242,7 @@ class SimulationService:
                     pass
             # Recompute before publishing. Artifact files are measured separately
             # on inference authorization; simulator runtime measures its binary.
-            current = self.snapshot(job['raceId'], job['entrySha256'], snap['context'])
+            current = self.snapshot(job['raceId'], job['entrySha256'], snap.get('requested_context'))
             if current['identity'] != job['identity']:
                 raise StaleAnalysis('Evidence or support configuration changed during evaluation.')
         except Exception as error:
@@ -264,7 +271,7 @@ class SimulationService:
             if job is None or job['raceId'] != race_id:
                 raise StaleAnalysis('Analysis job does not belong to this race.')
         job['accessed'] = time.monotonic()
-        current = self.snapshot(race_id, job['entrySha256'], job['snapshot']['context'])
+        current = self.snapshot(race_id, job['entrySha256'], job['snapshot'].get('requested_context'))
         if current['identity'] != job['identity']:
             raise StaleAnalysis('Race evidence or engine configuration changed; reopen the race.')
         if job['report'] and job['report']['mode'] == 'verified_simulation':

@@ -1,5 +1,6 @@
 import type { Runner } from './types';
 import { projectGeometry, readGeometry, type CourseGeometry, type GeometryData } from './geometry';
+import {installMasterCareer} from './installed-master';
 
 export interface ReferenceSource { name: string; revision: string; url: string; license?: string }
 export interface CourseReference {
@@ -28,6 +29,7 @@ export interface ReferenceMetadata {
   racePrograms?: Record<string, number>;
   raceInstanceConditions?: Record<string, { grade?: number; time?: number }>;
   installedGameRaceSource?: {sha256:string;tables:string};
+  installedGameSkillIds?: string[];
   fallback?: Pick<ReferenceMetadata, 'characters' | 'outfits' | 'skillNames' | 'skills' | 'source'> & {
     skillTexts?: Record<string, {name?: string; description?: string}>;
   };
@@ -90,15 +92,23 @@ export async function loadReferenceData(): Promise<ReferenceData> {
   ]);
   return assembleReferenceData(metadata, courses, source, ids, geometry);
 }
-/** Desktop-only public race projection; immutable reference assets stay intact. */
+/** Desktop-only public master projection; immutable reference assets stay intact. */
 export async function loadInstalledRaceLookup(reference:ReferenceData):Promise<ReferenceData> {
-  const url=new URL('api/race-reference',document.baseURI);
+  const url=new URL('api/installed-reference',document.baseURI);
   if(!['localhost','127.0.0.1'].includes(url.hostname))return reference;
   try {
     const response=await fetch(url,{signal:AbortSignal.timeout(3000)});if(!response.ok)return reference;
-    const local=await response.json() as Partial<Pick<ReferenceMetadata,'raceInstances'|'raceInstanceConditions'|'installedGameRaceSource'>>;
+    const local=await response.json() as Partial<ReferenceMetadata>&{career?:unknown};
+    installMasterCareer(local.career);
     return {...reference,metadata:{...reference.metadata,
+      characters:{...local.characters,...reference.metadata.characters},
+      outfits:{...local.outfits,...reference.metadata.outfits},
+      trackNames:{...local.trackNames,...reference.metadata.trackNames},
+      skillNames:{...local.skillNames,...reference.metadata.skillNames},
+      skills:{...local.skills,...reference.metadata.skills},
+      installedGameSkillIds:Object.keys(local.skills??{}),
       raceInstances:{...local.raceInstances,...reference.metadata.raceInstances},
+      racePrograms:{...local.racePrograms,...reference.metadata.racePrograms},
       raceInstanceConditions:{...local.raceInstanceConditions,...reference.metadata.raceInstanceConditions},
       ...(local.installedGameRaceSource?{installedGameRaceSource:local.installedGameRaceSource}:{})}};
   } catch {return reference;}

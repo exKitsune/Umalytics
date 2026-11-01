@@ -9,6 +9,9 @@ import json
 from public_json import public_json
 from pathlib import Path
 import sqlite3
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'desktop'))
+import master_metadata
 
 p = argparse.ArgumentParser()
 p.add_argument('master', type=Path)
@@ -24,40 +27,11 @@ for output in (a.output.resolve(), identity_output.resolve()):
 db = sqlite3.connect(master.as_uri() + '?mode=ro&immutable=1', uri=True)
 db.row_factory = sqlite3.Row
 
-def texts(category):
-    return {str(row['index']): row['text'] for row in db.execute(
-        'SELECT [index], text FROM text_data WHERE category = ?', (category,))}
-
-names = texts(6)
-outfits = texts(5)
-skill_names = texts(47)
-skill_descriptions = texts(48)
-skills = {}
-for row in db.execute('SELECT * FROM skill_data'):
-    sid = str(row['id'])
-    if sid not in skill_names:
-        continue
-    skills[sid] = {'name': skill_names[sid], 'rarity': row['rarity'],
-        'groupId': row['group_id'], 'activateLot': row['activate_lot'],
-        'iconId': row['icon_id'], 'description': skill_descriptions.get(sid),
-        **({'tagIds': [int(tag) for tag in str(row['tag_id']).split('/') if tag.isdigit()]} if 'tag_id' in row.keys() else {}), 'branches': []}
-    for branch in (1, 2):
-        condition = row[f'condition_{branch}']
-        effects = [{'type': row[f'ability_type_{branch}_{i}'],
-            'rawValue': row[f'float_ability_value_{branch}_{i}'],
-            'valueUsage': row[f'ability_value_usage_{branch}_{i}'],
-            'levelUsage': row[f'ability_value_level_usage_{branch}_{i}'],
-            'targetType': row[f'target_type_{branch}_{i}'], 'targetValue': row[f'target_value_{branch}_{i}'],
-            'additionalActivateType': row[f'additional_activate_type_{branch}_{i}']} for i in (1, 2, 3)
-            if row[f'ability_type_{branch}_{i}'] != 0]
-        if condition or effects:
-            skills[sid]['branches'].append({'condition': condition, 'branchIndex': branch - 1,
-                'precondition': row[f'precondition_{branch}'], 'rawCooldown': row[f'float_cooldown_time_{branch}'],
-                'rawDuration': row[f'float_ability_time_{branch}'],
-                'durationUsage': row[f'ability_time_usage_{branch}'], 'effects': effects})
+extracted = master_metadata.metadata(db)
+names, outfits, skill_names, skills = (extracted[key] for key in ('characters', 'outfits', 'skillNames', 'skills'))
 records = {
     'schemaVersion': 1, 'characters': names, 'outfits': outfits,
-    'trackNames': texts(35), 'skillNames': skill_names, 'skills': skills,
+    'trackNames': extracted['trackNames'], 'skillNames': skill_names, 'skills': skills,
     'raceInstances': {str(row[0]): row[1] for row in db.execute(
         'SELECT ri.id, r.course_set FROM race_instance ri JOIN race r ON r.id = ri.race_id')},
     'source': {'name': 'Local Global master SQLite public metadata',

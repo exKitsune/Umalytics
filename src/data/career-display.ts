@@ -1,9 +1,9 @@
-import facts from './career-reference.json';
+import {installedCareer as facts,installedMasterRevision} from './installed-master';
 import {catalog as fallback,catalogRevision} from './catalog';
 import type {CareerRecord,CareerFactor,CareerSupport} from './career';
 import type {Runner} from './types';
 let supportRevision='',supports={...fallback.supports,...facts.supports};
-export const careerReference={...facts,get supports(){if(supportRevision!==catalogRevision){supports={...fallback.supports,...facts.supports};supportRevision=catalogRevision;}return supports;}} as unknown as {
+export const careerReference={...facts,get supports(){const revision=catalogRevision+installedMasterRevision;if(supportRevision!==revision){supports={...fallback.supports,...facts.supports};supportRevision=revision;}return supports;}} as unknown as {
   ranks:{id:number;min:number;max:number;label:string}[];
   supports:Record<string,{name:string;charaId:number;rarity:number;type:number;command:number}>;
   scenarios:Record<string,string>;supportLevels:Record<string,number[][]>;epithets:Record<string,string>;

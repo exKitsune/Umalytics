@@ -11,8 +11,11 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'desktop'))
-from game_race_data import GameRaceData, master_candidates
+from game_race_data import GameRaceData, master_candidates, merge_metadata
+from engine_skill_catalog import EngineSkillCatalog
 from service import Service
+from simulation_service import SimulationService
+from copy import deepcopy
 
 
 class GameRaceDataTests(unittest.TestCase):
@@ -80,6 +83,64 @@ class GameRaceDataTests(unittest.TestCase):
         references = service.summary_reference()
         self.assertNotEqual(service._summary_reference_key, key)
         self.assertEqual(service.summary_course({'race_instance_id': 678903}, references)['courseId'], 10701)
+
+    def test_simulation_context_uses_only_preserved_facts(self):
+        capture = {'race_horse_data_array': [], 'race_instance_id': 678901}
+        original = deepcopy(capture)
+        context = self.reader.context(capture)
+        self.assertEqual({key: context[key] for key in ('courseId', 'grade', 'time')},
+                         {'courseId': 10701, 'grade': 100, 'time': 2})
+        self.assertIn(hashlib.sha256(self.path.read_bytes()).hexdigest(), context['provenance']['courseId']['reference'])
+        self.assertEqual(capture, original)
+        supplied = {'time': 3, 'provenance': {'time': {'source': 'user-confirmed', 'reference': 'fixture confirmation'}}}
+        explicit = self.reader.context({**capture, 'race_course_id': 10606, 'race_grade': 800}, supplied)
+        self.assertNotIn('courseId', explicit)
+        self.assertNotIn('grade', explicit)
+        self.assertEqual(explicit, supplied)
+        portable = self.reader.context({'schemaVersion': 1, 'raceHorse': [], 'raceInstanceId': 678901,
+                                        'courseId': 999999})
+        self.assertEqual(portable['courseId'], 10701)  # Normalized UI values are not provenance.
+        self.assertIsNone(self.reader.context({**capture, 'race_instance_id': 999999}))
+
+    def test_public_metadata_overlay_is_hashed_and_preserves_pinned_definitions(self):
+        projection = {**self.reader.read(), 'characters': {'7': 'New character'},
+                      'skillNames': {'8': 'New skill'}, 'skills': {'8': {'name': 'New skill'}}}
+        base = {'characters': {'7': 'Pinned character'}, 'skills': {}, 'skillNames': {}}
+        merged = merge_metadata(base, projection)
+        self.assertEqual(merged['characters']['7'], 'Pinned character')
+        self.assertEqual(merged['skillNames']['8'], 'New skill')
+        self.assertEqual(base['skills'], {})
+        host = type('Host', (), {'data_dir': self.root})()
+        catalog = EngineSkillCatalog(type('Simulation', (), {'service': host})())
+        path = self.root / 'reference.json'
+        path.write_text(json.dumps({'metadata': base, 'skillIds': []}))
+        original = path.read_bytes()
+        display, key = catalog.display_reference(path, None, projection)
+        self.assertEqual(hashlib.sha256(display.read_bytes()).hexdigest(), key)
+        self.assertEqual(json.loads(display.read_bytes())['metadata']['skillNames']['8'], 'New skill')
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(catalog.display_reference(path, None, projection), (display, key))
+
+    def test_program_context_and_simulation_cache_refresh(self):
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.executescript('CREATE TABLE single_mode_program(id INTEGER,race_instance_id INTEGER); INSERT INTO single_mode_program VALUES (77,678901);')
+        context = self.reader.context({'race_horse_data_array': [], 'race_program_id': 77})
+        self.assertEqual(context['raceInstanceId'], 678901)
+        capture = {'race_horse_data_array': [], 'race_instance_id': 678901}
+        host = type('Host', (), {'data_dir': self.root, 'inbox': self.root / 'races', 'game_race_data': self.reader})()
+        simulation = SimulationService(host, self.root)
+        self.addCleanup(simulation.close)
+        simulation.selected = lambda *_: (capture, 'a' * 64)
+        simulation.config = lambda: ({}, {'schemaVersion': 1, 'bundles': []})
+        first = simulation.snapshot('fixture~0', None, None)
+        self.assertIs(simulation.snapshot('fixture~0', None, None), first)
+        self.assertIsNone(first['requested_context'])
+        self.assertEqual(first['context']['time'], 2)
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute('UPDATE race_instance SET time=4')
+        refreshed = simulation.snapshot('fixture~0', None, first['requested_context'])
+        self.assertNotEqual(refreshed['identity'], first['identity'])
+        self.assertEqual(refreshed['context']['time'], 4)
 
 
 if __name__ == '__main__':

@@ -10,14 +10,19 @@ remain visible as IDs. Inherited unique names are explicitly labeled inherited.
 
 The desktop also discovers the official Global client's
 `LocalLow/<publisher>/<game>/master/master.mdb` under the Windows user's AppData.
-It opens the file read-only and selects public race-instance, race and course
-definitions to fill missing lookup entries, including CM IDs received through
-the capture API. The projection refreshes when the file changes and carries
+It opens the file read-only and selects public race definitions, names, skills
+and career reference tables, including CM IDs received through the capture API.
+The projection refreshes when the file changes and carries
 its SHA-256; no database path, account data or complete database is exported.
 Missing, unreadable or invalid databases leave bundled references available.
 Captured course values and pinned reference definitions keep priority. Existing
-captures resolve without rewriting their files. This display lookup does not
-change simulator mechanics or historical compatibility authorization.
+captures resolve without rewriting their files. Missing simulator course, grade
+and time context is resolved from preserved race-instance or program IDs, with
+the database digest and source row recorded as provenance. Analysis caches bind
+that digest so older inferred results are reconsidered after an update.
+Names, skill costs, support cards, factors and career race references use the
+same projection. New skill definitions pass through the existing supported-skill
+compiler; pinned mechanics and historical compatibility checks remain in force.
 
 The October 15 refresh includes both Free from the Ashes definitions (`110161`
 and inherited `910161`) from the updated Global master. Both unique branches

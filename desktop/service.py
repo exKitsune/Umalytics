@@ -222,7 +222,7 @@ class Service:
         from game_race_data import GameRaceData
         self.game_race_data = GameRaceData()
         from catalog_data import CatalogData
-        catalog_base = self.reference_data.assets.get('metadata.json', self.assets.get('/data/metadata.json', (b'{}',))[0])
+        catalog_base = self.race_metadata()
         try:
             catalog_base = json.loads(catalog_base)
         except (ValueError, TypeError):
@@ -993,7 +993,7 @@ def make_handler(service):
                     self.send(200, service.certificate())
                 elif path == '/api/data/status':
                     self.send(200, service.reference_data.status)
-                elif path == '/api/race-reference':
+                elif path in ('/api/race-reference', '/api/installed-reference'):
                     self.send(200, service.game_race_data.read())
                 elif path == '/api/update/status':
                     self.send(200, service.updater.status())

@@ -53,16 +53,24 @@ class EngineSkillCatalog:
             return manifest  # A new engine revision needs its own reviewed contract.
         catalog = getattr(self.simulation.service, 'catalog', None)
         revision, rows, source = catalog.engine_snapshot() if catalog else (None, None, None)
-        stamp = (sha(manifest), revision)
+        master = getattr(self.simulation.service, 'game_race_data', None)
+        installed = master.read() if master else {}
+        master_source = installed.get('installedGameRaceSource')
+        stamp = (sha(manifest), revision, master_source and master_source['sha256'])
         if self.memo and self.memo[0] == stamp:
             return deepcopy(self.memo[1])
         refs = ReferenceData.load(self.simulation.path(base['appRoot']), self.simulation.path(base['resourceRoot']))
         if refs.fingerprint != base['data_sha256']:
             raise ValueError('Base simulator data changed')
         rows = {**ROWS, **(rows or {})}
+        if installed.get('skills'):
+            from master_metadata import engine_rows
+            rows.update(engine_rows(installed['skills']))
         additions, presentation, self.rejected = Compiler(refs.skill_data).additions(rows, refs.skill_data)
         snapshot = dict(contract=CONTRACT, artifact=base['artifact_sha256'], baseData=refs.fingerprint,
             source=source or SOURCE, rows={sid:rows[sid] for sid in additions}, definitions=additions, presentation=presentation)
+        if master_source:
+            snapshot['installedGameSource'] = master_source
         key = sha(snapshot)
         path = self.path(key)
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -87,19 +95,24 @@ class EngineSkillCatalog:
         self.memo = (stamp, extended)
         return deepcopy(extended)
 
-    def display_reference(self, base_path, catalog):
+    def display_reference(self, base_path, catalog, master_projection=None):
         """Persist matching mechanics for dashboard calculations, too."""
-        if not catalog: return base_path, hashlib.sha256(base_path.read_bytes()).hexdigest()
+        if not catalog and not master_projection: return base_path, hashlib.sha256(base_path.read_bytes()).hexdigest()
         stamp = base_path.stat()
-        cache_key = (str(base_path), stamp.st_mtime_ns, stamp.st_size, sha(catalog))
+        cache_key = (str(base_path), stamp.st_mtime_ns, stamp.st_size, sha(catalog),
+                     (master_projection or {}).get('installedGameRaceSource', {}).get('sha256'))
         if cache_key in self.display_cache:
             return self.display_cache[cache_key]
         data = json.loads(base_path.read_bytes())
-        for sid, row in catalog['presentation'].items():
+        if master_projection:
+            from game_race_data import merge_metadata
+            data['metadata'] = merge_metadata(data['metadata'], master_projection)
+        for sid, row in (catalog or {}).get('presentation', {}).items():
             data['metadata']['skills'][sid] = row
             data['metadata']['skillNames'][sid] = row['name']
-        data['skillIds'] = sorted(set(data['skillIds']) | catalog['definitions'].keys(), key=int)
-        data['engineSkillCatalog'] = sha(catalog)
+        if catalog:
+            data['skillIds'] = sorted(set(data['skillIds']) | catalog['definitions'].keys(), key=int)
+            data['engineSkillCatalog'] = sha(catalog)
         raw = canonical(data)
         key = hashlib.sha256(raw).hexdigest()
         path = self.path(key, True)

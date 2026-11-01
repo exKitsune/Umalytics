@@ -25,10 +25,12 @@ export function installCatalog(value:CatalogSnapshot):boolean {
 }
 export function catalogReference(base:ReferenceData,_revision=catalogRevision,engineSkillIds?:Set<string>):ReferenceData {
   if(!latest)return {...base,engineSkillIds};
+  const installed=new Set(base.metadata.installedGameSkillIds??[]);
   const skills={...base.metadata.skills};
-  for(const [id,skill] of Object.entries(latest.skills))if(!skills[id]||base.metadata.fallback?.skills[id])skills[id]=skill;
-  for(const [id,labels] of Object.entries(latest.skillTexts??{}))if(skills[id])skills[id]={...skills[id],...labels};
+  for(const [id,skill] of Object.entries(latest.skills))if(!skills[id]||base.metadata.fallback?.skills[id]&&!installed.has(id))skills[id]=skill;
+  for(const [id,labels] of Object.entries(latest.skillTexts??{}))if(skills[id]&&!installed.has(id))skills[id]={...skills[id],...labels};
   return {...base,engineSkillIds,metadata:{...base.metadata,
     characters:{...base.metadata.characters,...latest.characters},outfits:{...base.metadata.outfits,...latest.outfits},
-    skillNames:{...base.metadata.skillNames,...latest.skillNames},skills}};
+    skillNames:{...base.metadata.skillNames,...latest.skillNames,
+      ...Object.fromEntries([...installed].filter(id=>base.metadata.skillNames[id]).map(id=>[id,base.metadata.skillNames[id]]))},skills}};
 }

@@ -6,7 +6,14 @@ import type { ReferenceData } from './reference';
 export function withRaceLookup(reference:ReferenceData, lookup:ReferenceData|null):ReferenceData {
   if(!lookup)return reference;
   return {...reference,metadata:{...reference.metadata,
+    characters:{...lookup.metadata.characters,...reference.metadata.characters},
+    outfits:{...lookup.metadata.outfits,...reference.metadata.outfits},
+    trackNames:{...lookup.metadata.trackNames,...reference.metadata.trackNames},
+    skillNames:{...lookup.metadata.skillNames,...reference.metadata.skillNames},
+    skills:{...lookup.metadata.skills,...reference.metadata.skills},
+    installedGameSkillIds:lookup.metadata.installedGameSkillIds??reference.metadata.installedGameSkillIds,
     raceInstances:{...lookup.metadata.raceInstances,...reference.metadata.raceInstances},
+    racePrograms:{...lookup.metadata.racePrograms,...reference.metadata.racePrograms},
     raceInstanceConditions:{...lookup.metadata.raceInstanceConditions,...reference.metadata.raceInstanceConditions},
     ...(lookup.metadata.installedGameRaceSource?{installedGameRaceSource:lookup.metadata.installedGameRaceSource}:{})}};
 }

@@ -216,14 +216,17 @@ class BackgroundAnalysis:
                     break
                 offset = page['nextOffset']
             self.entries = sorted(entries, key=lambda e: (e.get('racedAt') or e['receivedAt'], e['id']), reverse=True)
-            library_stamp = tuple((e['id'], e['sha256']) for e in self.entries)
+            library_stamp = (getattr(self.service, '_summary_reference_key', None),
+                             tuple((e['id'], e['sha256']) for e in self.entries))
             if getattr(self, '_library_stamp', None) != library_stamp:
                 self._library_stamp = library_stamp
                 if hasattr(self.service, 'events'):
                     self.service.events.publish('library')
             self.last_scan = time.monotonic()
         entries = self.entries[:policy['value']] if policy['mode'] == 'races' else self.entries
-        signature = self.signature()
+        master = getattr(self.service, 'game_race_data', None)
+        master_source = master.read().get('installedGameRaceSource') if master else None
+        signature = (self.signature(), master_source)
         if getattr(self, '_background_signature', None) != signature:
             self.checked.clear()
             self._background_signature = signature
@@ -327,6 +330,9 @@ class BackgroundAnalysis:
                     sim_bundle = next(r for r in manifest['bundles'] if r['engine_id'] == sim_id)
                     overlay = simulation.skill_catalog.read(sim_bundle['skillCatalog']) if sim_bundle.get('skillCatalog') else None
                     reference_path, summary['referenceKey'] = simulation.skill_catalog.display_reference(reference_path, overlay)
+                if snap.get('master_reference'):
+                    reference_path, summary['referenceKey'] = simulation.skill_catalog.display_reference(
+                        reference_path, None, snap['master_reference'])
                 payload = {'capture': snap['capture'], 'raceId': race_id, 'entrySha256': snap['entry_hash'],
                            'report': report, 'auth': auth, 'referencePath': str(reference_path),
                            'referenceKey': summary['referenceKey'], 'artifact': str(simulation.path(bundle['artifact']))}

@@ -255,7 +255,7 @@
     if(removingId===entry.id||(!force&&entry.id===activeId))return;
     lastCapturedId=entry.id;checkpointWorkspace({lastCapturedId});if(record&&!restoringRoute)writeRoute({kind:'races',id:entry.id},!location.hash);
     const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
-    try {if(referenceReady){if(bundledRaceLookup)raceLookup=await loadInstalledRaceLookup(bundledRaceLookup);if(request!==selectionRequest)return;if(reference)reference=withRaceLookup(reference,raceLookup);await analysisClient.open(entry);}}catch(e){if(request===selectionRequest)error=String(e);}
+    try {if(referenceReady){if(bundledRaceLookup)raceLookup=await loadInstalledRaceLookup(bundledRaceLookup);if(request!==selectionRequest)return;if(bundledRaceLookup)reference=withRaceLookup(bundledRaceLookup,raceLookup);if(raceLookup)await analysisClient.configure(raceLookup);await analysisClient.open(entry);}}catch(e){if(request===selectionRequest)error=String(e);}
   }
   async function saveTags(){
     const tags=normalizeTags(tagDraft),next={...raceTags};if(tags.length)next[activeId]=tags;else delete next[activeId];
@@ -420,6 +420,9 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
     <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>{workspaceMode==='simulator'?'Race simulator':workspaceMode==='umas'?'Uma library':workspaceMode==='simulation'?'Simulation analysis':'Race analysis'}</strong>{#if workspaceMode==='simulation'&&race?.sandbox}<small class="analysis-source">Simulated race · Seed {race.sandbox.seed}</small>{:else if workspaceMode==='races'&&analysisGate?.mode==='verified_simulation'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Simulation matched</small>{:else if workspaceMode==='races'&&analysisGate?.mode==='inference_plan'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Inferred analysis</small>{/if}{#if (workspaceMode==='races'||workspaceMode==='simulation')&&race&&reference}<button class="load-simulator" onclick={loadSimulator}>Load race into simulator</button>{/if}</div><div class="toolbar"><button onclick={()=>faqOpen=true}>FAQ</button><span class="connection"><i class="status-dot" class:live={gameConnected} class:ready={collecting&&!gameConnected}></i>{collectorLabel}</span><button class="icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} title="Toggle theme" onclick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'☀':'☾'}</button></div></header>
     {#if migrationError}<div class="notice" role="status">{migrationError}</div>{/if}
     {#if error||message}<div class="notice" class:error={!!error} role="status"><span>{error||message}</span><button aria-label="Dismiss message" onclick={()=>{message='';error=''}}>×</button></div>{/if}
+    {#if workspaceMode==='races'&&race&&analysis&&analysis.source!=='simulation'}
+      <div class="analysis-fallback-banner" role="status"><div><strong>{analysis.source==='recorded'?'Analysis unavailable · recorded data only':'Inferred analysis · simulation did not match'}</strong><span>{analysis.source==='recorded'?'Unsupported analysis fields are left blank.':'Modeled values are estimates and may be inaccurate.'}</span></div><a class="button" href="https://github.com/exKitsune/Umalytics/issues" target="_blank" rel="noreferrer">Report issue ↗</a></div>
+    {/if}
     {#if simulatorReference}<SimulatorWorkspace bind:this={simulatorWorkspace} mode={workspaceMode==='simulation'?'races':workspaceMode} reference={simulatorReference} token={health?.csrfToken} incoming={simulatorInput} onOpen={openSimulated} onMode={switchWorkspace} onNavigate={simulatorNavigated}/>{/if}
     {#if workspaceMode==='races'||workspaceMode==='simulation'}
     {#if simulationLoading}<div class="workspace"><AnalysisSkeleton message="Opening simulation…"/></div>
@@ -543,4 +546,8 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
   .simulation-sidebar button{display:flex;align-items:center;gap:9px}
 
   .analysis-source{font-size:var(--font-10);color:var(--muted);font-weight:400;margin-left:16px;white-space:nowrap}
+  .analysis-fallback-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 28px;background:#991b1b;color:#fff;border-bottom:2px solid #ef4444}
+  .analysis-fallback-banner>div{display:grid;gap:4px}.analysis-fallback-banner strong{font-size:var(--font-16)}.analysis-fallback-banner span{font-size:var(--font-12);color:#fee2e2}
+  .analysis-fallback-banner .button{flex-shrink:0;background:#fff;color:#991b1b;border-color:#fff;font-weight:700}
+  @media(max-width:650px){.analysis-fallback-banner{padding:16px;flex-wrap:wrap;gap:12px}}
 </style>

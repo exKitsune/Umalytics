@@ -225,7 +225,8 @@ class SandboxService:
         capture, _ = self.service.simulation.selected(body.get('raceId'))
         _, config = self.installed()
         refs = references(config)
-        original, audit = prepare_capture(capture, refs)
+        master = getattr(self.service, 'game_race_data', None)
+        original, audit = prepare_capture(capture, refs, context=master.context(capture) if master else None)
         draft = deepcopy(body.get('draft'))
         if not isinstance(draft, dict) or not isinstance(draft.get('participants'), list):
             raise ValueError('Setup draft is missing.')

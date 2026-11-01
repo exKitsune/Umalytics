@@ -1,16 +1,23 @@
-import reference from './career-reference.json';
+import {installedCareer as reference,installedMasterRevision} from './installed-master';
 import {catalog as fallback} from './catalog';
 import type {RunnerSkill} from './types';
 interface Price {cost:number|null;group:number;order:number;rarity:number}
 const prices=reference.skills as Record<string,Price>;
 const extra=fallback.prices as Record<string,{cost:number|null;steps:number[]|null}>;
 const groups=new Map<number,[string,Price][]>();
-for(const entry of Object.entries(prices)){
-  const group=groups.get(entry[1].group)??[];group.push(entry);groups.set(entry[1].group,group);
+let groupRevision:string|null=null;
+function refreshGroups(){
+  if(groupRevision===installedMasterRevision)return;
+  groups.clear();
+  for(const entry of Object.entries(prices)){
+    const group=groups.get(entry[1].group)??[];group.push(entry);groups.set(entry[1].group,group);
+  }
+  groupRevision=installedMasterRevision;
 }
 const stepCost=(id:number)=>prices[id]?.cost??extra[id]?.cost??null;
 /** Undiscounted acquisition cost. Prerequisites shared by equipped upgrades count once. */
 export function skillCost(id:number):{cost:number|null;steps:number[];free:boolean}{
+  refreshGroups();
   const row=prices[id];if(!row){
     const value=extra[id],steps=value?.steps;
     if(!steps||steps.some(id=>stepCost(id)===null))return {cost:null,steps:[],free:false};

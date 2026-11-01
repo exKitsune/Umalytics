@@ -3,6 +3,7 @@
 import type { Race, Runner, Frame } from '../data/types';
 import type { RaceAnalysis, RunnerAnalysis, SkillRow, SkillActivation, StatusInterval } from '../data/analytics';
 import type { ReferenceData } from '../data/reference';
+import {resolveCourseIdentity} from '../data/course-detection';
 import type { PreparedRace, PreparedRunner } from '../analysis/prepared';
 import type { RunnerMotion, MotionSample, MotionBand } from '../data/race-motion';
 import type { ContributionTotal, RunnerStatBreakdown, SlowdownAnalysis } from '../data/effect-types';
@@ -156,7 +157,7 @@ function spurt(events:DecisionEvent[],rows:number[][],stop:number):SpurtComparis
 export function projectSimulation(recorded:Race,report:AnalysisGateReport,reference:ReferenceData|null):PreparedRace|null {
   const trace=decisionTrace(report),modeled=report.simulation?.modeled;
   if(!trace||!modeled)return null;
-  return projectModeledRace(recorded,modeled,trace,reference);
+  return projectModeledRace(reference?resolveCourseIdentity(recorded,reference):recorded,modeled,trace,reference);
 }
 
 /** Called only with a service-validated execution trace. This projection does

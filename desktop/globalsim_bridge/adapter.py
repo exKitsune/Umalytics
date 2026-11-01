@@ -189,6 +189,8 @@ class ReferenceData:
             raise ReferenceDataError('Saved skill catalog failed validation')
         sources = {**self.source_files, 'integration/automatic-skills': {'sha256': _hash(canonical(catalog)),
             'source': catalog['source'], 'contract': CONTRACT, 'skillIds': sorted(additions)}}
+        if catalog.get('installedGameSource'):
+            sources['integration/automatic-skills']['installedGameSource'] = deepcopy(catalog['installedGameSource'])
         return replace(self, skill_data={**additions, **self.skill_data}, source_files=sources)
 
 
