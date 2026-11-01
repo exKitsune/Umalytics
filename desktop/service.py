@@ -219,6 +219,8 @@ class Service:
                 self.assets['/'] = self.assets['/index.html']
         from reference_data import ReferenceData
         self.reference_data = ReferenceData(data_dir / 'data', self.assets)
+        from game_race_data import GameRaceData
+        self.game_race_data = GameRaceData()
         from catalog_data import CatalogData
         catalog_base = self.reference_data.assets.get('metadata.json', self.assets.get('/data/metadata.json', (b'{}',))[0])
         try:
@@ -661,11 +663,12 @@ class Service:
             self.stop_proxy()
 
     def summary_reference(self):
-        key = self.reference_data.status.get('manifestSha256')
+        raw = self.race_metadata()
+        key = (self.reference_data.status.get('manifestSha256'), hashlib.sha256(raw).hexdigest())
         if key != self._summary_reference_key:
             try:
                 courses = json.loads(self.reference_data.assets.get('courses.json', b'{}'))
-                metadata = json.loads(self.reference_data.assets.get('metadata.json', b'{}'))
+                metadata = json.loads(raw)
                 instances = metadata.get('raceInstances', {}) if isinstance(metadata, dict) else {}
                 self._summary_programs = metadata.get('racePrograms', {}) if isinstance(metadata, dict) else {}
                 self._summary_reference = (courses if isinstance(courses, dict) else {},
@@ -674,6 +677,10 @@ class Service:
                 self._summary_reference = ({}, {})
             self._summary_reference_key = key
         return self._summary_reference
+
+    def race_metadata(self):
+        raw = self.reference_data.assets.get('metadata.json', b'{}')
+        return self.game_race_data.metadata(raw)
 
     def summary_course(self, entry, reference):
         # Read only finite public race metadata. Never parse scenarios or runner
@@ -986,6 +993,8 @@ def make_handler(service):
                     self.send(200, service.certificate())
                 elif path == '/api/data/status':
                     self.send(200, service.reference_data.status)
+                elif path == '/api/race-reference':
+                    self.send(200, service.game_race_data.read())
                 elif path == '/api/update/status':
                     self.send(200, service.updater.status())
                 elif path == '/api/races':

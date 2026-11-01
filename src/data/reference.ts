@@ -27,6 +27,7 @@ export interface ReferenceMetadata {
   raceInstances?: Record<string, number>;
   racePrograms?: Record<string, number>;
   raceInstanceConditions?: Record<string, { grade?: number; time?: number }>;
+  installedGameRaceSource?: {sha256:string;tables:string};
   fallback?: Pick<ReferenceMetadata, 'characters' | 'outfits' | 'skillNames' | 'skills' | 'source'> & {
     skillTexts?: Record<string, {name?: string; description?: string}>;
   };
@@ -88,6 +89,19 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     json<unknown>('course-geometry.json').then(readGeometry).catch(() => null),
   ]);
   return assembleReferenceData(metadata, courses, source, ids, geometry);
+}
+/** Desktop-only public race projection; immutable reference assets stay intact. */
+export async function loadInstalledRaceLookup(reference:ReferenceData):Promise<ReferenceData> {
+  const url=new URL('api/race-reference',document.baseURI);
+  if(!['localhost','127.0.0.1'].includes(url.hostname))return reference;
+  try {
+    const response=await fetch(url,{signal:AbortSignal.timeout(3000)});if(!response.ok)return reference;
+    const local=await response.json() as Partial<Pick<ReferenceMetadata,'raceInstances'|'raceInstanceConditions'|'installedGameRaceSource'>>;
+    return {...reference,metadata:{...reference.metadata,
+      raceInstances:{...local.raceInstances,...reference.metadata.raceInstances},
+      raceInstanceConditions:{...local.raceInstanceConditions,...reference.metadata.raceInstanceConditions},
+      ...(local.installedGameRaceSource?{installedGameRaceSource:local.installedGameRaceSource}:{})}};
+  } catch {return reference;}
 }
 export function getCourse(data: ReferenceData | null, id: number | null): CourseReference | null {
   return data && id !== null ? data.courses[id] ?? null : null;

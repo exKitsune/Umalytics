@@ -70,7 +70,7 @@
   import { importRace, parseRaceJson, sampleAt } from './data';
   import type { Race, RaceCategory } from './data/types';
   import { toPortableRace } from './data/share';
-  import { loadReferenceData, getCourse, runnerName, runnerOutfit, skillName, type ReferenceData } from './data/reference';
+  import { loadReferenceData, loadInstalledRaceLookup, getCourse, runnerName, runnerOutfit, skillName, type ReferenceData } from './data/reference';
   import { buildUmalatorExport, jsonDownloadName, umaDownloadName } from './data/umalator';
   import { categories, captureFacet, facetInfo, libraryFacets, runnerColors, saveRace, savedRaces, deleteSavedRace, createLibraryCaptionHydrator, type LibraryEntry } from './library';
   import { api, saveDesktopExport, revealDesktop, defaultSettings, type Health, type CollectionSettings, type CertificateStatus } from './api';
@@ -109,7 +109,7 @@
   import SidebarUpdate from './components/SidebarUpdate.svelte';
   import type { AnalysisGateReportSummary } from './simulation/contracts';
   import type { PreparedRace } from './analysis/prepared';
-  import { resolveCourseIdentity } from './data/course-detection';
+  import { resolveCourseIdentity, withRaceLookup } from './data/course-detection';
   let skillDetail:number|null=null;
   let skillDetailRunner:string|null=null;
   function openSkill(id:number,runnerId=selected){playing=false;skillDetailRunner=runnerId;skillDetail=id;}
@@ -120,6 +120,8 @@
   let migrationAttemptAt=0;
   let migrationError='';
   let reference: ReferenceData|null = null;
+  let bundledRaceLookup: ReferenceData|null = null;
+  let raceLookup: ReferenceData|null = null;
   let library: LibraryEntry[] = [];
   let race: Race|null = null;
   let recordedRace:Race|null=null;
@@ -181,7 +183,7 @@
     gate:(value,id)=>{if(activeId===id)analysisGate=value;},
     recorded:id=>{if(activeId===id){analysis=null;historical=null;race=recordedRace;}},
     historical:(value,id)=>{if(activeId===id)historical=value;},
-    reference:value=>{if(!race?.sandbox)reference=value;},
+    reference:value=>{if(!race?.sandbox)reference=withRaceLookup(value,raceLookup);},
     parsed:(value,id)=>{if(activeId!==id)return;race=value;recordedRace=value;selectDefaultRunner(value);},
     base:(value,result,id)=>{if(activeId!==id)return;race=value;analysis=result;},
     ready:(value,id)=>{if(activeId!==id)return;race=value.race;analysis=value.analysis;selectDefaultRunner(race);},
@@ -253,7 +255,7 @@
     if(removingId===entry.id||(!force&&entry.id===activeId))return;
     lastCapturedId=entry.id;checkpointWorkspace({lastCapturedId});if(record&&!restoringRoute)writeRoute({kind:'races',id:entry.id},!location.hash);
     const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
-    try {if(referenceReady)await analysisClient.open(entry);}catch(e){if(request===selectionRequest)error=String(e);}
+    try {if(referenceReady){if(bundledRaceLookup)raceLookup=await loadInstalledRaceLookup(bundledRaceLookup);if(request!==selectionRequest)return;if(reference)reference=withRaceLookup(reference,raceLookup);await analysisClient.open(entry);}}catch(e){if(request===selectionRequest)error=String(e);}
   }
   async function saveTags(){
     const tags=normalizeTags(tagDraft),next={...raceTags};if(tags.length)next[activeId]=tags;else delete next[activeId];
@@ -369,7 +371,7 @@
       if(event.analysis)analysisClient.notifyService();
       if(event.library&&storageReady&&!importing&&!removingId)void loadPage();
     }):()=>{};
-    loadReferenceData().then(async data=>{if(!cancelled){reference=data;await analysisClient.configure(data);if(cancelled)return;referenceReady=true;void refreshCatalog();void api<{available:boolean;skillIds:string[]}>('simulator/capabilities').then(v=>{if(v.available)engineSkillIds=new Set(v.skillIds);}).catch(()=>{});if(initialRoute.kind!=='races'||initialRoute.id)await navigate(initialRoute,false);void hydrateCaptions(library,reference);const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry,true);}}).catch(e=>error=String(e));
+    loadReferenceData().then(async data=>{if(!cancelled){bundledRaceLookup=data;raceLookup=await loadInstalledRaceLookup(data);if(cancelled)return;reference=raceLookup;await analysisClient.configure(raceLookup);if(cancelled)return;referenceReady=true;void refreshCatalog();void api<{available:boolean;skillIds:string[]}>('simulator/capabilities').then(v=>{if(v.available)engineSkillIds=new Set(v.skillIds);}).catch(()=>{});if(initialRoute.kind!=='races'||initialRoute.id)await navigate(initialRoute,false);void hydrateCaptions(library,reference);const entry=library.find(e=>e.id===activeId);if(entry)await selectEntry(entry,true);}}).catch(e=>error=String(e));
     if(!desktopSession)savedRaces().then(entries=>{if(cancelled||desktopSession)return;entries=entries.map(entry=>{if(!entry.race||entry.race.distance)return entry;try{return {...entry,race:parseRaceJson(entry.race)[0]}}catch{return entry}});merge(entries);if(!race&&entries.length)selectEntry(entries.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt))[0]);}).catch(e=>error=`Local library unavailable: ${e}`);
     poll();const catalogTimer=setInterval(refreshCatalog,60000);const healthTimer=setInterval(pollHealth,1000);const timer=setInterval(poll,5000);let previous=performance.now(),animation=0;
     const step=(now:number)=>{if(playing&&race){time=Math.min(race.duration,time+Math.min(.15,(now-previous)/1000)*playbackSpeed);if(time>=race.duration)playing=false;}previous=now;animation=requestAnimationFrame(step)};animation=requestAnimationFrame(step);

@@ -2,6 +2,15 @@ import identities from './course-identities.json';
 import type { Race } from './types';
 import type { ReferenceData } from './reference';
 
+/** Fill gaps in a historical display lookup without changing its pinned facts. */
+export function withRaceLookup(reference:ReferenceData, lookup:ReferenceData|null):ReferenceData {
+  if(!lookup)return reference;
+  return {...reference,metadata:{...reference.metadata,
+    raceInstances:{...lookup.metadata.raceInstances,...reference.metadata.raceInstances},
+    raceInstanceConditions:{...lookup.metadata.raceInstanceConditions,...reference.metadata.raceInstanceConditions},
+    ...(lookup.metadata.installedGameRaceSource?{installedGameRaceSource:lookup.metadata.installedGameRaceSource}:{})}};
+}
+
 export function courseDistance(id: number | null): number | null {
   return id === null ? null : (identities.distances as Record<string, number>)[id] ?? null;
 }

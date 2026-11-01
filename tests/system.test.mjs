@@ -43,6 +43,11 @@ const concurrency = Number(process.env.UMALYTICS_TEST_CONCURRENCY ?? Math.min(2,
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error('UMALYTICS_TEST_CONCURRENCY must be an integer from 1 to 4.');
 describe('isolated functional workflows', {concurrency}, () => {
 
+test('installed game race definitions refresh without changing captured evidence',async()=>{
+  await run('python',['tests/game-race-data-workflow.py'],{cwd:root,windowsHide:true,timeout:15000});
+  await run(process.execPath,['--import','tsx','tests/game-race-data-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
+});
+
 test('workspace sessions restore unfinished simulator edits and dashboard context',async()=>{
   await run(process.execPath,['--import','tsx','tests/workspace-session-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
 });

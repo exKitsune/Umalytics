@@ -8,6 +8,17 @@ only public master tables, never saves, account rows or intercepted responses.
 The source SHA-256 and modification timestamp travel with the data. Unknown IDs
 remain visible as IDs. Inherited unique names are explicitly labeled inherited.
 
+The desktop also discovers the official Global client's
+`LocalLow/Cygames/umamusume/master/master.mdb` under the Windows user's AppData.
+It opens the file read-only and selects public race-instance, race and course
+definitions to fill missing lookup entries, including CM IDs received through
+the capture API. The projection refreshes when the file changes and carries
+its SHA-256; no database path, account data or complete database is exported.
+Missing, unreadable or invalid databases leave bundled references available.
+Captured course values and pinned reference definitions keep priority. Existing
+captures resolve without rewriting their files. This display lookup does not
+change simulator mechanics or historical compatibility authorization.
+
 The October 15 refresh includes both Free from the Ashes definitions (`110161`
 and inherited `910161`) from the updated Global master. Both unique branches
 retain their own conditions and speed values; the replay's branch index picks
