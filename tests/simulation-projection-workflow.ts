@@ -181,6 +181,7 @@ sharedSkillReport.simulation.modeled.decisionTrace.events=[
   event('effect-evaluated',0,{type:21,ability:1,modifier:-.05,duration:.5},'100251'),
   event('effect-applied',0,{type:21,ability:0,modifier:-.05,duration:.5},'100251',1),
   event('effect-queued',0,{ability:1,targets:[1]},'100251'),
+  event('effect-deferred',0,{ability:2},'100251'),
   event('effect-ended',.533,{},'100251'),event('effect-ended',.533,{},'100251',1),
   event('skill-activated',1.1,{},'100251',1),
   event('effect-evaluated',1.1,{type:27,ability:0,modifier:.25,duration:.5},'100251',1),
@@ -329,3 +330,86 @@ const lazy=restoreDashboard(JSON.parse(JSON.stringify(packDashboard(structuredCl
 assert.equal(typeof Object.getOwnPropertyDescriptor(lazy.runners.r0.motion,'samples')?.get,'function','Unselected telemetry remains compact until requested.');
 assert.deepEqual(lazy.runners.r0.speedChanges,special.runners.r0.speedChanges);
 assert.deepEqual(lazy.runners.r0.motion.samples,special.runners.r0.motion.samples);
+
+// Deferred overtake effects belong to the original proc, including extensions
+// of already-running timers. They must also disappear from its counterfactual.
+const {assembleReferenceData}=await import('../src/data/reference');
+const {createTraceMotionEngine}=await import('../src/simulation/replay-motion');
+const {registerReplayMotion,activationMotionKey}=await import('../src/data/race-motion');
+const {activationImpact}=await import('../src/data/motion-skill-impact');
+const baseMetadata=JSON.parse(readFileSync('public/data/metadata.json','utf8'));
+baseMetadata.skills[100531]={name:'Red-Hot Discipline!',rarity:5,activateLot:0,branches:[{branchIndex:0,condition:'always==1',rawDuration:20000,durationUsage:4,effects:[
+  {type:31,rawValue:1000,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:0},
+  {type:31,rawValue:1000,valueUsage:1,levelUsage:1,targetType:1,additionalActivateType:1}]}]};
+const bambooReference=assembleReferenceData(baseMetadata,JSON.parse(readFileSync('public/data/courses.json','utf8')),JSON.parse(readFileSync('public/data/reference-source.json','utf8')),[]);
+let previousBambooGain=0;
+for(const passes of [0,1,2,3]){
+  const ev:DecisionEvent[]=[],emit=(kind:string,time:number,data:DecisionEvent['data'])=>ev.push(event(kind,time,data,'100531'));
+  const expiry=3.4+passes*1.2;
+  emit('initial-stats',0,{speed:1000,stamina:1000,power:1000,guts:1000,wisdom:1000});
+  emit('skill-activated',1,{});
+  emit('effect-evaluated',1,{type:31,ability:0,modifier:.1,duration:2.4,followUp:false});
+  emit('effect-applied',1,{type:31,ability:0,modifier:.1,duration:2.4});
+  emit('effect-evaluated',1,{type:31,ability:1,modifier:.1,duration:2.4,followUp:false});
+  emit('effect-deferred',1,{ability:1});
+  for(let i=0;i<passes;i++){
+    const t=2+i,duration=3.4+(i+1)*1.2-t;
+    emit('effect-evaluated',t,{type:31,ability:0,modifier:.1,duration,followUp:true});
+    emit('effect-applied',t,{type:31,ability:0,modifier:.1,duration});
+  }
+  for(let i=0;i<=passes;i++)emit('effect-ended',expiry,{});
+  // A later independent proc must not get attached to this one.
+  emit('skill-activated',8,{});emit('effect-evaluated',8,{type:31,ability:0,modifier:.05,duration:1,followUp:false});
+  emit('effect-applied',8,{type:31,ability:0,modifier:.05,duration:1});emit('effect-ended',9,{});
+  const traceMotion=Array.from({length:100},(_,i)=>{
+    const t=i/10,row=Array(43).fill(0),boost=t>=1&&t<expiry ? .1*(1+Math.min(passes,Math.max(0,Math.floor(t)-1))) : t>=8&&t<9 ? .05 : 0;
+    Object.assign(row,{[m.horse]:0,[m.time]:t,[m.tick]:i,[m.dt]:.1,[m.position]:t*20,[m.hp]:1000,[m.speed]:20+t*.4,[m.selfSpeed]:20+t*.4,[m.skillSpeed]:20+t*.4,[m.unclamped]:20+t*.4,[m.cap]:30,[m.target]:30,[m.base]:20,[m.acceleration]:.5+boost,[m.blocker]:-1,[m.minimum]:3});return row;
+  });
+  const trial=structuredClone(report);
+  trial.simulation!.modeled={results:[{finishOrder:0,finishTime:10,finishTimeRaw:10}],frames:[0,10].map(t=>({t,horses:[{pos:t*20,speed:20+t*.4,hp:1000,lane:0,blockFrontHorseIndex:-1}]})),skillEvents:[{horseIndex:0,skillId:100531,t:1,duration:2.4}],decisionTrace:{schema:TRACE_SCHEMA,complete:true,dropped:0,events:ev,motion:traceMotion,motionColumns:[]}};
+  const projected=projectSimulation({...original,distance:1200,courseId:10701,runners:[{...runners[0],skills:[{id:100531,level:1}]}]},trial,bambooReference)!;
+  const activation=projected.analysis.runners.r0.skillRows.find(r=>r.skillId===100531)!.activations[0];
+  assert.equal(activation.effects.length,1+passes,'Keep each applied boost once; never apply the deferred initial evaluation');
+  assert.ok(Math.abs(activation.effectiveEnd!-expiry)<1e-6,'Use the extended expiry for the original proc');
+  assert.deepEqual(activation.effects.map(e=>e.appliedStart),[1,...Array.from({length:passes},(_,i)=>2+i)]);
+  assert.ok(activation.effects.every(e=>Math.abs(e.appliedEnd!-expiry)<1e-6));
+  const calculation={...projected.analysis,source:undefined};
+  registerReplayMotion(calculation,createTraceMotionEngine(projected.race,bambooReference,calculation,trial.simulation!.modeled.decisionTrace as any));
+  const without=motionFor(projected.race,bambooReference,calculation,'r0',undefined,activationMotionKey('r0',activation));
+  for(const t of [1.5,2.5,3.5,4.5,7.5,8.5]){
+    const sample=without.samples.find(s=>Math.abs(s.time-t)<1e-6)!;
+    assert.ok(Math.abs(sample.acceleration!-(t===8.5 ? .55 : .5))<1e-6,'Removing the proc removes every overtake increment and leaves later procs intact');
+  }
+  const impact=activationImpact(projected.race,bambooReference,calculation,'r0',activation)!;
+  assert.ok(Math.abs(impact.effects[0].activeDuration!-(expiry-1))<1e-6,'Effectiveness includes the extended scoring window');
+  assert.ok(impact.distance!==null&&impact.distance.mid>0,'Effectiveness gain includes the full acceleration path');
+  assert.ok(impact.distance!.mid>previousBambooGain,'Each additional boost increases the measured gain in the same uncapped scenario');
+  previousBambooGain=impact.distance!.mid;
+}
+console.log('Deferred overtake effects: zero through three boosts, timer extensions, removal and effectiveness passed.');
+
+// The same trace importer handles skill-triggered follow-ups, including
+// inherited versions, without a Bamboo ID/name check or an expiry extension.
+for(const [id,count] of [[110211,2],[910211,2],[110351,3],[910351,3]]){
+  const ev:DecisionEvent[]=[],emit=(kind:string,time:number,data:DecisionEvent['data'])=>ev.push(event(kind,time,data,String(id)));
+  emit('skill-activated',0,{});
+  emit('effect-evaluated',0,{type:27,ability:0,modifier:.15,duration:5,followUp:false});
+  emit('effect-applied',0,{type:27,ability:0,modifier:.15,duration:5});
+  emit('effect-evaluated',0,{type:27,ability:1,modifier:.05,duration:5,followUp:false});
+  emit('effect-deferred',0,{ability:1});
+  for(let t=1;t<=count;t++){
+    emit('effect-evaluated',t,{type:27,ability:0,modifier:.05,duration:5-t,followUp:true});
+    emit('effect-applied',t,{type:27,ability:0,modifier:.05,duration:5-t});
+  }
+  for(let i=0;i<=count;i++)emit('effect-ended',5,{});
+  const trial=structuredClone(report);
+  trial.simulation!.modeled={...trial.simulation!.modeled,results:runners.map((_,i)=>({finishOrder:i,finishTime:6,finishTimeRaw:6})),frames:[0,6].map(t=>({t,horses:runners.map(()=>({pos:t*20,speed:20,hp:500,lane:0,blockFrontHorseIndex:-1}))})),skillEvents:[{horseIndex:0,skillId:id,t:0,duration:5}],decisionTrace:{schema:TRACE_SCHEMA,complete:true,dropped:0,events:ev,motion,motionColumns:[]}};
+  const projected=projectSimulation({...original,runners:runners.map((r,i)=>({...r,skills:i?[]:[{id,level:1}]}))},trial,null)!;
+  const activation=projected.analysis.runners.r0.skillRows.find(r=>r.skillId===id)!.activations[0];
+  assert.equal(activation.effects.length,count+1);
+  assert.equal(activation.effectiveEnd,5,'Skill-triggered increments share the original expiry rather than extending it');
+  assert.equal(activation.duration,5);
+  assert.deepEqual(activation.effects.map(e=>e.appliedStart),Array.from({length:count+1},(_,i)=>i));
+  assert.ok(Math.abs(activation.effects.reduce((n,e)=>n+e.evaluatedValue!,0)-(.15+.05*count))<1e-9);
+}
+console.log('Skill-triggered follow-ups: two/three increments and inherited versions passed.');

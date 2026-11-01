@@ -70,32 +70,46 @@ function skills(runner:Runner,events:DecisionEvent[],modeled:JsonObject,referenc
     const ownApplied:DecisionEvent[]=[];
     const activations:SkillActivation[]=activated.map((e,index)=>{
       const next=activated[index+1]?.sequence??Infinity;
-      const effects=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-evaluated');
-      const applied=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-applied');
+      // Received copies also use followUp; only a proc with its own deferred
+      // effect can own later evaluations. Foreign deliveries stay separate.
+      const deferred=own.some(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-deferred');
+      const deliveries=deferred?allEvents.filter(x=>x.kind==='effect-queued'&&x.skillId===e.skillId&&x.horseIndex!==runner.index&&Array.isArray(x.data.targets)&&x.data.targets.includes(runner.index)).map(queue=>({
+        end:queue.sequence,start:allEvents.filter(x=>x.kind==='effect-evaluated'&&x.skillId===e.skillId&&x.horseIndex===queue.horseIndex&&x.tick===queue.tick&&x.sequence<queue.sequence).at(-1)?.sequence??queue.sequence
+      })):[];
+      const effects=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.kind==='effect-evaluated'&&(x.tick===e.tick||deferred&&x.data.followUp===true&&!deliveries.some(d=>x.sequence>d.start&&x.sequence<d.end)));
+      const belongs=(x:DecisionEvent,evaluated:DecisionEvent)=>x.tick===evaluated.tick&&x.data.ability===evaluated.data.ability&&x.sequence>evaluated.sequence&&x.sequence<(effects.find(p=>p.sequence>evaluated.sequence)?.sequence??next);
+      const applied=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.kind==='effect-applied'&&effects.some(p=>belongs(x,p)));
       ownApplied.push(...applied);
-      const queued=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.tick===e.tick&&x.kind==='effect-queued');
+      const queued=own.filter(x=>x.sequence>e.sequence&&x.sequence<next&&x.kind==='effect-queued'&&effects.some(p=>belongs(x,p)));
       const ref=reference?.metadata.skills[id]?.branches.find((b,i)=>(b.branchIndex??i)===e.detail);
       const event=reported.find(p=>Number(p.skillId)===id&&Math.abs(Number(p.t)-e.time)<.001);
       const passive=effects.some(x=>Number(x.data.duration)<0),reportedDuration=num(event?.duration);
       const duration=reportedDuration??(effects.length?Math.max(0,...effects.map(x=>Number(x.data.duration))):null);
+      const extended=ref?.durationUsage===4&&effects.some(x=>x.data.followUp===true);
+      const extendedEnd=extended?Math.max(...effects.map(x=>x.time+Number(x.data.duration))):null;
+      const usedExpiries=new Set<number>();
       const effectEnd=(event:DecisionEvent,recipient=runner.index)=>{
         const seconds=Number(event.data.duration);if(seconds<0)return stop;
-        const expected=event.time+seconds;
-        const ended=allEvents.find(x=>x.kind==='effect-ended'&&x.horseIndex===recipient&&x.skillId===e.skillId&&x.sequence>event.sequence&&x.sequence<next&&x.time>=expected-.001&&x.time<=expected+.2);
+        // Overtakes extend existing timers as well as applying a new modifier.
+        // Follow-up durations contain the remaining extended window. Expiry
+        // callbacks have no ability ID, so consume them in application order.
+        const expected=Math.max(event.time+seconds,extendedEnd??-Infinity);
+        const ended=allEvents.find(x=>x.kind==='effect-ended'&&x.horseIndex===recipient&&x.skillId===e.skillId&&x.sequence>event.sequence&&x.sequence<next&&!usedExpiries.has(x.sequence)&&x.time>=expected-(extended ? .1 : .001)&&x.time<=expected+.2);
+        if(extended&&ended)usedExpiries.add(ended.sequence);
         return Math.min(stop,ended?.time??expected);
       };
       // Reference effects supply labels/icons only. Magnitudes below are copied
       // from evaluated engine modifiers, never scaled by the UI formula engine.
-      const displayEffects=effects.filter(x=>applied.some(p=>p.data.ability===x.data.ability)||queued.some(p=>p.data.ability===x.data.ability)).map(x=>({type:Number(x.data.type),rawValue:Number(x.data.modifier)*10000,valueUsage:1,levelUsage:0,evaluatedValue:Number(x.data.modifier),
+      const displayEffects=effects.filter(x=>applied.some(p=>belongs(p,x))||queued.some(p=>belongs(p,x))).map(x=>({type:Number(x.data.type),rawValue:Number(x.data.modifier)*10000,valueUsage:1,levelUsage:0,evaluatedValue:Number(x.data.modifier),
         appliedStart:x.time,appliedEnd:effectEnd(x),
         targetType:ref?.effects[Number(x.data.ability)]?.targetType??(queued.some(p=>p.data.ability===x.data.ability)?2:1)}));
       const simulatedRecipients:NonNullable<SkillActivation['simulatedRecipients']>={};
       for(const queue of queued){
-        const evaluated=effects.find(x=>x.data.ability===queue.data.ability);if(!evaluated)continue;
+        const evaluated=effects.find(x=>belongs(queue,x));if(!evaluated)continue;
         const previousQueue=queued.filter(q=>q.sequence<queue.sequence).at(-1)?.sequence??e.sequence;
         for(const target of Array.isArray(queue.data.targets)?queue.data.targets:[]){
           const recipient=runners.find(r=>r.index===target);if(!recipient||recipient.id===runner.id)continue;
-          const delivered=allEvents.find(x=>x.horseIndex===target&&x.kind==='effect-applied'&&x.skillId===e.skillId&&x.tick===e.tick&&x.sequence>previousQueue&&x.sequence<queue.sequence&&x.data.type===evaluated.data.type);
+          const delivered=allEvents.find(x=>x.horseIndex===target&&x.kind==='effect-applied'&&x.skillId===e.skillId&&x.tick===queue.tick&&x.sequence>previousQueue&&x.sequence<queue.sequence&&x.data.type===evaluated.data.type);
           if(delivered)(simulatedRecipients[recipient.id]??=[]).push({type:Number(delivered.data.type),rawValue:Number(delivered.data.modifier)*10000,evaluatedValue:Number(delivered.data.modifier),valueUsage:1,levelUsage:0,appliedStart:delivered.time,appliedEnd:effectEnd(delivered,Number(target)),targetType:ref?.effects[Number(queue.data.ability)]?.targetType??2});
         }
       }
