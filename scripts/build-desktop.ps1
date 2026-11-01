@@ -47,10 +47,14 @@ $env:Path = (Split-Path $cargo) + ';' + $env:Path
 if ($LASTEXITCODE -ne 0) { throw 'Locked Rust dependency download failed.' }
 & $python scripts/prepare-simulator.py --source $simSource
 if ($LASTEXITCODE -ne 0) { throw 'Simulator instrumentation preparation failed.' }
+# The engine's own lockfile includes optional allocator dependencies that the
+# worker's path-dependency lockfile omits, even with default features disabled.
+& $cargo fetch --locked --manifest-path .cache/globalsim-traced/Cargo.toml
+if ($LASTEXITCODE -ne 0) { throw 'Locked simulator test dependency download failed.' }
 & $cargo build --release --locked --offline --manifest-path simulation/simulator-worker/Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator worker build failed.' }
-  & $cargo test --locked --offline --manifest-path .cache/globalsim-traced/Cargo.toml --no-default-features --lib decision_trace
-  if ($LASTEXITCODE -ne 0) { throw 'Simulator trace regression tests failed.' }
+& $cargo test --locked --offline --manifest-path .cache/globalsim-traced/Cargo.toml --no-default-features --lib decision_trace
+if ($LASTEXITCODE -ne 0) { throw 'Simulator trace regression tests failed.' }
 & $python scripts/package-simulator.py --source $simSource --engine (Join-Path $env:CARGO_TARGET_DIR 'release/umalytics-globalsim-worker.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Simulator bundle verification failed.' }
 & $python desktop/generate_icon.py

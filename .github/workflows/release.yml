@@ -185,9 +185,9 @@ jobs:
         with:
           path: |
             .cache/cargo/registry
-          key: Windows-2022-x64-rust1.90.0-sources-v2-${{ hashFiles('src-tauri/Cargo.lock', 'tests/updater-helper/Cargo.lock', 'simulation/simulator-worker/Cargo.lock') }}
+          key: Windows-2022-x64-rust1.90.0-sources-v3-${{ hashFiles('src-tauri/Cargo.lock', 'tests/updater-helper/Cargo.lock', 'simulation/simulator-worker/Cargo.lock', '.cache/globalsim-saved/Cargo.lock') }}
           restore-keys: |
-            Windows-2022-x64-rust1.90.0-sources-v2-
+            Windows-2022-x64-rust1.90.0-sources-v3-
       - name: Restore compiled Cargo dependencies
         id: cargo-targets
         uses: actions/cache/restore@v4
