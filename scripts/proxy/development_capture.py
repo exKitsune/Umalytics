@@ -4,6 +4,7 @@ Enable with cache/development-capture.json: {"enabled": true}. These files are
 not ordinary diagnostics and must never be included in support uploads.
 """
 import base64
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import gzip
 import json
@@ -11,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import time
 import uuid
 
 MAX_BODY = 64 * 1024 * 1024
@@ -19,6 +21,33 @@ MAX_STORAGE = 512 * 1024 * 1024
 
 def regular(path):
     return not any(p.is_symlink() or getattr(p, 'is_junction', lambda: False)() for p in (path, *path.parents))
+
+
+@contextmanager
+def capture_guard(root):
+    path = Path(root) / 'cache' / 'debug-capture.lock'
+    if not regular(path):
+        raise ValueError('Linked debug capture lock refused.')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('a+b') as stream:
+        if stream.seek(0, 2) == 0:
+            stream.write(b'\0')
+            stream.flush()
+        stream.seek(0)
+        if os.name == 'nt':
+            import msvcrt
+            msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(stream, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name == 'nt':
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
 
 
 class DevelopmentCapture:
@@ -32,7 +61,10 @@ class DevelopmentCapture:
         try:
             if not regular(self.flag) or self.flag.stat().st_size > 1024:
                 return False
-            return json.loads(self.flag.read_text(encoding='utf-8')).get('enabled') is True
+            flag = json.loads(self.flag.read_text(encoding='utf-8'))
+            expiry = flag.get('expiresAt')
+            return flag.get('enabled') is True and (expiry is None or
+                type(expiry) in (int, float) and time.time() < expiry)
         except (OSError, ValueError, AttributeError):
             return False
 
@@ -61,7 +93,9 @@ class DevelopmentCapture:
                   'response': self.message(flow.response) if phase == 'response' else None,
                   'transportError': str(flow.error) if phase == 'error' and flow.error else None}
         raw = json.dumps(record, ensure_ascii=True, allow_nan=False).encode('utf-8')
-        with self.lock:
+        with self.lock, capture_guard(self.root):
+            if not self.enabled():
+                return
             if not regular(self.folder):
                 raise ValueError('Linked development capture folder refused.')
             self.folder.mkdir(parents=True, exist_ok=True)

@@ -20,7 +20,9 @@
     await simulatorWorkspace?.refreshLibrary();message=`${name} saved to Dorm.`;
   }
   import {parseRoute,routeHash,type WorkspaceRoute} from './sandbox/navigation';
-  import {readWorkspaceSession,checkpointWorkspace,flushWorkspaceSession} from './sandbox/session';
+  import {clearBrowserLibrary} from './library';
+  import {clearBrowserAnalysis} from './analysis/store';
+  import {readWorkspaceSession,checkpointWorkspace,flushWorkspaceSession,discardWorkspaceSession} from './sandbox/session';
   import {loadSimulationDashboard} from './sandbox/dashboard';
   import {catalogReference,installCatalog,catalogRevision,type CatalogSnapshot} from './data/catalog';
   import {tick} from 'svelte';
@@ -37,6 +39,7 @@
   function writeRoute(route:WorkspaceRoute,replace=false){checkpointWorkspace({route});const hash=routeHash(route);if(location.hash===hash)return;window.history[replace?'replaceState':'pushState']({umalytics:true},'',hash);}
   function simulatorNavigated(view:'setup'|'results',jobId?:string){simulatorLocation={view,jobId};if(workspaceMode==='simulator'&&!restoringRoute)writeRoute({kind:'simulator',...simulatorLocation});}
   async function refreshCatalog(){
+    if(dataDeleted)return;
     if(catalogChecking)return;catalogChecking=true;
     try{const status=await api<{revision:string|null}>('catalog?status=1');if(status.revision&&(!catalogLoaded||status.revision!==catalogRevision)){const response=await fetch('/api/catalog',{signal:AbortSignal.timeout(5000)});if(response.ok){const changed=installCatalog(await response.json() as CatalogSnapshot);catalogLoaded=changed||catalogLoaded;if(changed){const capabilities=await api<{available:boolean;skillIds:string[]}>('simulator/capabilities');if(capabilities.available)engineSkillIds=new Set(capabilities.skillIds);}}}catalogVersion=catalogRevision+':'+new Date().toISOString().slice(0,10);}
     catch{/* Use bundled/last-good catalog offline. */}finally{catalogChecking=false;}
@@ -128,6 +131,7 @@
   let activeId = '';
   let pendingRemoval = '';
   let pendingCertRemoval = false;
+  let deleteDataConfirm=false,dataDeleted=false;
   let downloadPromptOpen = false;
   let dropActive = false;
   let dragDepth = 0;
@@ -156,6 +160,19 @@
   let settings = defaultSettings();
   let certificate: CertificateStatus|null = null;
   let settingsOpen = false;
+  let settingsCategory='collection';
+  const settingsCategories=[{id:'collection',label:'Collection & Certificate'},{id:'appearance',label:'Appearance'},{id:'updates',label:'Updates'},{id:'storage',label:'Storage & cache'},{id:'diagnostics',label:'Diagnostics'},{id:'about',label:'About & uninstall'}];
+  let debugChallenge='',debugPhrase='',debugReadyAt=0,debugNow=Date.now(),debugWarning=false,clearLogsConfirm=false;
+  let debugAcks=[false,false,false];
+  async function requestDebug(enabled:boolean){
+    if(!health?.csrfToken)return;error='';
+    if(!enabled){debugWarning=true;return;}
+    try{const result=await api<{challenge:string;waitSeconds:number}>('debug-capture/prepare',{},health.csrfToken);clearLogsConfirm=false;debugChallenge=result.challenge;debugReadyAt=Date.now()+result.waitSeconds*1000;debugPhrase='';debugAcks=[false,false,false];debugWarning=true;}catch(e){error=String(e)}
+  }
+  async function stopDebug(){if(!health?.csrfToken)return;try{await api('debug-capture',{enabled:false},health.csrfToken);debugWarning=false;await pollHealth();}catch(e){error=String(e)}}
+  async function enableDebug(duration:'permanent'|'30m'='permanent'){if(!health?.csrfToken)return;busy=true;try{await api('debug-capture',{enabled:true,duration,challenge:debugChallenge,phrase:debugPhrase,acknowledgements:debugAcks.every(Boolean)?['secrets','all-api','private-files']:[]},health.csrfToken);debugWarning=false;await pollHealth();}catch(e){error=String(e)}finally{busy=false}}
+  async function clearLogs(){if(!health?.csrfToken)return;busy=true;try{const result=await api<{deletedFiles:number}>('logs/clear',{confirm:'DELETE LOGS'},health.csrfToken);clearLogsConfirm=false;debugWarning=false;await pollHealth();tell(`Deleted ${result.deletedFiles} log files. Debug capture is off.`);}catch(e){error=String(e)}finally{busy=false}}
+
   let following = true;
   let message = '';
   let error = '';
@@ -303,7 +320,7 @@
     if(!uma?.json){error=uma?.missing.length?`Uma JSON needs ${uma.missing.join(', ')}.`:'Uma JSON is unavailable.';return;}
     await saveJsonFile(umaDownloadName(runner,analysisRace,reference),uma.json,'Uma JSON');
   }
-  function openSettings(){exportDraft=settings.exportDirectory??'';pendingCertRemoval=false;message='';settingsOpen=true;}
+  function openSettings(){settingsCategory='collection';exportDraft=settings.exportDirectory??'';pendingCertRemoval=false;message='';settingsOpen=true;}
   function closeSettings(){settingsOpen=false;pendingCertRemoval=false;}
   function requestAutoCollection(){if(desktopSession)openSettings();else downloadPromptOpen=true;}
   async function revealFolder(target:'data'|'exports'|'diagnostics') {
@@ -314,7 +331,9 @@
     await updateSettings({exportDirectory:path});
     exportDraft=settings.exportDirectory??'';
   }
-  async function uninstallCertificate() {if(!certificate?.sha256||!health?.csrfToken)return;busy=true;try{await api('certificate/uninstall',{sha256:certificate.sha256},health.csrfToken);pendingCertRemoval=false;await refreshCertificate();tell('Capture certificate removed.');}catch(e){error=String(e)}finally{busy=false}}
+  async function prepareCertificate(){if(!health?.csrfToken)return;busy=true;try{await api('certificate/prepare',{},health.csrfToken);await refreshCertificate();}catch(e){error=String(e)}finally{busy=false}}
+  async function deleteAllData(){if(!health?.csrfToken)return;busy=true;try{await api('data/delete',{confirm:'DELETE ALL DATA'},health.csrfToken);dataDeleted=true;deleteDataConfirm=false;playing=false;discardWorkspaceSession();await Promise.allSettled([clearBrowserLibrary(),clearBrowserAnalysis()]);for(const key of Object.keys(localStorage))if(key.startsWith('umalytics')||key.startsWith('umatrace'))localStorage.removeItem(key);history.replaceState(null,'',location.pathname);settingsOpen=false;}catch(e){error=String(e)}finally{busy=false}}
+  async function uninstallCertificate() {if(!certificate?.sha256||!health?.csrfToken)return;busy=true;try{await api('certificate/uninstall',{sha256:certificate.sha256},health.csrfToken);pendingCertRemoval=false;await refreshCertificate();tell('Capture certificate and key removed.');}catch(e){error=String(e)}finally{busy=false}}
   async function installAvailableUpdate() {
     flushWorkspaceSession();
     const current=health;if(!current?.csrfToken)return;openSettings();busy=true;
@@ -349,8 +368,9 @@
   async function loadHistory(){historyLoading=true;try{while(nextOffset!==null&&!disposed){const offset=nextOffset;if(!await loadPage(offset))return;await new Promise(resolve=>setTimeout(resolve,30));}historyLoaded=true;}catch(e){error=`History could not be loaded: ${e}`;}finally{historyLoading=false;}}
   let healthPolling=false;
   async function prepareDesktopStorage(){if(storageReady||migrationRunning||importing||!health?.csrfToken||Date.now()-migrationAttemptAt<5000)return;migrationRunning=true;migrationAttemptAt=Date.now();try{const preferences=await migrateBrowserStorage(health.csrfToken);theme=preferences.theme;fontScale=normalizeFontScale(preferences.fontScale);raceTags=preferences.raceTags??{};library=library.filter(entry=>!entry.id.startsWith('local-')||entry.remoteId);storageReady=true;migrationError='';}catch{migrationError='Your browser library is still being moved to Umalytics. Originals are saved; retrying shortly.';}finally{migrationRunning=false;}}
-  async function pollHealth(){if(!['localhost','127.0.0.1'].includes(location.hostname)||healthPolling)return;healthPolling=true;try{health=await api<Health>('health');healthReconnecting=false;certificate=health.certificate??null;if(health.mode==='desktop'&&desktopSession)await prepareDesktopStorage();}catch{healthReconnecting=true;}finally{healthPolling=false;}}
+  async function pollHealth(){if(dataDeleted)return;debugNow=Date.now();if(!['localhost','127.0.0.1'].includes(location.hostname)||healthPolling)return;healthPolling=true;try{health=await api<Health>('health');healthReconnecting=false;certificate=health.certificate??null;if(health.mode==='desktop'){desktopSession=true;await prepareDesktopStorage();}}catch{healthReconnecting=true;}finally{healthPolling=false;}}
   async function poll() {
+    if(dataDeleted)return;
     if(!['localhost','127.0.0.1'].includes(location.hostname))return;
     if(polling)return;polling=true;
     try {await pollHealth();if(!healthReconnecting&&health?.mode==='desktop'){settings=await api<CollectionSettings>('settings');if(storageReady)await loadPage();}}catch{/* A library/settings failure does not invalidate collector health. */}finally{polling=false;}
@@ -455,29 +475,39 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
   </main>
 </div>
 <CollectorUpdatePrompt status={health?.update}/>
-{#if settingsOpen}<div class="modal-backdrop" role="presentation" onkeydown={e=>{if(e.key==='Escape')closeSettings();}} onclick={(event)=>{if(event.target===event.currentTarget)closeSettings();}}><div class="settings-modal" use:modalFocus role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1"><div class="modal-title"><div class="eyebrow">UMALYTICS</div><h2>Settings</h2><button class="icon-button" aria-label="Close settings" onclick={closeSettings}>×</button></div><div class="settings-body">
-      {#if error||(message&&settingsOpen)}<div class="notice" class:error={!!error} role="status">{error||message}</div>{/if}
-      {#snippet certSection()}
+{#if health?.debugCapture?.enabled&&!settingsOpen}<div class="notice error" role="alert" style="position:fixed;bottom:12px;left:12px;right:12px;z-index:2000;display:flex;justify-content:space-between"><strong>Raw API capture is ON — logs contain secrets.{health?.debugCapture?.mode==='permanent'?' Until turned off.':''}</strong> <button onclick={stopDebug}>Stop debug capture</button></div>{/if}
+{#if settingsOpen}<div class="modal-backdrop" role="presentation" onkeydown={e=>{if(e.key==='Escape')closeSettings();}} onclick={event=>{if(event.target===event.currentTarget)closeSettings();}}><div class="settings-modal settings-window" use:modalFocus role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1">
+<div class="modal-title"><h2>Settings</h2><button class="icon-button" aria-label="Close settings" onclick={closeSettings}>×</button></div>
+<div class="settings-layout">
+<nav class="settings-nav" aria-label="Settings categories">
+{#each settingsCategories as category}<button class:active={settingsCategory===category.id} aria-current={settingsCategory===category.id?'page':undefined} onclick={()=>settingsCategory=category.id}>{category.label}</button>{/each}
+</nav>
+<div class="settings-body settings-content">
+{#if error||(message&&settingsOpen)}<div class="notice" class:error={!!error} role="status">{error||message}</div>{/if}
+{#snippet certSection()}
       <section class:setup-attention={setupAttention}>
+        <div class="certificate-warning" role="note"><strong>Unexpected certificate trust prompt? Choose No.</strong><p>Only approve after you click Install certificate here. If you didn’t request it, do not trust it—even if it says Umalytics.</p></div>
         <div class="setting-row"><h3>Capture certificate</h3><span class="tag" class:trusted={certificate?.trusted}>{certificate?.trusted?'Trusted':certificate?.exists?'Not trusted':'Unavailable'}</span></div>
-        <p>Approve the Windows prompt once to enable capture. The certificate is trusted by apps under your Windows user; Umalytics only inspects the game API.</p>
+        <p>{certificate?.replacedLegacy&&!certificate.trusted?'Old certificate retired. Click Install certificate to resume capture.':'Approve the Windows prompt once to enable capture. The certificate is trusted by apps under your Windows user; Umalytics only inspects the game API.'}</p>
+        {#if certificate?.identityMode==='hostname-only'}<div class="setting-row"><span>Game API only</span><span class="tag trusted" title="The CA signing key has been deleted. The server key is encrypted for your Windows account.">Protected key</span></div>{/if}
         {#if certificate?.sha1}<code class="fingerprint">SHA-1 {certificate.sha1}</code>{/if}
         <div class="toolbar">
           <button onclick={refreshCertificate} disabled={!health}>Check installation</button>
-          {#if certificate?.trusted}
+          {#if certificate?.exists}
             {#if pendingCertRemoval}
               <button class="danger" onclick={uninstallCertificate} disabled={busy||!health?.csrfToken}>{busy?'Waiting for Windows…':'Confirm remove'}</button>
               <button onclick={()=>pendingCertRemoval=false}>Cancel</button>
             {:else}
               <button class="danger" onclick={()=>pendingCertRemoval=true} disabled={busy||!health?.csrfToken}>Remove certificate</button>
             {/if}
-          {:else}
+          {/if}
+          {#if !certificate?.exists}<button class="primary" onclick={prepareCertificate} disabled={busy||!health?.csrfToken}>Create certificate</button>{:else if !certificate.trusted}
             <button class="primary" onclick={installCertificate} disabled={!certificate?.exists||busy||!health?.csrfToken}>{busy?'Waiting for Windows…':'Install certificate'}</button>
           {/if}
         </div>
       </section>
       {/snippet}
-      {#snippet steamSection()}
+{#snippet steamSection()}
       <section class:setup-attention={setupAttention}>
         <h3>Steam setup</h3>
         <p>Paste this into the game’s Steam Launch Options. The game will use the proxy without a console window.</p>
@@ -485,31 +515,35 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
         <small>The launcher starts collection. Clear this option to launch normally.</small>
       </section>
       {/snippet}
-      {#if desktopSession}
-        <section>
+<div class="settings-page" hidden={settingsCategory!=='collection'}>
+{#if desktopSession}<section>
           <h3>Background collection</h3>
           <p>Closing the window keeps collecting. Use Exit in the tray menu to stop Umalytics.</p>
           <div class="setting-row"><div><strong>Collect races</strong><small>Only game API traffic is inspected.</small></div><input aria-label="Enable background collection" type="checkbox" checked={settings.collectionEnabled} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({collectionEnabled:e.currentTarget.checked})}/></div>
           {#each categories as c}<label class="setting-row"><span><i style={`background:${c.color}`}></i>{c.label}</span><input type="checkbox" checked={settings.categories[c.id]} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({categories:{...settings.categories,[c.id]:e.currentTarget.checked}})}/></label>{/each}
-          <label class="setting-row"><span>Start collection when I sign in</span><input type="checkbox" checked={settings.startAtLogin??false} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({startAtLogin:e.currentTarget.checked})}/></label>
           <small>All types are on by default. Changes affect new captures. Saved races stay in the library.</small>
-        </section>
-        {#if !setupSettled}{@render certSection()}{@render steamSection()}{/if}
-      {/if}
-      <section>
+        </section>{@render certSection()}{@render steamSection()}{:else}<section><h3>Collection</h3><p>Open the desktop app to collect races.</p></section>{/if}
+</div>
+<div class="settings-page" hidden={settingsCategory!=='appearance'}><section>
         <h3>Appearance</h3>
         <div class="theme-switch" role="group" aria-label="Appearance">
           <button type="button" class:active={theme==='dark'} onclick={()=>setTheme('dark')}><span class="theme-icon" aria-hidden="true">☾</span>Dark</button>
           <button type="button" class:active={theme==='light'} onclick={()=>setTheme('light')}><span class="theme-icon" aria-hidden="true">☀</span>Light</button>
         </div>
         <div class="font-scale-setting"><label for="font-scale">Text size <output for="font-scale">{fontScale}%</output></label><div class="font-scale-control"><input id="font-scale" type="range" min={MIN_FONT_SCALE} max={MAX_FONT_SCALE} step="5" aria-label="Text size" aria-valuetext={`${fontScale}%`} bind:value={fontScale} onchange={()=>saveFontScale()}/><button onclick={()=>saveFontScale(100)}>Reset</button></div><small>Telemetry graph text stays the same size.</small></div>
-      </section>
-      {#if desktopSession}
-        <AppUpdates csrfToken={health?.csrfToken} beforeInstall={flushWorkspaceSession}/>
-      {:else}
-        <section><h3>Reference data</h3><p>Game names, course paths and skill data are included with this viewer.</p><a href="data/NOTICE.txt" target="_blank" rel="noreferrer">Sources and licenses ↗</a></section>
-      {/if}
-      <section>
+      </section></div>
+<div class="settings-page" hidden={settingsCategory!=='updates'}>{#if desktopSession}<AppUpdates csrfToken={health?.csrfToken} beforeInstall={flushWorkspaceSession}/>{:else}<section><h3>Reference data</h3><p>Game names, course paths and skill data are included with this viewer.</p><a href="data/NOTICE.txt" target="_blank" rel="noreferrer">Sources and licenses ↗</a></section>{/if}</div>
+<div class="settings-page" hidden={settingsCategory!=='storage'}>{#if desktopSession}<section>
+          <h3>Downloads</h3>
+          <p>Race JSON and Uma JSON are saved here, then shown in Explorer.</p>
+          <label class="export-folder"><span class="muted">Folder</span><input aria-label="JSON download folder" bind:value={exportDraft} disabled={!health?.csrfToken||busy}/></label>
+          <div class="toolbar"><button onclick={()=>saveExportFolder(exportDraft)} disabled={!health?.csrfToken||busy||!exportDraft.trim()}>Save folder</button><button onclick={()=>saveExportFolder(null)} disabled={!health?.csrfToken||busy}>Use Downloads folder</button><button onclick={()=>revealFolder('exports')} disabled={!health?.csrfToken}>Open folder</button></div>
+          <small>{settings.downloadsDirectory?`Downloads folder: ${settings.downloadsDirectory}`:'Uses your Windows Downloads folder unless you choose another path.'}</small>
+        </section>{#if health?.dataDirectory}<section><h3>Saved data</h3><button class="saved-data-path" onclick={()=>revealFolder('data')} disabled={!health?.csrfToken}><code class="launch-option">{health.dataDirectory}</code></button><small>Click to open this folder in Explorer. Race imports, preferences, certificates and collection history are saved here.</small></section>{/if}<CacheSettings serviceStatus={health?.analysisBackground} storageStatus={health?.storageOptimization} client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>{:else}<section><h3>Storage</h3><p>Imported files are stored in your browser.</p></section>{/if}</div>
+<div class="settings-page" hidden={settingsCategory!=='diagnostics'}>{#if desktopSession}<section><h3>Diagnostics</h3>
+          <div class="setting-row" style={health?.debugCapture?.enabled?'color:#ff6868;background:#8b202033;border:1px solid #d44;padding:10px;border-radius:6px':''}><span>Raw API debug capture</span><button type="button" class="debug-switch" class:debug-active={health?.debugCapture?.enabled??false} role="switch" aria-label="Raw API debug capture" aria-checked={health?.debugCapture?.enabled??false} title={health?.debugCapture?.mode==='permanent'?'On until you turn it off':health?.debugCapture?.enabled?'Timed capture':'Configure raw API capture'} disabled={!health?.csrfToken||busy} onclick={()=>requestDebug(!(health?.debugCapture?.enabled??false)).catch(e=>error=String(e))}><span aria-hidden="true"></span></button></div>
+        </section>{:else}<section><h3>Diagnostics</h3><p>Diagnostics are available in the desktop app.</p></section>{/if}</div>
+<div class="settings-page" hidden={settingsCategory!=='about'}><section>
         <h3>About</h3>
         {#if desktopSession}
           <a href="https://exkitsune.github.io/Umalytics/" target="_blank" rel="noreferrer">Web viewer ↗</a>
@@ -518,31 +552,40 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
           <a href={DOWNLOAD_URL} target="_blank" rel="noreferrer">Download the Windows app ↗</a>
           <p>This web viewer opens race JSON in your browser, including files you drop onto the window. Auto collection only works in the desktop app.</p>
         {/if}
-      </section>
-      {#if desktopSession}
-        <section>
-          <h3>Downloads</h3>
-          <p>Race JSON and Uma JSON are saved here, then shown in Explorer.</p>
-          <label class="export-folder"><span class="muted">Folder</span><input aria-label="JSON download folder" bind:value={exportDraft} disabled={!health?.csrfToken||busy}/></label>
-          <div class="toolbar"><button onclick={()=>saveExportFolder(exportDraft)} disabled={!health?.csrfToken||busy||!exportDraft.trim()}>Save folder</button><button onclick={()=>saveExportFolder(null)} disabled={!health?.csrfToken||busy}>Use Downloads folder</button><button onclick={()=>revealFolder('exports')} disabled={!health?.csrfToken}>Open folder</button></div>
-          <small>{settings.downloadsDirectory?`Downloads folder: ${settings.downloadsDirectory}`:'Uses your Windows Downloads folder unless you choose another path.'}</small>
-        </section>
-        {#if health?.dataDirectory}<section><h3>Saved data</h3><button class="saved-data-path" onclick={()=>revealFolder('data')} disabled={!health?.csrfToken}><code class="launch-option">{health.dataDirectory}</code></button><small>Click to open this folder in Explorer. Race imports, preferences, certificates and collection history are saved here.</small></section>{/if}
-        <section><h3>Diagnostics</h3><button onclick={()=>revealFolder('diagnostics')} disabled={!health?.csrfToken}>Open diagnostics folder</button></section>
-        <CacheSettings serviceStatus={health?.analysisBackground} storageStatus={health?.storageOptimization} client={analysisClient} status={cacheStatus} state={analysisState} onError={value=>error=value}/>
-        {#if setupSettled}{@render certSection()}{@render steamSection()}{/if}
-        <section>
+      </section>{#if desktopSession}<section>
           <h3>Uninstall</h3>
-          <details><summary>Uninstall instructions</summary><ol><li>Use <strong>Remove certificate</strong> above. Approve the Windows prompt. The certificate is named “Umalytics Local Capture” under Current User Trusted Root Certification Authorities.</li><li>Turn off <strong>Start collection when I sign in</strong> if it is enabled.</li><li>Clear the game’s Steam Launch Options.</li><li>Optional: delete the Saved data folder to remove races, settings and the capture certificate key.</li><li>Choose <strong>Exit Umalytics and stop collection</strong> in the tray menu.</li><li>Delete <code>Umalytics.exe</code>.</li></ol></details>
-        </section>
-      {/if}
-    </div><div class="modal-footer"><span class="muted">{health?.mode==='desktop'?'Background collector connected':'Static viewer · import / export available'}</span><button onclick={closeSettings}>Done</button></div></div></div>{/if}
+          <ol><li>Open <strong>Collection &amp; Certificate → Remove certificate</strong>. Approve the Windows prompt. This also deletes the capture key.</li><li>Clear the game’s Steam Launch Options.</li><li>Optional: use <strong>Delete all saved data</strong> below.</li><li>Choose <strong>Exit Umalytics and stop collection</strong> in the tray menu.</li><li>Delete <code>Umalytics.exe</code>.</li></ol>
+          <button class="danger" onclick={()=>deleteDataConfirm=true} disabled={busy||!health?.csrfToken}>Delete all saved data</button>
+        </section>{/if}</div>
+</div></div>
+<div class="modal-footer"><span class="muted">{health?.mode==='desktop'?'Background collector connected':'Static viewer · import / export available'}</span><button onclick={closeSettings}>Done</button></div>
+</div></div>{/if}
 {#if downloadPromptOpen}<div class="modal-backdrop" role="presentation" onclick={(event)=>{if(event.target===event.currentTarget)downloadPromptOpen=false;}}><div class="download-prompt" role="dialog" aria-modal="true" aria-label="Download Umalytics" tabindex="-1"><h2>Auto collection needs the desktop app</h2><p>This website can open race JSON, including files you drop here. Capturing races from the game only works if you download the Windows app.</p><div class="toolbar"><a class="button primary" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">Download Umalytics</a><button onclick={()=>downloadPromptOpen=false}>Close</button></div></div></div>{/if}
 
 {#if faqOpen}<AnalysisFaq onClose={()=>faqOpen=false}/>{/if}
 {#if skillDetail!==null&&analysisRace&&analysis}<SkillDetails onFaq={()=>{skillDetail=null;faqOpen=true}} skillId={skillDetail} {reference} race={analysisRace} {analysis} runner={analysisRace.runners.find(r=>r.id===(skillDetailRunner??selected))??null} onClose={()=>skillDetail=null} onSeek={seek}/>{/if}
 
 <style>
+  .settings-window{width:min(1120px,96vw);height:min(820px,90vh);max-height:90vh}
+  .settings-window>.modal-title{display:flex;align-items:center;justify-content:space-between;flex:none}
+  .settings-layout{display:grid;grid-template-columns:215px minmax(0,1fr);flex:1;min-height:0}
+  .settings-nav{padding:18px 12px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;gap:6px;overflow:auto}
+  .settings-nav button{justify-content:flex-start;text-align:left;white-space:normal;border-color:transparent;background:transparent;padding:12px}
+  .settings-nav button.active{color:var(--accent);background:var(--accent-soft);border-color:var(--accent)}
+  .settings-content{padding:0 28px;min-width:0;min-height:0}
+  .settings-page[hidden]{display:none}
+  .settings-content .settings-page>section:last-child{border-bottom:0}
+  .certificate-warning{padding:18px;margin-bottom:20px;border:2px solid #ed5050;border-radius:8px;background:#9d171722;color:#ff6868}
+  .certificate-warning strong{display:block;font-size:1.2em}
+  .certificate-warning p{margin:10px 0 0;color:inherit}
+  .debug-confirm{display:grid;gap:8px;min-width:0}
+  .debug-confirm input{width:100%;min-width:0}
+  .debug-switch{position:relative;width:48px;height:28px;padding:3px;border-radius:20px;background:var(--border);border:1px solid var(--muted);flex:none}
+  .debug-switch span{display:block;width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;left:3px;top:3px;transition:transform .12s}
+  .debug-switch.debug-active{background:#bb2733;border-color:#ff6b76}
+  .debug-switch.debug-active span{transform:translateX(20px)}
+  @media(max-width:760px){.settings-layout{grid-template-columns:165px minmax(0,1fr)}.settings-content{padding:0 16px}.settings-nav{padding:12px 6px}.settings-nav button{padding:10px 8px}}
+
   .simulation-sidebar button{display:flex;align-items:center;gap:9px}
 
   .analysis-source{font-size:var(--font-10);color:var(--muted);font-weight:400;margin-left:16px;white-space:nowrap}
@@ -551,3 +594,18 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
   .analysis-fallback-banner .button{flex-shrink:0;background:#fff;color:#991b1b;border-color:#fff;font-weight:700}
   @media(max-width:650px){.analysis-fallback-banner{padding:16px;flex-wrap:wrap;gap:12px}}
 </style>
+
+{#if debugWarning}<div class="modal-backdrop" style="z-index:1500" role="presentation" onclick={e=>{if(e.target===e.currentTarget)debugWarning=false;}} onkeydown={e=>{if(e.key==='Escape')debugWarning=false;}}><div class="settings-modal" use:modalFocus role="dialog" aria-modal="true" aria-label="Raw API debug capture" tabindex="-1"><div class="modal-title" style="display:flex;align-items:center;justify-content:space-between"><h2>Raw API debug capture</h2><button aria-label="Close debug capture" onclick={()=>debugWarning=false}>×</button></div><div class="settings-body" style="display:grid;gap:12px;padding:24px">{#if error}<p class="notice error" role="alert">{error}</p>{/if}          {#if !health?.debugCapture?.enabled}
+            <div class="notice error" style="display:block" role="alert"><strong>Raw capture can expose your account.</strong><p>Records all game API requests and responses, not just races. Includes headers, bodies, tokens and personal data.</p></div>
+            <label class="setting-row"><span>I understand these files contain secrets.</span><input type="checkbox" bind:checked={debugAcks[0]}/></label>
+            <label class="setting-row"><span>I understand this records all game API traffic.</span><input type="checkbox" bind:checked={debugAcks[1]}/></label>
+            <label class="setting-row"><span>I will keep these files private and never share them unredacted.</span><input type="checkbox" bind:checked={debugAcks[2]}/></label>
+            <label class="debug-confirm"><span>Type CAPTURE SECRETS</span><input aria-label="Debug capture confirmation" bind:value={debugPhrase} autocomplete="off" spellcheck="false"/></label>
+            <div class="toolbar"><button class="danger" title="Stays enabled across restarts until you turn it off" onclick={()=>enableDebug('permanent')} disabled={busy||!debugAcks.every(Boolean)||debugPhrase!=='CAPTURE SECRETS'||debugNow<debugReadyAt}>{debugNow<debugReadyAt?`Wait ${Math.ceil((debugReadyAt-debugNow)/1000)}s`:'Enable'}</button><button title="Stops after 30 minutes or service restart" onclick={()=>enableDebug('30m')} disabled={busy||!debugAcks.every(Boolean)||debugPhrase!=='CAPTURE SECRETS'||debugNow<debugReadyAt}>Enable for 30 minutes</button><button onclick={()=>debugWarning=false}>Cancel</button></div>
+          {:else}<p class="notice error" role="alert">Raw capture is on. Logs contain secrets. {health?.debugCapture?.mode==='permanent'?'Stays on until you turn it off.':'Stops after 30 minutes or service restart.'}</p><button onclick={stopDebug}>Stop debug capture</button>{/if}
+          <div class="toolbar"><button class="danger" onclick={()=>clearLogsConfirm=true} disabled={!health?.csrfToken||busy}>Delete all logs and debug captures</button></div>
+          {#if clearLogsConfirm}<p role="alert">Permanently delete local diagnostics and raw captures? Debug capture turns off. Races and certificates stay saved. Routine diagnostics may appear again.</p><div class="toolbar"><button class="danger" onclick={clearLogs} disabled={busy}>Confirm delete logs</button><button onclick={()=>clearLogsConfirm=false}>Cancel</button></div>{/if}
+          <button onclick={()=>revealFolder('diagnostics')} disabled={!health?.csrfToken}>Open diagnostics folder</button></div></div></div>{/if}
+
+{#if deleteDataConfirm}<div class="modal-backdrop" role="presentation"><div class="settings-modal download-prompt" use:modalFocus role="dialog" aria-modal="true" aria-label="Delete all saved data" tabindex="-1"><h2>Delete all saved data?</h2><p>Deletes races, saved builds, settings, caches, logs, and the capture certificate and key. Stops collection. This cannot be undone.</p><p>Close the game first. Downloaded runtime files and files exported elsewhere stay.</p><div class="toolbar"><button class="danger" disabled={busy} onclick={deleteAllData}>{busy?'Deleting…':'Delete all saved data'}</button><button disabled={busy} onclick={()=>deleteDataConfirm=false}>Cancel</button></div>{#if error}<p role="alert">{error}</p>{/if}</div></div>{/if}
+{#if dataDeleted}<div class="modal-backdrop" role="presentation"><div class="settings-modal download-prompt" role="alertdialog" aria-modal="true" aria-label="Saved data deleted" tabindex="-1"><h2>Saved data deleted</h2><p>Collection has stopped. Close Umalytics. Open it again for a fresh setup.</p></div></div>{/if}

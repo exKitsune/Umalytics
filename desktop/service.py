@@ -55,7 +55,7 @@ class LocalServer(ThreadingHTTPServer):
 
 
 def settings_default():
-    return {'schemaVersion': 1, 'collectionEnabled': True, 'startAtLogin': False,
+    return {'schemaVersion': 1, 'collectionEnabled': True,
             'categories': {category: category not in ('career', 'team-trials') for category in CATEGORIES},
             'preferences': {'theme': 'dark', 'fontScale': 100, 'courseAssignments': {}, 'browserMigrationComplete': False}}
 
@@ -118,50 +118,30 @@ def command(*args):
     return [sys.executable, *args] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).resolve()), *args]
 
 
+def steam_launch_option(service):
+    if service.desktop_exe:
+        return f'"{service.desktop_exe}" --launch-game -- %command%'
+    if os.name == 'nt' and not getattr(sys, 'frozen', False):
+        python = Path(sys.executable).with_name('pythonw.exe')
+        if python.is_file():
+            args = [str(python), str(Path(__file__).resolve()), '--launch-game',
+                    '--port', str(service.server.server_port), '--proxy-port', str(service.proxy_port),
+                    '--data-dir', str(service.data_dir), '--']
+            return subprocess.list2cmdline(args) + ' %command%'
+    return None
+
+
 def current_user_trust(der, install=False, uninstall=False):
-    """Open only CurrentUser ROOT, compare the exact certificate bytes."""
-    if os.name != 'nt' or (install and uninstall):
-        return False
-    crypt = ctypes.WinDLL('crypt32', use_last_error=True)
-    crypt.CertOpenStore.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
-    crypt.CertOpenStore.restype = ctypes.c_void_p
-    crypt.CertCloseStore.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
-    crypt.CertFindCertificateInStore.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p]
-    crypt.CertFindCertificateInStore.restype = ctypes.c_void_p
-    crypt.CertFreeCertificateContext.argtypes = [ctypes.c_void_p]
-    crypt.CertAddEncodedCertificateToStore.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
-    crypt.CertDeleteCertificateFromStore.argtypes = [ctypes.c_void_p]
-    crypt.CertDeleteCertificateFromStore.restype = ctypes.c_int
-    # CERT_STORE_PROV_SYSTEM_W=10; CURRENT_USER=0x10000, READONLY=0x8000.
-    store = crypt.CertOpenStore(ctypes.c_void_p(10), 0, None, 0x10000 | (0 if install or uninstall else 0x8000), ctypes.c_wchar_p('ROOT'))
-    if not store:
-        return False
-    context = None
-    try:
-        if install:
-            return bool(crypt.CertAddEncodedCertificateToStore(store, 1, der, len(der), 4, None))
-        class Blob(ctypes.Structure):
-            _fields_ = [('cbData', ctypes.c_uint32), ('pbData', ctypes.c_void_p)]
-        digest = ctypes.create_string_buffer(hashlib.sha1(der).digest())
-        blob = Blob(20, ctypes.cast(digest, ctypes.c_void_p))
-        context = crypt.CertFindCertificateInStore(store, 1, 0, 0x10000, ctypes.byref(blob), None)
-        if not context:
-            return False
-        if uninstall:
-            deleted = bool(crypt.CertDeleteCertificateFromStore(context))
-            context = None
-            return deleted
-        return True
-    finally:
-        if context:
-            crypt.CertFreeCertificateContext(context)
-        crypt.CertCloseStore(store, 0)
+    from certificate_trust import current_user_trust as trust
+    return trust(der, install=install, uninstall=uninstall)
 
 
 class Service:
     def __init__(self, data_dir, no_proxy=False, desktop_exe=None, proxy_port=PROXY_PORT):
         self.diagnostics = diagnostics.initialize(data_dir, 'service', diagnostic_version())
         self.data_dir = data_dir = prepare_storage(data_dir)
+        from debug_capture import DebugCapture
+        self.debug_capture = DebugCapture(data_dir)
         self.inbox = data_dir / 'races'
         self.ca_dir = data_dir / 'capture'
         self.status_path = data_dir / 'cache' / 'collector-status.json'
@@ -179,10 +159,16 @@ class Service:
         self.csrf = secrets.token_urlsafe(32)
         self.settings = settings_default()
         try:
-            self.update_settings(json.loads(self.settings_path.read_text(encoding='utf-8')), persist=False)
+            saved = json.loads(self.settings_path.read_text(encoding='utf-8'))
+            saved.pop('startAtLogin', None)
+            self.update_settings(saved, persist=False)
         except (OSError, ValueError, TypeError):
             pass
+        self.remove_login_startup()
         atomic_json(self.settings_path, self.settings)
+        self.maintenance = False
+        self.operations = threading.Condition()
+        self.active_operations = 0
         self.no_proxy = no_proxy
         self.proxy = None
         self.proxy_state = 'disabled' if no_proxy else 'starting'
@@ -229,7 +215,7 @@ class Service:
             catalog_base = {}
         for field in ('characters', 'outfits', 'skillNames', 'skills'):
             catalog_base.setdefault(field, {})
-        self.catalog = CatalogData(data_dir / 'cache' / 'catalog', catalog_base, closed=self.closed)
+        self.catalog = CatalogData(data_dir / 'cache' / 'catalog', catalog_base, closed=self.closed, installed=self.game_race_data.read)
         from updater import UpdateController
         self.updater = UpdateController(data_dir, desktop_exe, RESOURCE_ROOT, game_active=self.game_active)
         self.runtime_build_sha256 = hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest() if getattr(sys, 'frozen', False) else None
@@ -297,8 +283,22 @@ class Service:
                     self.launcher_pids.pop(pid, None)
         return {'ok': True}
 
+    def remove_login_startup(self):
+        # Retire only this installation's exact startup command, never another app.
+        if os.name != 'nt' or not self.desktop_exe:
+            return
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run', 0,
+                                winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as key:
+                value, kind = winreg.QueryValueEx(key, 'Umalytics')
+                if kind == winreg.REG_SZ and value == f'"{self.desktop_exe}" --background':
+                    winreg.DeleteValue(key, 'Umalytics')
+        except FileNotFoundError:
+            pass
+
     def update_settings(self, patch, persist=True):
-        if not isinstance(patch, dict) or set(patch) - {'schemaVersion', 'collectionEnabled', 'startAtLogin', 'categories', 'preferences', 'exportDirectory'}:
+        if not isinstance(patch, dict) or set(patch) - {'schemaVersion', 'collectionEnabled', 'categories', 'preferences', 'exportDirectory'}:
             raise ValueError('Unknown setting.')
         if 'schemaVersion' in patch and patch['schemaVersion'] != 1:
             raise ValueError('Unsupported settings version.')
@@ -309,22 +309,6 @@ class Service:
         if not isinstance(categories, dict) or set(categories) - set(CATEGORIES) or any(not isinstance(v, bool) for v in categories.values()):
             raise ValueError('Invalid collection categories.')
         preferences = self.validate_preferences(patch.get('preferences', {}))
-        if 'startAtLogin' in patch:
-            if not isinstance(patch['startAtLogin'], bool):
-                raise ValueError('Start at login must be boolean.')
-            if persist and patch['startAtLogin'] != self.settings['startAtLogin']:
-                if os.name != 'nt' or not self.desktop_exe:
-                    raise ValueError('Start at login is available from the desktop executable.')
-                import winreg
-                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
-                    if patch['startAtLogin']:
-                        winreg.SetValueEx(key, 'Umalytics', 0, winreg.REG_SZ, f'"{self.desktop_exe}" --background')
-                    else:
-                        try:
-                            winreg.DeleteValue(key, 'Umalytics')
-                        except FileNotFoundError:
-                            pass
-            self.settings['startAtLogin'] = patch['startAtLogin']
         if 'collectionEnabled' in patch:
             self.settings['collectionEnabled'] = patch['collectionEnabled']
         self.settings['categories'].update(categories)
@@ -453,7 +437,7 @@ class Service:
         return self.races(1, race_id, summary=True)['races'][0]
 
     def ensure_certificate(self):
-        if self.no_proxy:
+        if self.no_proxy or (self.ca_dir / 'disabled').exists():
             return
         from capture_store import load_store
         load_store(self.ca_dir)
@@ -472,6 +456,9 @@ class Service:
                           sha256=hashlib.sha256(der).hexdigest().upper(),
                           sha1=hashlib.sha1(der).hexdigest().upper(),
                           subject=certificate.subject.rfc4514_string(),
+                          replacedLegacy=(self.ca_dir / 'retired-roots.pem').is_file(),
+                          identityMode='hostname-only' if (self.ca_dir / 'identity-v3.json').is_file() and (self.ca_dir / 'umalytics-api-key.dpapi').is_file() and not (self.ca_dir / 'umalytics-ca.pem').exists() and not (self.ca_dir / 'umalytics-ca.p12').exists() else 'legacy',
+                          keyProtection='Windows user encryption' if (self.ca_dir / 'umalytics-api-key.dpapi').is_file() else None,
                           expiresAt=certificate.not_valid_after_utc.isoformat())
         except (OSError, ValueError):
             pass
@@ -483,6 +470,8 @@ class Service:
             status = self.certificate(force=True)
             if not status['exists'] or not secrets.compare_digest(str(expected_hash), status['sha256']):
                 raise ValueError('Certificate changed. Review its current fingerprint first.')
+            if status.get('identityMode') != 'hostname-only':
+                raise ValueError('Restart Umalytics to finish retiring the old capture certificate.')
             if status['trusted']:
                 return status
             if os.name != 'nt':
@@ -497,21 +486,66 @@ class Service:
                 raise ValueError('Windows could not install the reviewed certificate.')
             return self.certificate(force=True)
 
+    def prepare_certificate(self):
+        with self.lock, self.install_lock:
+            from capture_store import load_store
+            load_store(self.ca_dir)
+            (self.ca_dir / 'disabled').unlink(missing_ok=True)
+            return self.certificate(force=True)
+
     def uninstall_certificate(self, expected_hash):
-        with self.install_lock:
+        with self.lock, self.install_lock:
             status = self.certificate(force=True)
             if not status['exists'] or not secrets.compare_digest(str(expected_hash), status['sha256']):
                 raise ValueError('Certificate changed. Review its current fingerprint first.')
-            if not status['trusted']:
-                return status
-            if os.name != 'nt':
-                raise ValueError('Windows CurrentUser certificate store is required.')
-            from cryptography import x509
-            from cryptography.hazmat.primitives import serialization
-            der = x509.load_pem_x509_certificate((self.ca_dir / 'umalytics-ca-cert.pem').read_bytes()).public_bytes(serialization.Encoding.DER)
-            if hashlib.sha256(der).hexdigest().upper() != expected_hash or not current_user_trust(der, uninstall=True):
-                raise ValueError('Windows could not remove the capture certificate. Approve the Windows prompt if it appears.')
+            self.stop_proxy()
+            from capture_identity import remove_identity
+            remove_identity(self.ca_dir)
+            self.proxy_state = 'certificate_removed'
             return self.certificate(force=True)
+
+    def delete_saved_data(self):
+        from saved_data import saved_paths, delete_paths
+        saved_paths(self.data_dir)  # Validate the whole tree before changing it.
+        if self.updater.busy or self.updater.phase == 'restarting':
+            raise ValueError('Wait for the app update to finish before deleting saved data.')
+        if self.game_active():
+            raise ValueError('Close the game before deleting saved data.')
+        with self.operations:
+            self.maintenance = True
+            deadline = time.monotonic() + 30
+            while self.active_operations > 1:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self.maintenance = False
+                    raise ValueError('An operation is still running. Try again shortly.')
+                self.operations.wait(remaining)
+        try:
+            with self.lock, self.install_lock:
+                self.stop_proxy()
+                from capture_identity import remove_identity
+                remove_identity(self.ca_dir)
+            self.debug_capture.disable()
+            self.shutdown(stop_server=False)
+            # close() cancels queues; wait for in-flight writers before deleting.
+            for executor in (self.sandbox.executor, self.sandbox.render_executor,
+                             self.sandbox.impact_executor, self.sandbox.batch_executor,
+                             self.simulation.executor):
+                executor.shutdown(wait=True, cancel_futures=True)
+            for thread in (self.catalog.thread, self.updater.thread,
+                           getattr(self.updater, 'worker', None), self.sandbox.auto_skills.thread, self.analysis_service.thread,
+                           self.storage_optimizer.thread, self.library_watcher):
+                if thread and thread is not threading.current_thread():
+                    thread.join()
+            with self.diagnostics.lock:
+                self.diagnostics.suppressed = True
+            # Include files created during shutdown, and revalidate links.
+            delete_paths(self.data_dir, saved_paths(self.data_dir))
+            return {'ok': True}
+        except Exception:
+            # Keep collection and requests paused on partial failure; never resume
+            # with a half-deleted identity or library.
+            raise
 
     def reveal_target(self, body):
         target = body.get('target')
@@ -623,6 +657,10 @@ class Service:
         retry_after = 0
         while not self.closed.wait(1):
             with self.lock:
+                if (self.ca_dir / 'disabled').exists():
+                    self.stop_proxy()
+                    self.proxy_state = 'certificate_removed'
+                    continue
                 trusted = self.certificate()['trusted']
                 if self.no_proxy:
                     self.stop_proxy()
@@ -864,7 +902,7 @@ class Service:
         self.library_changed()
         return {'ok': True}
 
-    def shutdown(self):
+    def shutdown(self, stop_server=True):
         self.diagnostics.event('service_shutdown_requested')
         self.storage_optimizer.close()
         self.sandbox.close()
@@ -874,7 +912,7 @@ class Service:
         self.analysis_service.close()
         self.simulation.close()
         self.updater.close()
-        if self.server:
+        if self.server and stop_server:
             threading.Thread(target=self.server.shutdown, daemon=True).start()
 
 
@@ -926,8 +964,8 @@ def make_handler(service):
                     self.send(200, {'ok': True, 'app': 'UmaTrace', 'mode': 'desktop', 'staticReady': bool(service.frontend.asset('/')) or '/' in service.assets,
                                     'analysisService': service.analysis_service.available, 'analysisBackground': service.analysis_service.status(), 'analysisEvents': True,
                                     'storageOptimization': service.storage_optimizer.status(),
-                                    'csrfToken': service.csrf, 'proxy': service.proxy_status(), 'certificate': service.certificate(),
-                                    'launchOption': f'"{service.desktop_exe}" --launch-game -- %command%' if service.desktop_exe else None,
+                                    'csrfToken': service.csrf, 'debugCapture': service.debug_capture.status(), 'proxy': service.proxy_status(), 'certificate': service.certificate(),
+                                    'launchOption': steam_launch_option(service),
                                     'dataDirectory': str(service.data_dir),
                                     'version': service.updater.version, 'buildNumber': service.updater.build,
                                     'dataSha256': service.bundled_data_sha256,
@@ -989,6 +1027,8 @@ def make_handler(service):
                         self.send(200, AnalysisCache(service.data_dir).read(path.split('/api/analysis-cache/')[1] if path.startswith('/api/analysis-cache/') else None))
                 elif path == '/api/licenses':
                     self.send(200, raw=service.notices, content_type='text/plain; charset=utf-8')
+                elif path == '/api/debug-capture':
+                    self.send(200, service.debug_capture.status())
                 elif path == '/api/certificate':
                     self.send(200, service.certificate())
                 elif path == '/api/data/status':
@@ -1099,6 +1139,22 @@ def make_handler(service):
                     with service.lock:
                         result = service.update_settings(body)
                     self.send(200, result)
+                elif self.path == '/api/debug-capture/prepare':
+                    self.send(200, service.debug_capture.prepare())
+                elif self.path == '/api/debug-capture':
+                    self.send(200, service.debug_capture.update(body))
+                elif self.path == '/api/logs/clear':
+                    if body.get('confirm') != 'DELETE LOGS':
+                        raise ValueError('Confirm deletion of diagnostics and raw debug captures.')
+                    self.send(200, service.debug_capture.clear())
+                elif self.path == '/api/data/delete':
+                    if body != {'confirm': 'DELETE ALL DATA'}:
+                        raise ValueError('Confirm deletion of all saved data.')
+                    result = service.delete_saved_data()
+                    self.send(200, result)
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                elif self.path == '/api/certificate/prepare':
+                    self.send(200, service.prepare_certificate())
                 elif self.path == '/api/certificate/install':
                     self.send(200, service.install_certificate(body.get('sha256')))
                 elif self.path == '/api/certificate/uninstall':
@@ -1133,6 +1189,23 @@ def make_handler(service):
                 service.diagnostics.exception('http_post_failed', error)
                 self.send(500, {'error': 'Local operation failed.'})
 
+    def tracked(method):
+        def run(handler):
+            with service.operations:
+                if service.maintenance:
+                    handler.send(503, {'error': 'Saved data deletion is in progress. Close Umalytics when it finishes.'})
+                    return
+                service.active_operations += 1
+            try:
+                return method(handler)
+            finally:
+                with service.operations:
+                    service.active_operations -= 1
+                    service.operations.notify_all()
+        return run
+    Handler.do_GET = tracked(Handler.do_GET)
+    Handler.do_HEAD = Handler.do_GET
+    Handler.do_POST = tracked(Handler.do_POST)
     return Handler
 
 

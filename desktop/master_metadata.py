@@ -52,6 +52,61 @@ def metadata(db):
     return {'characters': names, 'outfits': outfits, 'trackNames': texts(35), 'skillNames': skill_names, 'skills': skills}
 
 
+def catalog(db):
+    """Public local card facts, without community slugs or guessed release dates."""
+    db.row_factory = sqlite3.Row
+    tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    result = {k: {} for k in ('prices', 'supports', 'characters', 'skillOwners', 'outfitGlobalReleases', 'aptitudes')}
+    if {'skill_data', 'single_mode_skill_need_point'} <= tables:
+        rows = list(db.execute('SELECT s.id,s.group_id,s.group_rate,s.rarity,p.need_skill_point FROM skill_data s LEFT JOIN single_mode_skill_need_point p ON p.id=s.id'))
+        groups = {}
+        for row in sorted(rows, key=lambda r: (r['group_rate'], r['id'])):
+            if row['rarity'] in (1, 2) and row['need_skill_point'] is not None:
+                groups.setdefault(row['group_id'], []).append(row)
+        for row in rows:
+            peers = [r for r in groups.get(row['group_id'], []) if r['group_rate'] <= row['group_rate']]
+            steps = [r['id'] for r in peers] if row['rarity'] in (1, 2) and len({r['group_rate'] for r in peers}) == len(peers) else []
+            result['prices'][str(row['id'])] = {'cost': row['need_skill_point'], 'steps': steps}
+    if {'text_data', 'support_card_data'} <= tables:
+        names = {r[0]: r[1] for r in db.execute('SELECT [index],text FROM text_data WHERE category=75')}
+        for row in db.execute('SELECT id,chara_id,rarity,support_card_type,command_id FROM support_card_data'):
+            result['supports'][str(row['id'])] = {'name': names.get(row['id'], ''), 'charaId': row['chara_id'],
+                'rarity': row['rarity'], 'type': row['support_card_type'], 'command': row['command_id']}
+    if {'card_data', 'card_rarity_data'} <= tables:
+        grades = dict(enumerate('GFEDCBAS', 1))
+        columns = ['proper_ground_turf', 'proper_ground_dirt', 'proper_distance_short', 'proper_distance_mile',
+                   'proper_distance_middle', 'proper_distance_long', 'proper_running_style_nige',
+                   'proper_running_style_senko', 'proper_running_style_sashi', 'proper_running_style_oikomi']
+        for row in db.execute('SELECT r.* FROM card_rarity_data r JOIN card_data c ON c.id=r.card_id AND c.default_rarity=r.rarity'):
+            values = [grades.get(row[c]) for c in columns]
+            if all(values):
+                result['aptitudes'][str(row['card_id'])] = values
+        if {'skill_set', 'skill_data'} <= tables:
+            owners = {}
+            rarities = {r[0]: r[1] for r in db.execute('SELECT id,rarity FROM skill_data')}
+            for row in db.execute('SELECT r.card_id,s.* FROM card_rarity_data r JOIN skill_set s ON s.id=r.skill_set'):
+                for i in range(1, 21):
+                    sid = row[f'skill_id{i}']
+                    if sid and rarities.get(sid) in (3, 4, 5):
+                        owners.setdefault(str(sid), set()).add(row['card_id'])
+            result['skillOwners'] = {k: sorted(v) for k, v in owners.items()}
+    return result
+
+
+def courses(db):
+    """MDB core properties; corner/slope/path geometry is stored in game assets."""
+    columns = {r[1] for r in db.execute('PRAGMA table_info(race_course_set)')}
+    if not {'id', 'race_track_id', 'distance', 'ground', 'inout', 'turn', 'float_lane_max', 'course_set_status_id'} <= columns:
+        return {}
+    statuses = {}
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='race_course_set_status'").fetchone():
+        statuses = {r[0]: [v for v in r[1:] if v] for r in db.execute('SELECT course_set_status_id,target_status_1,target_status_2 FROM race_course_set_status')}
+    return {str(r['id']): {'raceTrackId': r['race_track_id'], 'distance': r['distance'],
+            'surface': r['ground'], 'course': r['inout'], 'turn': r['turn'], 'laneMax': r['float_lane_max'],
+            'courseSetStatus': statuses.get(r['course_set_status_id'], [])}
+            for r in db.execute('SELECT * FROM race_course_set')}
+
+
 def career(db, digest=None):
     db.row_factory = sqlite3.Row
     texts=lambda category:{str(r[0]):r[1] for r in db.execute('select [index],text from text_data where category=?',(category,))}

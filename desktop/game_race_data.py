@@ -10,10 +10,11 @@ from copy import deepcopy
 import master_metadata
 
 
-def merge_metadata(base, extra):
+def merge_metadata(base, extra, prefer_installed=False):
     result = dict(base)
     for field in ('raceInstances', 'raceInstanceConditions', 'racePrograms', 'characters', 'outfits', 'trackNames', 'skillNames', 'skills'):
-        result[field] = {**extra.get(field, {}), **base.get(field, {})}
+        result[field] = ({**base.get(field, {}), **extra.get(field, {})} if prefer_installed else
+                         {**extra.get(field, {}), **base.get(field, {})})
     if extra.get('installedGameRaceSource'):
         result['installedGameRaceSource'] = extra['installedGameRaceSource']
         result['installedGameSkillIds'] = list(extra.get('skills', {}))
@@ -85,11 +86,18 @@ class GameRaceData:
                             'SELECT id,race_instance_id FROM single_mode_program LIMIT 100001')
                             if type(pid) is int and type(iid) is int and 0 < pid <= 2**31-1 and str(iid) in instances}
                     metadata = {}
+                    local_catalog = {}
+                    local_courses = {}
                     if {'text_data', 'skill_data'} <= tables:
                         try:
                             metadata = master_metadata.metadata(db)
                         except (sqlite3.Error, KeyError, IndexError, TypeError, ValueError):
                             pass
+                    try:
+                        local_catalog = master_metadata.catalog(db)
+                        local_courses = master_metadata.courses(db)
+                    except (sqlite3.Error, KeyError, IndexError, TypeError, ValueError):
+                        pass
                     career = {}
                     career_tables = {'text_data', 'skill_data', 'single_mode_skill_need_point', 'support_card_data',
                         'succession_factor_effect', 'succession_factor', 'succession_relation_member', 'succession_relation',
@@ -107,7 +115,7 @@ class GameRaceData:
                     return self.projection
                 if career:
                     career['source']['sha256'] = digest
-                self.projection = {**metadata, 'career': career,
+                self.projection = {**metadata, 'career': career, 'localCatalog': local_catalog, 'courses': local_courses,
                     'raceInstances': instances, 'raceInstanceConditions': conditions, 'racePrograms': programs,
                     'installedGameRaceSource': {'sha256': digest, 'tables': 'race_instance JOIN race JOIN race_course_set'}}
             except (OSError, sqlite3.Error, ValueError):
@@ -115,14 +123,14 @@ class GameRaceData:
             return self.projection
 
     def metadata(self, raw):
-        """Fill missing reference IDs; pinned historical definitions keep priority."""
+        """Prefer installed tables for live lookup; pinned analysis uses merge_metadata defaults."""
         with self.lock:
             extra = self.read()
             if not extra:
                 return raw
             if self.cache is not None and self.cache[0] == raw:
                 return self.cache[1]
-            base = merge_metadata(json.loads(raw), extra)
+            base = merge_metadata(json.loads(raw), extra, prefer_installed=True)
             result = json.dumps(base, ensure_ascii=True, separators=(',', ':')).encode('utf-8')
             self.cache = (raw, result)
             return result

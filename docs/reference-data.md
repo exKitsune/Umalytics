@@ -15,7 +15,9 @@ and career reference tables, including CM IDs received through the capture API.
 The projection refreshes when the file changes and carries
 its SHA-256; no database path, account data or complete database is exported.
 Missing, unreadable or invalid databases leave bundled references available.
-Captured course values and pinned reference definitions keep priority. Existing
+Recorded course values keep priority over lookup. Live lookups prefer installed
+MDB values to bundled values; saved analysis and pinned simulator definitions
+retain their recorded identities. Existing
 captures resolve without rewriting their files. Missing simulator course, grade
 and time context is resolved from preserved race-instance or program IDs, with
 the database digest and source row recorded as provenance. Analysis caches bind
@@ -259,3 +261,21 @@ selected assets. Of 93 with an upstream counterpart, 42 matched all RGBA pixels
 and 51 differed; direct extraction therefore does not claim byte or pixel parity
 with all 130 shipped upstream portraits. The portrait notes preserve this
 version/decoder distinction and the reproducible pixel check.
+
+## Runtime MDB-first catalog
+
+The desktop catalog runs locally; it does not poll GameTora. It checks the
+installed master fingerprint and refreshes public skill text/definitions, costs,
+support facts, base outfit aptitudes and native unique ownership. A versioned
+local catalog preserves the last usable result across restarts. The installed
+Global master overrides overlapping bundled/cached live catalog entries. The
+simulator's audited historical definitions and saved job identities remain
+immutable; new definitions use the existing supported-skill compiler.
+
+Canonical website slugs, community translations, historical release dates and
+JP records absent from the installed Global master remain bundled/cached
+fallbacks. No release date is guessed from a card merely existing in MDB. The
+legacy downloader remains available only through explicit fetch injection for
+build tooling/tests; Service passes the local MDB provider and no fetch function.
+`tests/local-catalog-workflow.py` uses a real SQLite fixture with network access
+forbidden to verify precedence, refresh, restart and missing-MDB behavior.

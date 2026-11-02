@@ -40,6 +40,7 @@ class DiagnosticLog:
         self.closed = threading.Event()
         self.failed = False
         self.enabled = False
+        self.suppressed = False
         self.event('process_start')
 
     def _path(self, folder):
@@ -70,6 +71,8 @@ class DiagnosticLog:
         try:
             raw = (json.dumps(record, ensure_ascii=True) + '\n').encode('utf-8')
             with self.lock:
+                if self.suppressed:
+                    return
                 folder = log_directory(self.data_dir)
                 path = self._path(folder)
                 if linked(path):

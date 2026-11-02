@@ -60,11 +60,11 @@ class GameRaceDataTests(unittest.TestCase):
         self.path.unlink()
         self.assertEqual(self.reader.metadata(self.base), self.base)
 
-    def test_bundled_and_explicit_capture_values_win(self):
+    def test_installed_lookup_and_explicit_capture_values_win(self):
         base = json.dumps({'raceInstances': {'678901': 10606}, 'raceInstanceConditions': {'678901': {'grade': 1, 'time': 1}}}).encode()
         value = json.loads(self.reader.metadata(base))
-        self.assertEqual(value['raceInstances']['678901'], 10606)
-        self.assertEqual(value['raceInstanceConditions']['678901'], {'grade': 1, 'time': 1})
+        self.assertEqual(value['raceInstances']['678901'], 10701)
+        self.assertEqual(value['raceInstanceConditions']['678901'], {'grade': 100, 'time': 2})
         service = Service.__new__(Service)
         service.game_race_data = self.reader
         service.reference_data = type('Reference', (), {'assets': {'metadata.json': self.base,

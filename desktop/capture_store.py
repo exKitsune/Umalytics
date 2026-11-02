@@ -1,29 +1,11 @@
-"""Use one named capture CA for review, trust installation and live TLS."""
+"""Use a fixed API certificate with no persistent CA signing key."""
 from pathlib import Path
-from storage import linked, prepare_storage
-
-BASENAME = 'umalytics'
-SUBJECT = 'Umalytics Local Capture'
+from storage import prepare_storage
 
 
 def load_store(directory, key_size=2048, passphrase=None):
-    from mitmproxy.certs import CertStore
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    if linked(directory) or any(linked(path) for path in directory.iterdir()):
-        raise ValueError('Linked capture store refused.')
-    ca = directory / (BASENAME + '-ca.pem')
-    if not ca.exists():
-        # A partial existing identity must be repaired explicitly, never silently
-        # replaced with a different CA that no longer matches the trusted one.
-        if any(directory.glob('*-ca*')):
-            raise ValueError('Capture CA is incomplete; existing certificate files were preserved.')
-        CertStore.create_store(directory, BASENAME, key_size, organization=SUBJECT, cn=SUBJECT)
-    store = CertStore.from_files(ca, directory / (BASENAME + '-dhparam.pem'), passphrase)
-    certificate = directory / (BASENAME + '-ca-cert.pem')
-    if not certificate.is_file() or certificate.read_bytes() != store.default_ca.to_pem():
-        raise ValueError('Capture certificate does not match its private CA.')
-    return store
+    from capture_identity import load_identity
+    return load_identity(directory, key_size)
 
 
 def run_collector(directory, arguments):
@@ -33,6 +15,8 @@ def run_collector(directory, arguments):
     cannot reliably select our existing CA. This explicit loader also refuses
     partial identities instead of allowing CertStore.from_store to regenerate.
     """
+    if (Path(directory) / 'capture' / 'disabled').exists():
+        raise ValueError('Capture certificate removed. Create a new certificate in Settings.')
     from mitmproxy import ctx
     from mitmproxy.addons.tlsconfig import TlsConfig
     from mitmproxy.tools.dump import DumpMaster
@@ -48,9 +32,8 @@ def run_collector(directory, arguments):
             if triggers.intersection(updated):
                 self.certstore = load_store(Path(ctx.options.confdir), ctx.options.key_size,
                     ctx.options.cert_passphrase.encode('utf-8') if ctx.options.cert_passphrase else None)
-                for spec in ctx.options.certs:
-                    name, separator, filename = spec.partition('=')
-                    self.certstore.add_cert_file(name if separator else '*', Path(filename if separator else name))
+                if ctx.options.certs:
+                    raise ValueError('Custom capture certificates are disabled.')
             super().configure(set(updated) - triggers)
 
     class CaptureMaster(DumpMaster):

@@ -1,4 +1,4 @@
-"""Daily GameTora data refresh; simulator imports use separately pinned overlays."""
+"""Local MDB-first runtime catalog. Explicit fetch injection supports legacy tooling."""
 from copy import deepcopy
 import hashlib
 import json
@@ -63,7 +63,7 @@ def validate_payload(payload):
 
 
 class CatalogData:
-    def __init__(self, directory, metadata, *, closed=None, fetch=download, clock=time.time):
+    def __init__(self, directory, metadata, *, closed=None, fetch=None, clock=time.time, installed=None):
         self.directory = Path(directory)
         if linked(self.directory):
             raise ValueError('Linked catalog directory refused.')
@@ -71,6 +71,8 @@ class CatalogData:
         self.metadata = metadata
         self.base_digest = hashlib.sha256(encoded([metadata, 'engine-skills-v2-aptitudes'])).hexdigest()
         self.fetch, self.clock = fetch, clock
+        self.installed = installed or (lambda: {})
+        self.local_stamp = None
         self.closed = closed if closed is not None else threading.Event()
         self.lock, self.refresh_lock = threading.RLock(), threading.Lock()
         self.thread = None
@@ -80,6 +82,9 @@ class CatalogData:
         self.checked_at = self.updated_at = self.error = self.revision = None
         self.next_check = 0
         self._restore()
+        if self.fetch is None:
+            self.next_check = 0
+            self.check()
 
     def _path(self, name):
         path = self.directory / name
@@ -96,17 +101,17 @@ class CatalogData:
     def _restore(self):
         try:
             saved = self._read('current.json', MAX_SNAPSHOT)
-            if saved.get('schemaVersion') != 1:
+            if saved.get('schemaVersion') not in (1, 2):
                 raise ValueError('Unknown saved catalog version.')
             validate_payload(saved['payload'])
             digest = hashlib.sha256(encoded(saved['payload'])).hexdigest()
             if digest != saved['sha256']:
                 raise ValueError('Saved catalog digest mismatch.')
-            if set(saved['upstreamRevisions']) != set(NAMES) or any(
-                    not re.fullmatch('[a-f0-9]{8,64}', str(v)) for v in saved['upstreamRevisions'].values()):
+            if saved.get('schemaVersion') == 1 and (set(saved['upstreamRevisions']) != set(NAMES) or any(
+                    not re.fullmatch('[a-f0-9]{8,64}', str(v)) for v in saved['upstreamRevisions'].values())):
                 raise ValueError('Saved upstream revisions are invalid.')
             self.payload, self.revision = saved['payload'], digest
-            self.revisions, self.cache_base = saved['upstreamRevisions'], saved.get('baseDigest')
+            self.revisions, self.cache_base = saved.get('upstreamRevisions'), saved.get('baseDigest')
             self.updated_at = saved['updatedAt']
         except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError):
             pass  # Keep the bundled data usable; refresh repairs only our cache.
@@ -128,11 +133,15 @@ class CatalogData:
         with self.lock:
             return {'schemaVersion': 1, 'revision': self.revision, 'checkedAt': self.checked_at,
                     'updatedAt': self.updated_at, 'error': self.error,
-                    'nextCheckAt': utc(self.next_check) if self.next_check else None}
+                    'nextCheckAt': utc(self.next_check) if self.next_check else None,
+                    'installedSkillIds': list(self.installed().get('skills', {})) if self.fetch is None else [],
+                    'mode': 'local' if self.fetch is None else 'injected-fetch', 'networkEnabled': False if self.fetch is None else True}
 
     def snapshot(self):
         with self.lock:
-            return {**self.status(), **deepcopy({k:v for k,v in (self.payload or {'fallback': None, 'career': None}).items() if k != 'engineSkills'})}
+            return {**self.status(), 'masterCareer': self.installed().get('career') if self.fetch is None else None,
+                    'nativeCourses': self.installed().get('courses') if self.fetch is None else None,
+                    **deepcopy({k:v for k,v in (self.payload or {'fallback': None, 'career': None}).items() if k != 'engineSkills'})}
 
     def engine_snapshot(self):
         with self.lock:
@@ -140,6 +149,8 @@ class CatalogData:
                     deepcopy(self.payload['fallback']['source']) if self.payload else None)
 
     def check(self):
+        if self.fetch is None:
+            return self._check_local()
         if self.closed.is_set() or self.clock() < self.next_check or not self.refresh_lock.acquire(blocking=False):
             return False
         stamp = self.clock()
@@ -196,6 +207,53 @@ class CatalogData:
                 atomic_json(self._path('status.json'), {'checkedEpoch': stamp, 'error': self.error})
             except (OSError, ValueError):
                 pass
+            return False
+        finally:
+            self.refresh_lock.release()
+
+    def _check_local(self):
+        if self.closed.is_set() or self.clock() < self.next_check or not self.refresh_lock.acquire(blocking=False):
+            return False
+        try:
+            self.next_check = self.clock() + 60
+            installed = self.installed()
+            stamp = (self.base_digest, installed.get('installedGameRaceSource', {}).get('sha256'))
+            if stamp == self.local_stamp:
+                return False
+            # Previously downloaded editorial/JP fallbacks may remain usable,
+            # but the runtime never refreshes them over the network.
+            fallback = deepcopy((self.payload or {}).get('fallback') or self.metadata.get('fallback') or {})
+            for field in ('characters', 'outfits', 'skillNames', 'skills'):
+                fallback[field] = {**self.metadata.get(field, {}), **fallback.get(field, {}), **installed.get(field, {})}
+            fallback.setdefault('skillTexts', {})
+            for sid in installed.get('skills', {}):
+                fallback['skillTexts'].pop(sid, None)
+            source = {'name': 'Installed MDB and bundled local references',
+                      'revision': stamp[1] or self.base_digest, 'network': False}
+            fallback['source'] = source
+            career = deepcopy((self.payload or {}).get('career') or {})
+            for field in ('prices', 'supports', 'characters', 'skillOwners', 'outfitGlobalReleases', 'aptitudes'):
+                target = career.setdefault(field, {})
+                for key, value in installed.get('localCatalog', {}).get(field, {}).items():
+                    # Retain only editorial fields absent from MDB, such as URLs.
+                    target[key] = {**target.get(key, {}), **value} if isinstance(value, dict) else value
+            career['source'] = source
+            from master_metadata import engine_rows
+            from globalsim_bridge.bundled_skills import ROWS
+            rows = {**ROWS, **(self.payload or {}).get('engineSkills', {}), **engine_rows(installed.get('skills', {}))}
+            payload = {'fallback': fallback, 'career': career, 'engineSkills': rows}
+            validate_payload(payload)
+            digest = hashlib.sha256(encoded(payload)).hexdigest()
+            updated = utc(self.clock())
+            if digest != self.revision:
+                atomic_json(self._path('current.json'), {'schemaVersion': 2, 'baseDigest': self.base_digest,
+                            'sha256': digest, 'payload': payload, 'updatedAt': updated})
+                with self.lock:
+                    self.payload, self.revision, self.updated_at = payload, digest, updated
+            self.local_stamp, self.checked_at, self.error = stamp, updated, None
+            return True
+        except (OSError, ValueError, KeyError, TypeError):
+            self.error = 'Local reference refresh failed; using bundled or cached data.'
             return False
         finally:
             self.refresh_lock.release()

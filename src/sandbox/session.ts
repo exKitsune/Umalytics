@@ -25,9 +25,11 @@ export function readWorkspaceSession(storage?:Pick<Storage,'getItem'>):Workspace
     return result;
   }catch{return empty();}
 }
+let disabled=false;
+export function discardWorkspaceSession(){disabled=true;pending={};clearTimeout(timer);localStorage.removeItem(SESSION_KEY);}
 let pending:Partial<WorkspaceSession>={},timer:ReturnType<typeof setTimeout>|undefined;
 /** Buffer rapid field edits; update/reload hooks flush synchronously. */
-export function checkpointWorkspace(patch:Partial<WorkspaceSession>){pending={...pending,...patch};clearTimeout(timer);timer=setTimeout(flushWorkspaceSession,250);}
+export function checkpointWorkspace(patch:Partial<WorkspaceSession>){if(disabled)return;pending={...pending,...patch};clearTimeout(timer);timer=setTimeout(flushWorkspaceSession,250);}
 export function flushWorkspaceSession(){
   clearTimeout(timer);timer=undefined;if(!Object.keys(pending).length)return;
   try{const raw=JSON.stringify({...readWorkspaceSession(),...pending,schemaVersion:1});if(raw.length<=4*1024*1024&&localStorage.getItem(SESSION_KEY)!==raw)localStorage.setItem(SESSION_KEY,raw);pending={};}catch{/* A storage limit must not block normal use or updating. */}

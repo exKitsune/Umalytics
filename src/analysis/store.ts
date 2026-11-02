@@ -59,3 +59,9 @@ export class AnalysisStore {
   }
   put(entry:Omit<CacheEntry,'bytes'>,payload:Uint8Array){return this.change({action:'put',...entry,payload:this.desktop()?base64(payload):payload});}
 }
+
+export async function clearBrowserAnalysis(){
+  const db=await database(),tx=db.transaction(['entries','catalog','options'],'readwrite');
+  for(const name of ['entries','catalog','options'])tx.objectStore(name).clear();
+  await committed(tx);
+}

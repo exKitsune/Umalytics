@@ -38,3 +38,17 @@ assert(!isOutfitReleased(199901,'2026-10-25'));
 assert(!installCatalog({schemaVersion:1,revision:'bad',checkedAt:null,updatedAt:null,error:null,career:null,fallback:null}));
 assert.equal(catalog.skillOwners['199991' as keyof typeof catalog.skillOwners][0],199901);
 console.log('Complete skill catalog, live presentation refresh, immutable mechanics, and navigation routes passed.');
+
+// Local MDB snapshots replace overlapping live facts without mutating old refs.
+const native={...current,name:'Native MDB name',description:'Native text'};
+const nativeCareer=structuredClone(catalog);
+(nativeCareer.supports as Record<string,unknown>)['70001']={name:'MDB support',charaId:9001,rarity:3,type:1,command:106};
+assert(installCatalog({schemaVersion:1,mode:'local',nativeCourses:{'10606':{laneMax:12345}},installedSkillIds:['100011'],revision:'native-mdb',checkedAt:null,updatedAt:null,error:null,career:nativeCareer,fallback:{...fallback,skills:{'100011':native},skillNames:{'100011':'Native MDB name'}}}));
+assert.equal(catalogReference(ref).metadata.skills['100011'].name,'Native MDB name');
+assert.equal(ref.metadata.skills['100011'],current,'Historical reference objects remain immutable');
+assert.equal((catalog.supports as Record<string,{name:string}>)['70001'].name,'MDB support');
+console.log('Local catalog overlap and native support precedence passed.');
+
+assert.equal(catalogReference(ref).courses['10606'].laneMax,12345);
+assert.equal(ref.courses['10606'].laneMax,15000,'Frozen course references remain unchanged');
+assert.equal(catalogReference(ref).courses['10606'].corners,ref.courses['10606'].corners,'Bundled geometry is retained');

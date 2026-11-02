@@ -151,3 +151,8 @@ export async function saveRace(race: Race): Promise<LibraryEntry> {
   });
   return entry;
 }
+
+export async function clearBrowserLibrary(){
+  const value=await db();
+  await new Promise<void>((resolve,reject)=>{const tx=value.transaction('races','readwrite');tx.objectStore('races').clear();tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error);});
+}

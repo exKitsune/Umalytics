@@ -226,6 +226,8 @@ def workflows(temporary):
         cert = instance.request('/api/certificate')[1]
         assert cert['exists'] and not cert['trusted']
         assert instance.request('/api/certificate/uninstall', {'sha256': cert['sha256']})[1]['trusted'] is False
+        assert not (data / 'capture/umalytics-api-key.dpapi').exists()
+        assert (data / 'capture/disabled').exists()
         assert instance.request('/api/certificate/uninstall', {'sha256': '0' * 64})[0] == 400
         assert instance.request('/api/races/' + race_id)[1]['data'] == race
         listed = instance.request('/api/races?summary=1')[1]['races']
@@ -281,8 +283,13 @@ def workflows(temporary):
     finally:
         instance.close()
     # Exercise actual collector startup/configuration and graceful shutdown with
-    # a migrated CA. Every preexisting identity byte must remain unchanged.
+    # a fresh, explicitly prepared identity after certificate removal.
     desktop.RESOURCE_ROOT = ROOT
+    instance = Installation(data)
+    try:
+        assert instance.request('/api/certificate/prepare', {})[1]['exists']
+    finally:
+        instance.close()
     listener = socket.socket()
     listener.bind(('127.0.0.1', 0))
     proxy_port = listener.getsockname()[1]
@@ -303,7 +310,11 @@ def workflows(temporary):
         (data / 'cache/collector.stop').touch()
         stdout, stderr = process.communicate(timeout=10)
         assert process.returncode == 0, stderr.decode()
-        assert {path.name.replace('umalytics-', 'mitmproxy-', 1): path.read_bytes() for path in (data / 'capture').iterdir()} == original_ca
+        assert (data / 'capture/umalytics-ca-cert.pem').read_bytes() != original_ca['mitmproxy-ca-cert.pem']
+        assert not (data / 'capture/retired-roots.pem').exists(), 'Removed identity was retained'
+        assert not (data / 'capture/umalytics-ca.pem').exists()
+        assert not (data / 'capture/umalytics-ca.p12').exists()
+        assert (data / 'capture/umalytics-api-key.dpapi').is_file()
         assert not list((data / 'capture').glob('mitmproxy-*'))
     finally:
         if process.poll() is None:
@@ -316,13 +327,13 @@ def workflows(temporary):
     store = load_store(fresh)
     assert 'Umalytics Local Capture' in store.default_ca._cert.subject.rfc4514_string()
     before = {path.name: path.read_bytes() for path in fresh.iterdir()}
-    (fresh / 'umalytics-ca.pem').unlink()
+    (fresh / 'umalytics-api-key.dpapi').unlink()
     try:
         load_store(fresh)
         raise AssertionError('Partial CA silently regenerated.')
-    except ValueError:
+    except (ValueError, OSError):
         pass
-    assert {path.name: path.read_bytes() for path in fresh.iterdir()} == {name: raw for name, raw in before.items() if name != 'umalytics-ca.pem'}
+    assert {path.name: path.read_bytes() for path in fresh.iterdir()} == {name: raw for name, raw in before.items() if name != 'umalytics-api-key.dpapi'}
 
 
 (ROOT / '.cache').mkdir(exist_ok=True)

@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'desktop'))
 from mitmproxy.certs import CertStore
 from storage import prepare_storage
+from capture_store import load_store
 
 HOST = 'api.games.\x75mamusume.com'
 
@@ -35,6 +36,12 @@ def workflow(folder, full_capture=False):
     prepare_storage(data)
     if full_capture:
         (data / 'cache/development-capture.json').write_text('{"enabled":true}', encoding='utf-8')
+    load_store(data / 'capture')
+    hardened = {p.name: p.read_bytes() for p in (data / 'capture').iterdir()}
+    assert 'umalytics-ca.pem' not in hardened and 'umalytics-ca.p12' not in hardened
+    assert b'PRIVATE KEY' not in hardened['umalytics-api-key.dpapi']
+    assert hardened['umalytics-ca-cert.pem'] != original['mitmproxy-ca-cert.pem']
+    assert hardened['retired-roots.pem'] == original['mitmproxy-ca-cert.pem']
     ca = x509.load_pem_x509_certificate((data / 'capture/umalytics-ca-cert.pem').read_bytes())
     upstream_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, HOST)])
@@ -167,7 +174,7 @@ response = requestheaders
             assert not captures and stats['development_captures_written'] == 0
         stop.touch()
         assert process.wait(timeout=10) == 0
-        assert {path.name.replace('umalytics-', 'mitmproxy-', 1): path.read_bytes() for path in (data / 'capture').iterdir()} == original
+        assert {p.name: p.read_bytes() for p in (data / 'capture').iterdir()} == hardened
         assert not list((data / 'capture').glob('mitmproxy-*'))
     finally:
         if process.poll() is None:
@@ -182,4 +189,4 @@ if __name__ == '__main__':
     for full_capture in (False, True):
         with tempfile.TemporaryDirectory(prefix='capture-inspection-', dir=ROOT / '.cache') as temporary:
             workflow(Path(temporary), full_capture)
-    print('HTTPS inspection passed with development capture off/on: verified TLS, exact raw capture only when enabled, sanitized race export, CA/key bytes unchanged.')
+    print('HTTPS inspection passed with development capture off/on: verified TLS, exact raw capture only when enabled, sanitized race export, fixed hostname certificate, protected key, CA signing key removed.')

@@ -244,6 +244,16 @@ jobs:
         run: |
           .cache/proxy-venv/Scripts/python.exe tests/proxy-envelope-workflow.py
           if ($LASTEXITCODE -ne 0) { throw 'API envelope regression tests failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/local-catalog-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Local MDB catalog tests failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/debug-controls-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Guarded debug capture tests failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/saved-data-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Saved-data removal tests failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/root-constraints-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Constrained-root Windows tests failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/capture-identity-workflow.py
+          if ($LASTEXITCODE -ne 0) { throw 'Protected capture identity tests failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/capture-inspection-workflow.py
           if ($LASTEXITCODE -ne 0) { throw 'HTTPS capture integration tests failed.' }
       - name: Restore independent collector artifact
