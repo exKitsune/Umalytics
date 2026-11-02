@@ -196,7 +196,10 @@ class ReferenceData:
             'source': catalog['source'], 'contract': CONTRACT, 'skillIds': sorted(additions)}}
         if catalog.get('installedGameSource'):
             sources['integration/automatic-skills']['installedGameSource'] = deepcopy(catalog['installedGameSource'])
-        return replace(self, skill_data={**additions, **self.skill_data}, source_files=sources)
+        metadata = self.metadata
+        if catalog.get('popularitySkills'):
+            metadata = {**metadata, 'popularitySkills': {**metadata.get('skills', {}), **catalog['popularitySkills']}}
+        return replace(self, metadata=metadata, skill_data={**additions, **self.skill_data}, source_files=sources)
 
 
 def _integer(value: Any, field: str, low: int, high: int) -> int:

@@ -85,6 +85,15 @@ def setup(value):
         'name': text(value.get('name'), 'Setup name'), 'seed': integer(value.get('seed'), 'Seed', -(2**31), 2**31-1),
         'keepSeed': boolean(value.get('keepSeed'), 'Keep seed'), 'shuffleGates': boolean(value.get('shuffleGates'), 'Shuffle gates'),
         'count': integer(value.get('count'), 'Race count', 1, 1000), 'participants': []}
+    if value.get('autoPopularity') is True:
+        result['autoPopularity'] = True
+    if 'teams' in value:
+        teams = value['teams']
+        if not isinstance(teams, list) or len(teams) > 18:
+            raise ValueError('Create up to 18 teams.')
+        result['teams'] = [{'id': integer(t.get('id'), 'Team', 0, 2**31-1), 'name': text(t.get('name'), 'Team name', 80)} for t in teams if isinstance(t, dict)]
+        if len(result['teams']) != len(teams) or len({t['id'] for t in result['teams']}) != len(teams):
+            raise ValueError('Team IDs must be unique.')
     override = value.get('moodOverride')
     if override is not None:
         if not isinstance(override, dict) or override.get('mode') not in ('fixed', 'random'):
@@ -259,7 +268,19 @@ def prepare(value, refs, index=0, seed_schedule=None):
         'singleMode':False, 'wisdomChecks':True, 'playerHorseIndex':0, 'experimentalRetailStartup':False,
         'experimentalLaterStaminaMechanics':False, 'retainAllFrames':True, 'decisionTrace':True, 'traceConservePower':True,
         'horses':horses, 'skillData':refs.skill_data})
+    if value.get('autoPopularity'):
+        run['popularities'] = [p['rank'] for p in popularity_for(value, refs, moods, gates)]
+        for horse, popularity in zip(horses, run['popularities']):
+            horse['popularity'] = popularity
     return spec, run
+
+
+def popularity_for(value, refs, moods=None, gates=None):
+    from sandbox_popularity import calculate
+    course = refs.course_data.get(str(value['courseId']))
+    if not course:
+        raise ValueError('Choose a supported course for popularity.')
+    return calculate(value, course, refs.metadata.get('popularitySkills', refs.metadata.get('skills', {})), moods, gates, race_aptitudes)
 
 
 class PreparedInputs:
@@ -285,6 +306,9 @@ class PreparedInputs:
         if variant not in self.templates:
             self.templates[variant]=prepare(self.value,self.refs,index,self.seed_schedule)[0]
         template=self.templates[variant]
+        popularity = popularity_for(self.setup_for(index), self.refs, run['moods'], run['gates']) if self.value.get('autoPopularity') else None
+        if popularity:
+            run['popularities'] = [p['rank'] for p in popularity]
         return {**template, 'seed':run['seed'], 'horses':[
-            {**horse, 'mood':run['moods'][i]-3, 'gateIndex':run['gates'][i]-1}
+            {**horse, 'mood':run['moods'][i]-3, 'gateIndex':run['gates'][i]-1, **({'popularity':popularity[i]['rank']} if popularity else {})}
             for i,horse in enumerate(template['horses'])]}, run

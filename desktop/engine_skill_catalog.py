@@ -71,6 +71,8 @@ class EngineSkillCatalog:
             source=source or SOURCE, rows={sid:rows[sid] for sid in additions}, definitions=additions, presentation=presentation)
         if master_source:
             snapshot['installedGameSource'] = master_source
+            snapshot['popularitySkills'] = {sid: {key: skill[key] for key in ('activateLot', 'branches', 'popularityBonuses') if key in skill}
+                for sid, skill in installed.get('skills', {}).items()}
         key = sha(snapshot)
         path = self.path(key)
         self.directory.mkdir(parents=True, exist_ok=True)

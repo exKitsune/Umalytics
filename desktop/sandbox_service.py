@@ -178,6 +178,11 @@ class SandboxService:
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO jobs VALUES (?,?)', (value['id'], json.dumps({k:v for k,v in value.items() if k not in ('runs','readyRuns','opening','completed','openError','runCursor','runsPartial')}, ensure_ascii=False)))
 
+    def popularity(self, body):
+        value = inputs.setup(body.get('setup'))
+        _, config = self.installed()
+        return {'participants': inputs.popularity_for(value, references(config))}
+
     def submit(self, body, automatic=False):
         setup = inputs.setup(body.get('setup'))
         source = self.job(body['impactSourceId']) if body.get('impactSourceId') else None
@@ -274,9 +279,13 @@ class SandboxService:
             # Replays preserve actual draws even if a future Python version
             # changes its shuffle implementation.
             for key in ('seed','moods','gates'):run[key]=saved[key]
+            if job['setup'].get('autoPopularity'):
+                run['popularities'] = saved.get('popularities') or [p['rank'] for p in inputs.popularity_for(
+                    inputs.variant_setup(job['setup'], index), refs, run['moods'], run['gates'])]
             spec['seed']=run['seed']
             for i,horse in enumerate(spec['horses']):
-                horse.update(mood=run['moods'][i]-3, gateIndex=run['gates'][i]-1)
+                horse.update(mood=run['moods'][i]-3, gateIndex=run['gates'][i]-1,
+                    **({'popularity':run['popularities'][i]} if 'popularities' in run else {}))
         outcome_only = summary_only and inputs.outcome_only(job, index)
         if outcome_only:
             spec.update(retainAllFrames=False, decisionTrace=False, traceConservePower=False)

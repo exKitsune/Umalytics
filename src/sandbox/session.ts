@@ -7,7 +7,7 @@ export interface WorkspaceSession {
   route?:WorkspaceRoute;
   lastCapturedId?:string;
   race?:{id:string;selected:string;time:number;speed:number};
-  simulator?:{setup:Setup;warnings:string[];view:'setup'|'results';jobId?:string;editing:UmaBuild|null;editingSlot:number|null;libraryView:string};
+  simulator?:{addingTeam?:number|null;setup:Setup;warnings:string[];view:'setup'|'results';jobId?:string;editing:UmaBuild|null;editingSlot:number|null;libraryView:string};
 }
 const empty=():WorkspaceSession=>({schemaVersion:1});
 export function readWorkspaceSession(storage?:Pick<Storage,'getItem'>):WorkspaceSession {

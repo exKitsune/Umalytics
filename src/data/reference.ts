@@ -15,6 +15,7 @@ export interface CourseReference {
 }
 export interface SkillReference {
   name: string; rarity: number; groupId?: number; dataRegion?: 'Global' | 'JP'; unreleasedGlobal?:boolean;
+  popularityBonuses?:{stat:number;value:number}[];
   activateLot?: number; iconId?: number; tagId?:number; tagIds?:number[]; description?: string | null;
   branches: { condition: string; rawDuration: number; durationUsage: number;
     branchIndex?: number; precondition?: string; rawCooldown?: number;

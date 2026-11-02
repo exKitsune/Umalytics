@@ -1050,6 +1050,8 @@ def make_handler(service):
                     self.send(200, service.sandbox.from_race(body))
                 elif self.path == '/api/simulator/run':
                     self.send(202, service.sandbox.submit(body))
+                elif self.path == '/api/simulator/popularity':
+                    self.send(200, service.sandbox.popularity(body))
                 elif self.path == '/api/simulator/auto-impacts':
                     self.send(200, service.sandbox.auto_skills.ensure(body.get('jobId'), body.get('enabled')))
                 elif self.path == '/api/simulator/cancel':

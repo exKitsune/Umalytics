@@ -33,6 +33,7 @@ def metadata(db):
         skills[sid] = {'name': skill_names[sid], 'rarity': row['rarity'],
             'groupId': row['group_id'], 'activateLot': row['activate_lot'],
             'iconId': row['icon_id'], 'description': skill_descriptions.get(sid),
+            **({'popularityBonuses': [{'stat': row[f'popularity_add_param_{i}'], 'value': row[f'popularity_add_value_{i}']} for i in (1, 2) if row[f'popularity_add_param_{i}']]} if 'popularity_add_param_1' in row.keys() else {}),
             **({'tagIds': [int(tag) for tag in str(row['tag_id']).split('/') if tag.isdigit()]} if 'tag_id' in row.keys() else {}), 'branches': []}
         for branch in (1, 2):
             condition = row[f'condition_{branch}']

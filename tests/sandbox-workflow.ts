@@ -76,6 +76,21 @@ assert.deepEqual(normalizePopularity([slots[2],slots[0]]).map(p=>p.popularity),[
 assert.deepEqual(engineTeams(slots),[0,1,2],'No team is a separate team per runner');
 slots[0].team=2;slots[1].team=2;assert.deepEqual(engineTeams(slots),[2,2,0]);
 assert.deepEqual(normalizeTeams(slots).map(p=>p.team),[0,0,null]);
+
+const {setupTeams,addTeam,deleteTeam}=await import('../src/sandbox/teams');
+let grouped={...blankSetup(),participants:slots};
+grouped=addTeam(grouped);assert.equal(setupTeams(grouped).length,4);
+grouped.teams![2].name='Friends';
+const deleted=deleteTeam(grouped,2);
+assert.equal(deleted.participants.length,3,'Deleting a team keeps every participant');
+assert(deleted.participants.every(p=>p.team===null));
+assert.equal(setupTeams(deleted).length,3);
+assert.equal(setupTeams(JSON.parse(JSON.stringify(grouped)))[2].name,'Friends','Names and empty teams survive export');
+
+const teamRun={index:0,seed:123,moods:[3,3,3],gates:[2,1,3],popularities:[3,1,2]};
+const teamRace=initialRace({...grouped,courseId:Number(Object.keys(reference.courses)[0])},teamRun,'team-review','test',reference);
+assert.equal(teamRace.runners[0].trainer,'Friends','Renamed teams reach the race dashboard');
+assert.deepEqual(teamRace.runners.map(r=>r.popularity),[3,1,2],'Race dashboards use actual drawn popularity, not stale setup ranks');
 const saves=[{id:'one',name:'Sprint'}, {id:'two',name:'Mile'}];
 assert.equal(saveTarget(saves,' sprint ','new')?.id,'one');assert.equal(saveTarget(saves,'New','one'),undefined,'Renaming creates a new save');
 assert(events.events.every(p=>p.courseId===null||!!reference.courses[p.courseId]));
