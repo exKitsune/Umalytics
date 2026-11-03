@@ -37,14 +37,14 @@ def main():
     pool = WorkerPool()
     config = runtime.RuntimeConfig(ROOT / bundle['artifact'], ROOT / bundle['appRoot'], ROOT / bundle['resourceRoot'],
         expected_engine_sha256=bundle['artifact_sha256'], decision_trace_schema=bundle['decisionTraceSchema'],
-        worker_pool=pool, worker_protocol=bundle.get('workerProtocol', 'json'), work_root=ROOT / '.cache/seed-benchmark')
+        profile=bundle['profile'], worker_pool=pool, worker_protocol=bundle.get('workerProtocol', 'json'), work_root=ROOT / '.cache/seed-benchmark')
     try:
         capture = json.loads(args.capture.read_text(encoding='utf-8-sig'))
         context = GameRaceData().context(capture)
         baseline = runtime.evaluate_capture(capture, config, context=context)
         if baseline['status'] != 'verified':
             raise ValueError('Original race must match before benchmarking seed experiments: ' + str(baseline['error'] or baseline['status']))
-        refs = adapter.ReferenceData.load(config.umalytics_root, config.globalsim_root)
+        refs = adapter.ReferenceData.load(config.umalytics_root, config.globalsim_root, config.profile)
         initial, audit = adapter.prepare_capture(capture, refs, context=context)
         if initial is None or audit['status'] != 'ready':
             raise ValueError('Initial setup unavailable')
@@ -56,6 +56,8 @@ def main():
             request = {**initial, 'seed': seed, 'retainAllFrames': args.include_trace,
                        'decisionTrace': args.include_trace, 'traceConservePower': args.include_trace,
                        'traceDiagnostics': args.diagnostic_trace}
+            if config.profile == 'v77' and not args.include_trace:
+                request['omitFrames'] = True
             tick = time.perf_counter()
             modeled, _, _ = runtime._run_worker(config, runtime._canonical(request) + b'\n')
             if 'error' in modeled:

@@ -31,7 +31,7 @@
   <p>Umalytics checks hourly for a new version. It never installs an update until you click Update, including while a race is being captured.</p>
   {#if error||status?.error}<p role="status" class="update-error">{error||status?.error}</p>{:else if label}<p role="status">{label}</p>{/if}
   {#if status?.phase==='downloading'}<progress aria-label="Update download" value={progress??undefined} max="100"></progress>{/if}
-  <div class="toolbar">{#if status?.canInstall}<button class="primary" onclick={()=>action('install')} disabled={!csrfToken||working}>Update</button>{:else}<button onclick={()=>action('check')} disabled={!csrfToken||working}>Check for updates</button>{/if}<a href="/api/licenses" target="_blank" rel="noreferrer">Licenses ↗</a></div>
+  <div class="toolbar">{#if status?.canInstall}<button class="primary" onclick={()=>action('install')} disabled={!csrfToken||working}>Update</button>{:else}<button onclick={()=>action('check')} disabled={!csrfToken||working}>Check for updates</button>{/if}</div>
   <small>App-only updates keep the collector running. Collector updates wait for the game to close.</small>
 </section>
 <style>progress{width:100%;height:.5rem;margin:0 0 1rem;accent-color:var(--accent,#50b887)}.update-error{color:var(--danger,#e28282)}</style>

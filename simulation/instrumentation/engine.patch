@@ -1,6 +1,179 @@
+diff --git a/src/activation_conditions.rs b/src/activation_conditions.rs
+index 50c0c9e..fddad32 100644
+--- a/src/activation_conditions.rs
++++ b/src/activation_conditions.rs
+@@ -1398,7 +1398,7 @@ pub enum Op {
+     /// Immutable parsed structure is shared; sampled windows belong to this call.
+     Shared(std::rc::Rc<Op>, Vec<crate::retail_initialization::Windows>),
+     Sampled(usize),
+-    Cmp { cond: &'static Condition, kind: CmpKind, arg: f64 },
++    Cmp { name: String, cond: &'static Condition, kind: CmpKind, arg: f64 },
+     And(Box<Op>, Box<Op>, SamplePolicy),
+     Or(Box<Op>, Box<Op>, SamplePolicy),
+ }
+@@ -1428,7 +1428,7 @@ impl Op {
+                 Ok((rmap_multi(regions, |r| windows.iter().map(|&(start,end)|
+                     r.intersect(&Region::new(start as f64,end as f64))).collect()),None))
+             }
+-            Op::Cmp { cond, kind, arg } => {
++            Op::Cmp { name, cond, kind, arg } => {
+                 let f = match kind {
+                     CmpKind::Eq => &cond.filter_eq,
+                     CmpKind::Neq => &cond.filter_neq,
+@@ -1437,7 +1437,19 @@ impl Op {
+                     CmpKind::Gt => &cond.filter_gt,
+                     CmpKind::Gte => &cond.filter_gte,
+                 };
+-                f(regions, *arg, course, horse, extra)
++                let (windows, predicate) = f(regions, *arg, course, horse, extra)?;
++                let operator = match kind { CmpKind::Eq => "==", CmpKind::Neq => "!=", CmpKind::Lt => "<", CmpKind::Lte => "<=", CmpKind::Gt => ">", CmpKind::Gte => ">=" };
++                crate::decision_trace::event("static-condition", || crate::json::obj(vec![
++                    ("predicate", crate::json::Value::String(name.clone())), ("operator", crate::json::Value::String(operator.into())),
++                    ("argument", crate::json::num(*arg)), ("dynamic", crate::json::Value::Bool(predicate.is_some())),
++                    ("windows", crate::json::arr(windows.iter().map(|r| crate::json::arr(vec![crate::json::num(r.start),crate::json::num(r.end)])).collect()))]));
++                if !crate::decision_trace::enabled() { return Ok((windows, predicate)); }
++                let name = format!("{}{}{}", name, operator, arg);
++                let predicate = predicate.map(|original| -> DynCond { std::rc::Rc::new(move |s, field| {
++                    let result = original(s, field);
++                    crate::decision_trace::gate(&name, result)
++                }) });
++                Ok((windows, predicate))
+             }
+             Op::And(left, right, _) => {
+                 let (leftval, leftcond) = left.apply_sampled(regions, course, horse, extra, sampled)?;
+diff --git a/src/api.rs b/src/api.rs
+index 66d4129..e651f3d 100644
+--- a/src/api.rs
++++ b/src/api.rs
+@@ -18,6 +18,8 @@ fn conditions() -> &'static BTreeMap<String, activation_conditions::Condition> {
+ /// calling thread. The handle cannot be sent between threads or shared by them.
+ pub struct PreparedRace {
+     spec: RaceSpec,
++    decision_trace: bool,
++    trace_diagnostics: bool,
+     skills: Rc<SkillTable>,
+     initialization: Option<retail_initialization::PreparedInitialization>,
+     retail_sections: bool,
+@@ -87,7 +89,7 @@ impl PreparedRace {
+             Some(retail_initialization::PreparedInitialization::new(&horses, course, raw_skills,
+                 bundled_parameters()?.get("parameters").ok_or("Missing retail parameters")?)?)
+         } else { None };
+-        Ok(Self { spec, skills, initialization, retail_sections, retail_runtime,
++        Ok(Self { trace_diagnostics: input.get("traceDiagnostics").and_then(Value::as_bool) == Some(true), decision_trace: input.get("decisionTrace").and_then(Value::as_bool) == Some(true), spec, skills, initialization, retail_sections, retail_runtime,
+             world_geometry, startup_pass, retain_all_frames: input.get("retainAllFrames").and_then(Value::as_bool) == Some(true),
+             gate_perm, signature: input.get("dataSignature").cloned(), roster: None })
+     }
+@@ -101,6 +103,7 @@ impl PreparedRace {
+     /// `run` as the worker's reply value. Without `capture_frames` the reply
+     /// carries no replay frames or frame metadata; every other key is unchanged.
+     pub(crate) fn run_value(&mut self, seed: i64, capture_frames: bool) -> Result<Value, String> {
++        let _trace_session = decision_trace::Session::new(self.decision_trace, self.trace_diagnostics);
+         self.spec.seed = seed;
+         let initialization = self.initialization.as_ref().map(|plan| {
+             let seed = i32::try_from(seed).map_err(|_| "Retail seed must be a signed 32-bit integer".to_string())?;
+@@ -115,6 +118,7 @@ impl PreparedRace {
+             if let Some(signature) = &self.signature { map.insert("dataSignature".into(), signature.clone()); }
+         }
+         if let Some(perm) = &self.gate_perm { restore_request_order(&mut value, perm); }
++        if let (Value::Object(map), Some(trace)) = (&mut value, decision_trace::finish(self.gate_perm.as_deref())) { map.insert("decisionTrace".into(), trace); }
+         Ok(value)
+     }
+ }
+diff --git a/src/condition_parser.rs b/src/condition_parser.rs
+index 869aa86..53bb63e 100644
+--- a/src/condition_parser.rs
++++ b/src/condition_parser.rs
+@@ -205,7 +205,7 @@ fn parse_cmp(ts: &mut TokStream, conditions: &'static BTreeMap<String, Condition
+             return Ok(Op::Fixed(trigger.windows));
+         }
+     }
+-    Ok(Op::Cmp { cond, kind, arg })
++    Ok(Op::Cmp { name: name.to_string(), cond, kind, arg })
+ }
+ 
+ /// Parses one condition-expression string (e.g. `"phase==2&distance_rate>=50"`)
+diff --git a/src/json.rs b/src/json.rs
+index 48d62e0..1d98e1c 100644
+--- a/src/json.rs
++++ b/src/json.rs
+@@ -496,6 +496,12 @@ fn write_value(out: &mut String, v: &Value) {
+                 write_replay_frames(out, arr);
+                 return;
+             }
++            // Decision-motion matrices repeat many identical numeric columns.
++            // Cache their exact text locally without changing the JSON schema.
++            if matches!(arr.first(), Some(Value::Array(_))) {
++                write_matrix(out, arr);
++                return;
++            }
+             out.push('[');
+             for (i, item) in arr.iter().enumerate() {
+                 if i > 0 {
+@@ -540,6 +546,25 @@ impl CachedNumber {
+     }
+ }
+ 
++fn write_matrix(out: &mut String, rows: &[Value]) {
++    let mut cache: Vec<CachedNumber> = Vec::new();
++    out.push('[');
++    for (i, row) in rows.iter().enumerate() {
++        if i > 0 { out.push(','); }
++        if let Value::Array(values) = row {
++            cache.resize_with(values.len(), CachedNumber::default);
++            out.push('[');
++            for (j, value) in values.iter().enumerate() {
++                if j > 0 { out.push(','); }
++                if let Value::Number(n) = value { cache[j].write(out, *n); }
++                else { write_value(out, value); }
++            }
++            out.push(']');
++        } else { write_value(out, row); }
++    }
++    out.push(']');
++}
++
+ /// Incrementally encode frame batches while keeping numeric text caches local
+ /// to one race. A reused buffer is cleared before the first frame is written.
+ pub struct ReplayFrameEncoder {
+@@ -645,7 +670,8 @@ fn write_number(out: &mut String, n: f64) {
+         // `null` rather than emit invalid JSON if one ever slips through.
+         out.push_str("null");
+     } else if n == n.trunc() && n.abs() < 1e15 {
+-        let _ = write!(out, "{}", n as i64);
++        if (-1.0..=30.0).contains(&n) { write_small_integer(out, n); }
++        else { let _ = write!(out, "{}", n as i64); }
+     } else if !write_widened_f32(out, n) {
+         let _ = write!(out, "{n}");
+     }
+@@ -1020,3 +1046,23 @@ mod tests {
+     }
+ 
+ }
++
++#[cfg(test)]
++mod matrix_encoding_tests {
++    use super::*;
++    #[test]
++    fn cached_matrix_matches_independent_rows() {
++        let mut rows = Vec::new();
++        for i in 0..100 {
++            rows.push(Value::Array(vec![num(i as f64), num(-0.0), num(0.0), num(30.0),
++                num(31.0), num(-1.0), num(-2.0), num(1.234567890123),
++                num(if i % 2 == 0 { f64::NAN } else { f64::INFINITY }),
++                Value::String("escaped\\name".into())]));
++        }
++        rows.push(Value::Null);
++        rows.push(Value::Array(vec![]));
++        rows.push(Value::Array(vec![num(0.5)]));
++        let expected = format!("[{}]", rows.iter().map(to_string).collect::<Vec<_>>().join(","));
++        assert_eq!(to_string(&Value::Array(rows)), expected);
++    }
++}
+diff --git a/src/lib.rs b/src/lib.rs
+index efd44d7..6c0160e 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -12,6 +12,7 @@
+@@ -12,6 +12,7 @@ mod conserve_power;
  mod horse_types;
  mod hp_policy;
  mod json;
@@ -8,7 +181,7 @@
  mod replay_worker;
  mod replay_frames;
  mod binary_replay;
-@@ -584,6 +585,7 @@
+@@ -608,6 +609,7 @@ fn run_race(spec: &RaceSpec, conditions: &'static BTreeMap<String, activation_co
      }
      let mut solvers = Vec::with_capacity(spec.horses.len());
      for (i, h) in spec.horses.iter().enumerate() {
@@ -16,7 +189,7 @@
          let mut builder = new_builder(conditions, spec.seed, i, spec, h, retail_runtime, prepared_roster)?;
          builder.retail_initialization=retail.map(|init|init.horses[i].clone());
          if let Some(row)=&mut builder.retail_initialization {row.runtime_phase=retail_runtime;}
-@@ -695,6 +697,7 @@
+@@ -726,6 +728,7 @@ fn run_race(spec: &RaceSpec, conditions: &'static BTreeMap<String, activation_co
                  if retail.is_some() {return Err(error);}
                  let mut retry = new_builder(conditions, spec.seed, i, spec, h, retail_runtime, prepared_roster)?;
                  for (skill_id, level, _is_unique) in &h.skills {
@@ -24,7 +197,7 @@
                      if !is_usable(&mut skill_usable, conditions, spec, h, i, skill_id, *level, prepared_roster) {
                          continue;
                      }
-@@ -755,6 +758,14 @@
+@@ -786,6 +789,14 @@ fn run_race(spec: &RaceSpec, conditions: &'static BTreeMap<String, activation_co
      // Gives every solver live awareness of the rest of the field (order/
      // rank, gaps to the horse ahead/behind) -- not part of the original TS
      // engine, which has no notion of other horses at all.
@@ -37,9 +210,9 @@
 +        ]));
 +    }
      // Snapshot adjusted initial stat ranks before runtime skill expiry/changes.
-     // Stable ties preserve roster order, matching the exported rank fields.
-     let parameter_orders: Vec<Vec<usize>> = (0..2).map(|stat| {
-@@ -819,6 +830,7 @@
+     // The result ranks treat approximately equal float stats as ties and
+     // resolve those by gate identity, including one-ULP mood differences.
+@@ -860,6 +871,7 @@ fn run_race(spec: &RaceSpec, conditions: &'static BTreeMap<String, activation_co
          ranks.clear();
          ranks.extend((0..n).map(|i| field.order_of(i)));
          let leaders = style_leaders.update(&ranks);
@@ -47,225 +220,285 @@
          field.step_all(dt, visited);
          for &i in visited {
              let s = field.solvers[i].borrow();
-@@ -1336,6 +1348,7 @@
-         // as a failed run and falls back to the Python engine for that race.
-         let outcome = (|| -> Result<Value, String> {
-             let spec_json = request_parser.parse(&line)?;
-+            decision_trace::begin(spec_json.get("decisionTrace").and_then(Value::as_bool) == Some(true));
-             // v23: the retail runtime runs the field in gate order (see gate_order).
-             let (spec_json, gate_perm) = gate_order(spec_json)?;
-             let skill_data = match spec_json.get("skillData") {
-@@ -1409,8 +1422,10 @@
-             if let Some(perm) = &gate_perm {
-                 restore_request_order(&mut result, perm);
-             }
-+            if let (Value::Object(map), Some(trace)) = (&mut result, decision_trace::finish(gate_perm.as_deref())) { map.insert("decisionTrace".into(), trace); }
-             Ok(result)
-         })();
-+        decision_trace::begin(false);
-         let mut reply = match outcome {
-             Ok(v) => v,
-             Err(e) => json::obj(vec![("error", Value::String(e))]),
---- a/src/retail_initialization.rs
-+++ b/src/retail_initialization.rs
-@@ -196,9 +196,11 @@
- pub fn initialize(seed:i32,horses:&[Value],course:&Value,skills:&Value,parameters:&Value)->Result<Initialization,String> {
-     let mut rng=RetailRandom::new(seed);
-     let mut rows:Vec<HorseInitialization>=(0..horses.len()).map(|_|HorseInitialization::default()).collect();
--    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
-+    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
-+        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-         for entry in horse.get_array("skills")? {
-             let sid=skill_id(entry)?;
-+            let _skill = crate::decision_trace::skill(&sid, 0, "initialization");
-             for (alternative,alt) in field(skills,&sid)?.get_array("alternatives")?.iter().enumerate() {
-                 for column in ["precondition","condition"] {
-                     for (name,operator,argument) in terms(alt.get(column).and_then(Value::as_str).unwrap_or("")) {
-@@ -208,6 +210,7 @@
-                         let windows=sample_trigger(&name,argument,&mut rng,course)?;
-                         row.triggers.push(Trigger {skill_id:sid.clone(),alternative,field:column.into(),name,argument,
-                             windows,draw_start,draw_end:rng.draw_count});
-+                        crate::decision_trace::event("sampled-trigger", || crate::json::obj(vec![("predicate", crate::json::Value::String((&row.triggers.last().unwrap().name).to_string())),("field", crate::json::Value::String((column).to_string())),("alternative", crate::json::num((alternative) as f64)),("argument", crate::json::num((argument) as f64)),("drawStart", crate::json::num((draw_start) as f64)),("drawEnd", crate::json::num((rng.draw_count) as f64)),("windows", crate::decision_trace::windows(&row.triggers.last().unwrap().windows))]));
-                     }
-                 }
-             }
-@@ -215,7 +218,8 @@
+@@ -1462,6 +1474,7 @@ fn legacy_reply(spec_json: Value, capture_frames: bool,
+     conditions: &'static BTreeMap<String, activation_conditions::Condition>, last_skill_data: &mut Option<Value>,
+     skill_facts: &mut retail_initialization::SkillFactsCache,
+     replay_worker: Option<&mut replay_worker::ReplayWorker>) -> Result<Value, String> {
++    let _trace_session = decision_trace::Session::new(spec_json.get("decisionTrace").and_then(Value::as_bool) == Some(true), spec_json.get("traceDiagnostics").and_then(Value::as_bool) == Some(true));
+     // v23: the retail runtime runs the field in gate order (see gate_order).
+     let (spec_json, gate_perm) = gate_order(spec_json)?;
+     let skill_data = match spec_json.get("skillData") {
+@@ -1535,6 +1548,7 @@ fn legacy_reply(spec_json: Value, capture_frames: bool,
+     if let Some(perm) = &gate_perm {
+         restore_request_order(&mut result, perm);
      }
-     let mut stages=BTreeMap::from([("after_triggers".into(),rng.draw_count)]);
-     let styles=["","RunningOut","Proceding","Insertion","Chasing"];
--    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
-+    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
-+        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-         let style=horse.get_i64("running_style")?;
-         let coefficient=if (1..=4).contains(&style) {number(parameters,&format!("forceInMoveTargetSpeedAdd{}",styles[style as usize]))?} else {0.0};
-         let span=number(parameters,"forceInMoveTargetSpeedAddRandomRange")?;
-@@ -223,19 +227,27 @@
-         row.force_in_move_coefficient=coefficient+offset;
-     }
-     stages.insert("after_ai".into(),rng.draw_count);
--    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
-+    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
-+        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-         let chance=(100.0-9000.0/number(horse,"base_wisdom")?).max(20.0);
-         for entry in horse.get_array("skills")? {
-             let sid=skill_id(entry)?;
--            let enabled=field(skills,&sid)?.get_i64("wisdomCheck")?!=1 || chance>rng.real(0.0,100.0);
-+            let _skill = crate::decision_trace::skill(&sid, 0, "initialization");
-+            let checked=field(skills,&sid)?.get_i64("wisdomCheck")?==1;
-+            let draw_start = rng.draw_count;
-+            let roll=if checked {Some(rng.real(0.0,100.0))} else {None};
-+            let enabled=roll.is_none_or(|value| chance>value);
-+            crate::decision_trace::event("skill-wit", || crate::json::obj(vec![("checked", Value::Bool(checked)),("roll", roll.map_or(Value::Null, |v| crate::json::num(v as f64))),("threshold", crate::json::num((chance) as f64)),("passed", Value::Bool(enabled)),("drawStart", crate::json::num((draw_start) as f64)),("drawEnd", crate::json::num((rng.draw_count) as f64))]));
-             row.skill_enabled.insert(sid,enabled);
++    if let (Value::Object(map), Some(trace)) = (&mut result, decision_trace::finish(gate_perm.as_deref())) { map.insert("decisionTrace".into(), trace); }
+     Ok(result)
+ }
+ 
+diff --git a/src/race_field_retail.rs b/src/race_field_retail.rs
+index c8ea5fc..3299613 100644
+--- a/src/race_field_retail.rs
++++ b/src/race_field_retail.rs
+@@ -206,6 +206,8 @@ impl RaceField {
+         if before_sorted { resort_by_position(before_order, before_slot, rows); }
+         let any_straight = rows.iter().any(|row| row.2);
+         for &i in indices {
++            let time = self.solvers[i].borrow().accumulatetime.get();
++            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
+             let mut s = self.solvers[i].borrow_mut();
+             s.collect_retail_duel_proximity(&rows, any_straight, dt);
+             let position = s.pos as f32;
+@@ -219,12 +221,16 @@ impl RaceField {
+                 before_sorted.then_some((&before_order[..], &before_slot[..])));
          }
-     }
-     stages.insert("after_wisdom".into(),rng.draw_count);
--    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
-+    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
-+        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-         let mut multiplier=1.0f32;
-         for entry in horse.get_array("skills")? {
-             let sid=skill_id(entry)?;
-+            let _skill = crate::decision_trace::skill(&sid, 0, "initialization");
-             if !row.skill_enabled[&sid] {continue;}
-             for alt in field(skills,&sid)?.get_array("alternatives")? {
-                 if alt.get_str("condition")?!="always==1" || !alt.get("precondition").and_then(Value::as_str).unwrap_or("").is_empty() {continue;}
-@@ -330,7 +342,8 @@
-     pub(crate) fn initialize(&self, seed: i32) -> Result<Initialization, String> {
-         let mut rng = RetailRandom::new(seed);
-         let mut rows: Vec<_> = self.horses.iter().map(|_| HorseInitialization::default()).collect();
--        for (horse, row) in self.horses.iter().zip(&mut rows) {
-+        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
-+            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-             for trigger in &horse.triggers {
-                 let draw_start = rng.draw_count;
-                 let windows = sample_trigger(&trigger.name, trigger.argument, &mut rng, &self.course)?;
-@@ -340,21 +353,28 @@
-             }
+         for &i in indices {
++            let time = self.solvers[i].borrow().accumulatetime.get();
++            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
+             self.solvers[i]
+                 .borrow_mut()
+                 .prepare_retail_tick(dt, Some(self), false);
          }
-         let mut stages = BTreeMap::from([("after_triggers".into(), rng.draw_count)]);
--        for (horse, row) in self.horses.iter().zip(&mut rows) {
-+        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
-+            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-             let coefficient = horse.force_coefficient;
-             let offset = if coefficient > 0. { rng.real(0., self.force_span) }
-                 else if coefficient < 0. { rng.real(-self.force_span, 0.) } else { 0. };
-             row.force_in_move_coefficient = coefficient + offset;
-         }
-         stages.insert("after_ai".into(), rng.draw_count);
--        for (horse, row) in self.horses.iter().zip(&mut rows) {
-+        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
-+            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-             for (sid, checked) in &horse.skills {
--                let enabled = !checked || horse.wisdom_chance > rng.real(0., 100.);
-+                let _skill = crate::decision_trace::skill(sid, 0, "initialization");
-+                let draw_start = rng.draw_count;
-+                let roll = if *checked { Some(rng.real(0., 100.)) } else { None };
-+                let enabled = roll.is_none_or(|value| horse.wisdom_chance > value);
-+                crate::decision_trace::event("skill-wit", || crate::json::obj(vec![("checked", Value::Bool(*checked)),("roll", roll.map_or(Value::Null, |v| crate::json::num(v as f64))),("threshold", crate::json::num((horse.wisdom_chance) as f64)),("passed", Value::Bool(enabled)),("drawStart", crate::json::num((draw_start) as f64)),("drawEnd", crate::json::num((rng.draw_count) as f64))]));
-                 row.skill_enabled.insert(sid.clone(), enabled);
-             }
-         }
-         stages.insert("after_wisdom".into(), rng.draw_count);
--        for (horse, row) in self.horses.iter().zip(&mut rows) {
-+        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
-+            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
-             let mut multiplier = 1.0_f32;
-             for (sid, modifiers) in &horse.delay_modifiers {
-                 if row.skill_enabled[sid] {
-@@ -376,7 +396,8 @@
-     if horses.len()!=init.horses.len() {return Err("Roster changed during initialization".into());}
-     let base=20.0-(number(course,"distance")?-2000.0)/1000.0;
-     let speeds=field(parameters,"BasetTargetSpeed")?;
--    for ((wisdom,_),row) in horses.iter().zip(init.horses.iter_mut()) {
-+    for (i,((wisdom,_),row)) in horses.iter().zip(init.horses.iter_mut()).enumerate() {
-+        let _trace = crate::decision_trace::runner(Some(i), 0., "sections");
-         let logarithm=((*wisdom*0.1) as f64).log10() as f32;
-         // Isolated section-only expression-store hypothesis. The logarithm is
-         // still the baseline rounded result. Range results are float32 returns.
-@@ -393,7 +414,8 @@
-     }
-     init.stages.insert("after_sections".into(),init.rng.draw_count);
-     let temptation=field(parameters,"Temptation")?;
--    for ((wisdom,bonus),row) in horses.iter().zip(init.horses.iter_mut()) {
-+    for (i,((wisdom,bonus),row)) in horses.iter().zip(init.horses.iter_mut()).enumerate() {
-+        let _trace = crate::decision_trace::runner(Some(i), 0., "rushing-initialization");
-         let term=*wisdom*0.1+1.0;
-         let logarithm=((term*term) as f64).log10() as f32;
-         let fraction=number(temptation,"TemptationStartPerVal1")?/logarithm;
---- a/src/retail_random.rs
-+++ b/src/retail_random.rs
-@@ -52,6 +52,7 @@
-         if value<0 {value=value.wrapping_add(i32::MAX);}
-         self.state[self.a]=value;
-         self.draw_count+=1;
-+        crate::decision_trace::event("rng-draw", || crate::json::obj(vec![("draw", crate::json::num((self.draw_count) as f64)),("raw", crate::json::num((value) as f64))]));
-         value
+         for priority in [1, 0] {
+             for &i in indices {
++            let time = self.solvers[i].borrow().accumulatetime.get();
++            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
+                 self.solvers[i]
+                     .borrow_mut()
+                     .process_skill_priority(Some(priority), Some(self));
+@@ -243,6 +249,8 @@ impl RaceField {
+         let sorted = rows.iter().all(|row| row.0.is_finite());
+         if sorted { resort_by_position(by_position, slot, rows); }
+         for &i in indices {
++            let time = self.solvers[i].borrow().accumulatetime.get();
++            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
+             let block = self.retail_block.unwrap();
+             let (front, side) = if sorted {
+                 blocking_sample_sorted(i, rows, by_position, slot, block)
+@@ -264,6 +272,8 @@ impl RaceField {
+         advanced.clear();
+         advanced.reserve(indices.len());
+         for &i in indices {
++            let time = self.solvers[i].borrow().accumulatetime.get();
++            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
+             let (elapsed, dirty) = {
+                 let mut s = self.solvers[i].borrow_mut();
+                 let elapsed = s.step_forward_retail_with_roster(dt, Some(self), Some(roster),
+diff --git a/src/race_solver.rs b/src/race_solver.rs
+index 50a6fa1..b3edae5 100644
+--- a/src/race_solver.rs
++++ b/src/race_solver.rs
+@@ -1089,6 +1089,9 @@ impl RaceSolver {
      }
  
---- a/src/retail_spurt.rs
-+++ b/src/retail_spurt.rs
-@@ -56,12 +56,12 @@
-     consumption: impl Fn(f32) -> f32,
-     rng: &mut impl RandomSource,
- ) -> Plan {
-+    crate::decision_trace::event("spurt-input", || crate::json::obj(vec![("distance", crate::json::num((input.distance) as f64)),("position", crate::json::num((input.position) as f64)),("hp", crate::json::num((input.hp) as f64)),("max_speed", crate::json::num((input.max_speed) as f64)),("base_speed", crate::json::num((input.base_speed) as f64)),("wisdom", crate::json::num((input.wisdom) as f64))]));
-     let remaining = ((input.distance - input.position) - parameters.buffer).max(0.);
-     let base_cost = consumption(input.base_speed);
--    let finish = |start, speed, result| Plan {
--        start,
--        speed,
--        result,
-+    let finish = |start: f32, speed: f32, result: i32| {
-+        crate::decision_trace::event("spurt-plan", || crate::json::obj(vec![("start", crate::json::num((start) as f64)),("speed", crate::json::num((speed) as f64)),("result", crate::json::num((result) as f64))]));
-+        Plan { start, speed, result }
-     };
-     if input.hp < (remaining / input.base_speed) * base_cost {
-         return finish(input.distance, input.max_speed, 4);
-@@ -83,6 +83,7 @@
-             let slow_cost = slow_time * base_cost;
-             let needed = slow_cost as f64 + fast_time as f64 * cost as f64;
-             let start = (input.distance - parameters.buffer) - sprint_distance;
-+            crate::decision_trace::event("spurt-search", || crate::json::obj(vec![("speed", crate::json::num((speed) as f64)),("start", crate::json::num((start) as f64)),("needed", crate::json::num((needed) as f64)),("feasible", crate::json::Value::Bool(input.hp as f64 >= needed && start < latest))]));
-             if input.hp as f64 >= needed && start < latest {
-                 return Some(Candidate {
-                     start,
-@@ -125,11 +126,14 @@
+     fn call_deactivate_hook(&mut self, skill_id: &str, perspective: Perspective) {
++        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "effect-end");
++        let _skill = crate::decision_trace::skill(skill_id, 0, "effect-end");
++        crate::decision_trace::event("effect-ended", || crate::json::obj(vec![("position", crate::json::num((self.pos) as f64))]));
+         let mut hook = std::mem::replace(&mut self.on_skill_deactivate, noop_hook());
+         hook(self, skill_id, perspective);
+         self.on_skill_deactivate = hook;
+@@ -2080,6 +2083,7 @@ impl RaceSolver {
      }
-     sort_candidates(&mut candidates);
-     let chance = 15. + 0.05f32 * input.wisdom;
--    for candidate in &candidates {
--        if (rng.integer(0, 100) as f32) < chance {
-+    for (index,candidate) in candidates.iter().enumerate() {
-+        let roll = rng.integer(0, 100);
-+        crate::decision_trace::event("spurt-roll", || crate::json::obj(vec![("index", crate::json::num((index) as f64)),("roll", crate::json::num((roll) as f64)),("threshold", crate::json::num((chance) as f64)),("passed", crate::json::Value::Bool((roll as f32) < chance)),("start", crate::json::num((candidate.start) as f64)),("speed", crate::json::num((candidate.speed) as f64)),("time", crate::json::num((candidate.time) as f64))]));
-+        if (roll as f32) < chance {
-             return finish(input.position.max(candidate.start), candidate.speed, 2);
+ 
+     pub(crate) fn process_skill_priority(&mut self, priority:Option<i32>,field:Option<&RaceField>) {
++        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "skill-pass");
+         self.refresh_skill_scan();
+         // Priority zero must still publish additional activations/reservations
+         // with an empty list. Priority one has no such end-of-pass work.
+@@ -2090,8 +2094,10 @@ impl RaceSolver {
+             let i = self.skill_scan.prerequisites[at];
+             let sk = &self.pending_skills[i];
+             if priority.is_some_and(|p|p!=sk.priority) {continue;}
++            let _trace = crate::decision_trace::skill(&sk.skill_id, sk.detail_index, "precondition");
+             let satisfied = !sk.prerequisite_satisfied
+                 && sk.prerequisite.as_ref().is_some_and(|check| check(self, field));
++            crate::decision_trace::gate("precondition-latched", satisfied);
+             if satisfied { self.pending_skills[i].prerequisite_satisfied = true; }
          }
+         let pending = &self.pending_skills;
+@@ -2152,11 +2158,13 @@ impl RaceSolver {
+                 continue;
+             }
+             let sk = &self.pending_skills[j];
+-            let fires = (sk.prerequisite.is_none() || sk.prerequisite_satisfied)
+-                && (field.is_some() || sk.effects.iter().all(|ef| ef.target == 1))
+-                && self.pending_cooldown_ready(sk)
+-                && sk.windows.iter().any(|r| r.start <= pos && pos < r.end)
+-                && (sk.extra_condition)(self, field);
++            let _trace = crate::decision_trace::skill(&sk.skill_id, sk.detail_index, "activation");
++            let fires = crate::decision_trace::gate("precondition-ready", sk.prerequisite.is_none() || sk.prerequisite_satisfied)
++                && crate::decision_trace::gate("target-available", field.is_some() || sk.effects.iter().all(|ef| ef.target == 1))
++                && crate::decision_trace::gate("cooldown-ready", self.pending_cooldown_ready(sk))
++                && crate::decision_trace::gate("sampled-window", sk.windows.iter().any(|r| r.start <= pos && pos < r.end))
++                && crate::decision_trace::gate("condition", (sk.extra_condition)(self, field));
++            crate::decision_trace::gate("activation-ready", fires);
+             if fires {
+                 let sk = &self.pending_skills[j];
+                 let (sid, perspective, rarity, effects, green, cooldown, cooldown_key) =
+@@ -2218,6 +2226,7 @@ impl RaceSolver {
+                 Some(1) => self.skill_scan.priority_one[remaining],
+                 _ => remaining,
+             };
++            let _trace = crate::decision_trace::skill(&self.pending_skills[i].skill_id, self.pending_skills[i].detail_index, "activation");
+             if self.retail.is_some() {
+                 if let Some(window) = self.skill_scan.windows.get(i) {
+                     if priority.is_some_and(|p| p != window.priority) { continue; }
+@@ -2228,6 +2237,7 @@ impl RaceSolver {
+                     {
+                         // Even an inactive detail takes its turn in the ordered
+                         // additional-effect pass. Later activations must see it.
++                        crate::decision_trace::gate("trigger-window", false);
+                         self.additional_turn_floor = self.additional_turn_floor.max(window.numeric_id);
+                         continue;
+                     }
+@@ -2262,19 +2272,20 @@ impl RaceSolver {
+                 }
+                 let field_ok = || field.is_some() || sk.effects.iter().all(|ef| ef.target == 1);
+                 let fires = if reserved {
+-                    field_ok() && self.pending_cooldown_ready(sk)
+-                } else if pos >= w.start && pos < w.end
+-                    && (sk.prerequisite.is_none() || sk.prerequisite_satisfied)
+-                    && (w.single || sk.windows.iter().any(|r| r.start <= pos && pos < r.end)) {
++                    crate::decision_trace::gate("target-available", field_ok()) && crate::decision_trace::gate("cooldown-ready", self.pending_cooldown_ready(sk))
++                } else if crate::decision_trace::gate("trigger-window", pos >= w.start && pos < w.end)
++                    && crate::decision_trace::gate("precondition-ready", sk.prerequisite.is_none() || sk.prerequisite_satisfied)
++                    && (w.single || crate::decision_trace::gate("sampled-window", sk.windows.iter().any(|r| r.start <= pos && pos < r.end))) {
+                     if sk.stateful_check {
+-                        (sk.extra_condition)(self, field) && field_ok() && self.pending_cooldown_ready(sk)
++                        crate::decision_trace::gate("condition", (sk.extra_condition)(self, field)) && crate::decision_trace::gate("target-available", field_ok()) && crate::decision_trace::gate("cooldown-ready", self.pending_cooldown_ready(sk))
+                     } else {
+                         // A blocked cooldown rejects the activation whatever a
+                         // stateless condition returns, so test it first.
+-                        self.pending_cooldown_ready(sk) && (sk.extra_condition)(self, field) && field_ok()
++                        crate::decision_trace::gate("cooldown-ready", self.pending_cooldown_ready(sk)) && crate::decision_trace::gate("condition", (sk.extra_condition)(self, field)) && crate::decision_trace::gate("target-available", field_ok())
+                     }
+                 } else { false };
+-                if fires && self.fire_pending_skill(i, field) {
++                crate::decision_trace::gate("activation-ready", fires);
++            if fires && self.fire_pending_skill(i, field) {
+                     activate_count_this_frame += 1;
+                 }
+                 continue;
+@@ -2305,12 +2316,13 @@ impl RaceSolver {
+                 assert!(sk.windows.len() == 1 && sk.windows[0].start.to_bits() == sk.trigger.start.to_bits()
+                     && sk.windows[0].end.to_bits() == sk.trigger.end.to_bits());
+             }
+-            let fires = (reserved || (pos >= sk.trigger.start && pos < sk.trigger.end
+-                && (sk.prerequisite.is_none() || sk.prerequisite_satisfied)
+-                && (single || sk.windows.iter().any(|r| r.start <= pos && pos < r.end))
+-                && (sk.extra_condition)(self, field)))
+-                && (field.is_some() || sk.effects.iter().all(|ef| ef.target == 1))
+-                && self.pending_cooldown_ready(sk);
++            let fires = (reserved || (crate::decision_trace::gate("trigger-window", pos >= sk.trigger.start && pos < sk.trigger.end)
++                && crate::decision_trace::gate("precondition-ready", sk.prerequisite.is_none() || sk.prerequisite_satisfied)
++                && (single || crate::decision_trace::gate("sampled-window", sk.windows.iter().any(|r| r.start <= pos && pos < r.end)))
++                && crate::decision_trace::gate("condition", (sk.extra_condition)(self, field))))
++                && crate::decision_trace::gate("target-available", field.is_some() || sk.effects.iter().all(|ef| ef.target == 1))
++                && crate::decision_trace::gate("cooldown-ready", self.pending_cooldown_ready(sk));
++            crate::decision_trace::gate("activation-ready", fires);
+             if fires && self.fire_pending_skill(i, field) {
+                 activate_count_this_frame += 1;
+             }
+@@ -2435,6 +2447,10 @@ impl RaceSolver {
      }
-+    crate::decision_trace::event("spurt-fallback", || crate::json::obj(vec![("reason", crate::json::Value::String(("all-rolls-failed").to_string()))]));
-     let last = candidates.last().unwrap();
-     finish(input.position.max(last.start), last.speed, 2)
- }
-@@ -168,6 +172,7 @@
-                     };
+ 
+     fn start_skill_cooldown(&mut self,key:String,duration:f64) {
++        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "cooldown");
++        crate::decision_trace::event("cooldown-start", || crate::json::obj(vec![
++            ("key", crate::json::Value::String(key.clone())), ("baseDuration", crate::json::num(duration)),
++            ("distance", crate::json::num(self.course.distance))]));
+         self.cooldown_generation += 1;
+         if self.retail.is_some() {
+             let remaining=(duration as f32)*(self.course.distance as f32/1000.);
+@@ -2444,6 +2460,9 @@ impl RaceSolver {
+     }
+ 
+     fn activate_skill(&mut self, skill_id: &str, perspective: Perspective, rarity: SkillRarity, effects: &[SkillEffect], has_green_tag: bool, detail_index: usize, field: Option<&RaceField>) {
++        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "activation");
++        let _skill = crate::decision_trace::skill(skill_id, detail_index, "activation");
++        crate::decision_trace::event("skill-activated", || crate::json::obj(vec![("position", crate::json::num((self.pos) as f64))]));
+         let targets = self.apply_activation(skill_id, perspective, rarity, effects, has_green_tag, field, false, None, false, detail_index);
+         if perspective == Perspective::Self_ && skill_id.parse::<i64>().is_ok() {
+             self.skill_detail_events.push((skill_id.to_string(), detail_index, self.accumulatetime.get()));
+@@ -2456,6 +2475,8 @@ impl RaceSolver {
+     }
+ 
+     fn apply_activation(&mut self, skill_id: &str, perspective: Perspective, rarity: SkillRarity, effects: &[SkillEffect], has_green_tag: bool, field: Option<&RaceField>, follow_up: bool, duration_override: Option<f64>, reselect_targets: bool, detail_index: usize) -> Vec<Option<Vec<usize>>> {
++        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "effects");
++        let _skill = crate::decision_trace::skill(skill_id, detail_index, "effects");
+         // ExtendEvolvedDuration must apply after other effects on the same
+         // skill, so it doesn't extend its own siblings' durations.
+         let mut effect_order: Vec<usize> = (0..effects.len()).collect();
+@@ -2511,6 +2532,7 @@ impl RaceSolver {
+             let scaled_duration = if skill_id == "asitame" && self.retail.is_some() {
+                 self.conserve_release_duration()
+             } else { scaled_duration };
++            crate::decision_trace::event("effect-evaluated", || crate::json::obj(vec![("type", crate::json::num((ef.effect_type as i32) as f64)),("ability", crate::json::num((ability_index) as f64)),("modifier", crate::json::num((modifier) as f64)),("duration", crate::json::num((scaled_duration) as f64)),("followUp", crate::json::Value::Bool(follow_up))]));
+             runtime_duration = runtime_duration.max(scaled_duration);
+             if !follow_up && perspective == Perspective::Self_ {
+                 let null = matches!(ef.effect_type, SkillType::Noop | SkillType::Runaway);
+@@ -2522,12 +2544,13 @@ impl RaceSolver {
+                     self.initial_ability_activations.push((kind, value));
                  }
              }
-+            crate::decision_trace::event("spurt-accepted", || crate::json::obj(vec![("start", crate::json::num((self.start) as f64)),("speed", crate::json::num((self.speed) as f64)),("result", crate::json::num((self.result) as f64)),("count", crate::json::num((self.count) as f64))]));
-             self.pending = false;
-         }
-         matches!(self.result, 1 | 2) && self.start > 0. && position >= self.start
+-            if ef.additional_activate != 0 && !follow_up { delayed.push((*ef, 0)); continue; }
+-            if (!follow_up || reselect_targets) && ef.target == 1 && ef.target_is_debuff && self.is_debuff_immune() { continue; }
++            if ef.additional_activate != 0 && !follow_up { crate::decision_trace::event("effect-deferred", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64))])); delayed.push((*ef, 0)); continue; }
++            if (!follow_up || reselect_targets) && ef.target == 1 && ef.target_is_debuff && self.is_debuff_immune() { crate::decision_trace::event("effect-immune", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64))])); continue; }
+             if ef.target != 1 && (!follow_up || reselect_targets) {
+                 if let Some(f) = field {
+                     let targets = selected_targets[ability_index].take();
+                     selected_targets[ability_index] = Some(f.queue_skill_effect(self, skill_id, rarity, *ef, modifier, scaled_duration, targets));
++                    crate::decision_trace::event("effect-queued", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64)),("targets", crate::json::arr(selected_targets[ability_index].as_ref().unwrap().iter().map(|i| crate::json::num(*i as f64)).collect()))]));
+                     if scaled_duration > 0.0 {
+                         let timer = self.new_skill_timer(scaled_duration);
+                         self.active_aux_skills.push(ActiveSkill { token: 0, skill_id: skill_id.to_string(), perspective,
+@@ -2536,6 +2559,7 @@ impl RaceSolver {
+                 }
+                 continue;
+             }
++            crate::decision_trace::event("effect-applied", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64)),("type", crate::json::num((ef.effect_type as i32) as f64)),("modifier", crate::json::num((modifier) as f64)),("duration", crate::json::num((scaled_duration) as f64))]));
+             match ef.effect_type {
+                 SkillType::DebuffImmunity => {
+                     let timer = self.new_skill_timer(scaled_duration);
+diff --git a/src/race_solver_builder.rs b/src/race_solver_builder.rs
+index d7bdd49..60a36e9 100644
+--- a/src/race_solver_builder.rs
++++ b/src/race_solver_builder.rs
+@@ -519,6 +519,10 @@ fn build_skill_data(
+ 
+     let mut triggers: Vec<SkillData> = Vec::new();
+     for (alt_index,alt) in def.alternatives.iter().enumerate() {
++        let _trace = crate::decision_trace::skill(skill_id, alt_index, "build-condition");
++        crate::decision_trace::event("skill-definition", || crate::json::obj(vec![
++            ("condition", crate::json::Value::String(alt.condition.clone())),
++            ("precondition", crate::json::Value::String(alt.precondition.clone().unwrap_or_default()))]));
+         let parse = |expression:&str,column:&str| condition_parser::parse_with_retail_runtime(
+             conditions,expression,sampled.map(|index| {
+                 let triggers = sampled_triggers_for(index, skill_id, alt_index, column);
+@@ -891,7 +895,7 @@ impl RaceSolverBuilder {
+             let key = (skill_id.clone(), *perspective, *level, *repeat, trigger_horse.strategy as u8,
+                 retail.is_some(), retail.is_some_and(|row| row.runtime_phase));
+             *repeat += 1;
+-            if let Some(cached) = self.skill_cache.as_ref().and_then(|cache| cache.borrow().get(&key).cloned()) {
++            if let Some(cached) = self.skill_cache.as_ref().filter(|_| !crate::decision_trace::enabled()).and_then(|cache| cache.borrow().get(&key).cloned()) {
+                 skilldata.extend(cached);
+                 continue;
+             }
+diff --git a/src/race_solver_retail.rs b/src/race_solver_retail.rs
+index c34033e..95a1c63 100644
 --- a/src/race_solver_retail.rs
 +++ b/src/race_solver_retail.rs
-@@ -834,6 +834,7 @@
+@@ -850,6 +850,7 @@ impl RaceSolver {
      }
  
      fn update_retail_pace(&mut self, dt: f32, field: Option<&RaceField>) {
 +        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "position-keep");
-         let (field, index, pacemaker) =
-             match field.and_then(|f| Some((f, self.field_index?, f.pacemaker()?))) {
-                 Some(x) => x,
-@@ -902,6 +903,7 @@
+         let reference_strategy = self.horse.strategy;
+         // Match the pace controller's temporary style while rushing.
+         #[cfg(feature = "experimental-pacemaker-staging")]
+@@ -928,6 +929,7 @@ impl RaceSolver {
      }
  
      fn update_retail_spurt(&mut self) {
@@ -273,15 +506,15 @@
          if self.phase < 2 {
              return;
          }
-@@ -943,6 +945,7 @@
-     pub(crate) fn step_forward_retail_with_roster(
+@@ -970,6 +972,7 @@ impl RaceSolver {
          &mut self, dt: f32, field: Option<&RaceField>, roster: Option<&[retail_lane::Horse]>,
+         sorted: Option<(&[usize], &[usize])>,
      ) -> f64 {
 +        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "movement");
          self.retail.as_mut().unwrap().live_roster_dirty = false;
          let mut roster = roster;
          if !self.retail.as_ref().unwrap().prepared {
-@@ -1237,12 +1240,29 @@
+@@ -1265,12 +1268,29 @@ impl RaceSolver {
          if self.start_dash {
              speed = speed.min(dash_limit);
          }
@@ -314,257 +547,267 @@
          let mut distance = actual * dt;
          if gate_fraction != 1. {
              distance = (distance as f64 * gate_fraction) as f32;
---- a/src/race_solver.rs
-+++ b/src/race_solver.rs
-@@ -1036,6 +1036,9 @@
-     }
+diff --git a/src/retail_initialization.rs b/src/retail_initialization.rs
+index 04af301..5ce0c56 100644
+--- a/src/retail_initialization.rs
++++ b/src/retail_initialization.rs
+@@ -193,12 +193,22 @@ fn sample_trigger(name:&str,arg:i32,rng:&mut RetailRandom,course:&Value)->Result
+     Ok(Windows::Distances(windows))
+ }
  
-     fn call_deactivate_hook(&mut self, skill_id: &str, perspective: Perspective) {
-+        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "effect-end");
-+        let _skill = crate::decision_trace::skill(skill_id, 0, "effect-end");
-+        crate::decision_trace::event("effect-ended", || crate::json::obj(vec![("position", crate::json::num((self.pos) as f64))]));
-         let mut hook = std::mem::replace(&mut self.on_skill_deactivate, noop_hook());
-         hook(self, skill_id, perspective);
-         self.on_skill_deactivate = hook;
-@@ -1968,6 +1971,7 @@
-     }
- 
-     pub(crate) fn process_skill_priority(&mut self, priority:Option<i32>,field:Option<&RaceField>) {
-+        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "skill-pass");
-         self.refresh_skill_scan();
-         // Priority zero must still publish additional activations/reservations
-         // with an empty list. Priority one has no such end-of-pass work.
-@@ -1978,8 +1982,10 @@
-             let i = self.skill_scan.prerequisites[at];
-             let sk = &self.pending_skills[i];
-             if priority.is_some_and(|p|p!=sk.priority) {continue;}
-+            let _trace = crate::decision_trace::skill(&sk.skill_id, sk.detail_index, "precondition");
-             let satisfied = !sk.prerequisite_satisfied
-                 && sk.prerequisite.as_ref().is_some_and(|check| check(self, field));
-+            crate::decision_trace::gate("precondition-latched", satisfied);
-             if satisfied { self.pending_skills[i].prerequisite_satisfied = true; }
-         }
-         let pending = &self.pending_skills;
-@@ -2034,11 +2040,13 @@
-                 continue;
-             }
-             let sk = &self.pending_skills[j];
--            let fires = (sk.prerequisite.is_none() || sk.prerequisite_satisfied)
--                && (field.is_some() || sk.effects.iter().all(|ef| ef.target == 1))
--                && self.skill_cooldown_ready(&sk.cooldown_key)
--                && sk.windows.iter().any(|r| r.start <= pos && pos < r.end)
--                && (sk.extra_condition)(self, field);
-+            let _trace = crate::decision_trace::skill(&sk.skill_id, sk.detail_index, "activation");
-+            let fires = crate::decision_trace::gate("precondition-ready", (sk.prerequisite.is_none() || sk.prerequisite_satisfied))
-+                && crate::decision_trace::gate("target-available", (field.is_some() || sk.effects.iter().all(|ef| ef.target == 1)))
-+                && crate::decision_trace::gate("cooldown-ready", self.skill_cooldown_ready(&sk.cooldown_key))
-+                && crate::decision_trace::gate("sampled-window", sk.windows.iter().any(|r| r.start <= pos && pos < r.end))
-+                && crate::decision_trace::gate("condition", (sk.extra_condition)(self, field));
-+            crate::decision_trace::gate("activation-ready", fires);
-             if fires {
-                 let sk = &self.pending_skills[j];
-                 let (sid, perspective, rarity, effects, green, cooldown, cooldown_key) =
-@@ -2085,6 +2093,7 @@
-                 Some(1) => self.skill_scan.priority_one[remaining],
-                 _ => remaining,
-             };
-+            let _trace = crate::decision_trace::skill(&self.pending_skills[i].skill_id, self.pending_skills[i].detail_index, "activation");
-             if self.retail.is_some() {
-                 if let Some(window) = self.skill_scan.windows.get(i) {
-                     if priority.is_some_and(|p| p != window.priority) { continue; }
-@@ -2095,6 +2104,7 @@
-                     {
-                         // Even an inactive detail takes its turn in the ordered
-                         // additional-effect pass. Later activations must see it.
-+                        crate::decision_trace::gate("trigger-window", false);
-                         self.additional_turn_floor = self.additional_turn_floor.max(window.numeric_id);
-                         continue;
++fn trace_trigger(trigger: &Trigger) {
++    crate::decision_trace::event("sampled-trigger", || crate::json::obj(vec![
++        ("predicate", Value::String(trigger.name.clone())), ("field", Value::String(trigger.field.clone())),
++        ("alternative", crate::json::num(trigger.alternative as f64)), ("argument", crate::json::num(trigger.argument as f64)),
++        ("drawStart", crate::json::num(trigger.draw_start as f64)), ("drawEnd", crate::json::num(trigger.draw_end as f64)),
++        ("windows", crate::decision_trace::windows(&trigger.windows))]));
++}
++
+ pub fn initialize(seed:i32,horses:&[Value],course:&Value,skills:&Value,parameters:&Value)->Result<Initialization,String> {
+     let mut rng=RetailRandom::new(seed);
+     let mut rows:Vec<HorseInitialization>=(0..horses.len()).map(|_|HorseInitialization::default()).collect();
+-    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
++    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         for entry in horse.get_array("skills")? {
+             let sid=skill_id(entry)?;
++            let _skill = crate::decision_trace::skill(&sid, 0, "initialization");
+             for (alternative,alt) in field(skills,&sid)?.get_array("alternatives")?.iter().enumerate() {
+                 for column in ["precondition","condition"] {
+                     for (name,operator,argument) in terms(alt.get(column).and_then(Value::as_str).unwrap_or("")) {
+@@ -208,6 +218,7 @@ pub fn initialize(seed:i32,horses:&[Value],course:&Value,skills:&Value,parameter
+                         let windows=sample_trigger(&name,argument,&mut rng,course)?;
+                         row.triggers.push(Trigger {skill_id:sid.clone(),alternative,field:column.into(),name,argument,
+                             windows,draw_start,draw_end:rng.draw_count});
++                        crate::decision_trace::event("sampled-trigger", || crate::json::obj(vec![("predicate", crate::json::Value::String((&row.triggers.last().unwrap().name).to_string())),("field", crate::json::Value::String((column).to_string())),("alternative", crate::json::num((alternative) as f64)),("argument", crate::json::num((argument) as f64)),("drawStart", crate::json::num((draw_start) as f64)),("drawEnd", crate::json::num((rng.draw_count) as f64)),("windows", crate::decision_trace::windows(&row.triggers.last().unwrap().windows))]));
                      }
-@@ -2120,12 +2130,13 @@
-                 continue;
-             }
-             let sk = &self.pending_skills[i];
--            let fires = (reserved || (pos >= sk.trigger.start && pos < sk.trigger.end
--                && (sk.prerequisite.is_none() || sk.prerequisite_satisfied)
--                && sk.windows.iter().any(|r| r.start <= pos && pos < r.end)
--                && (sk.extra_condition)(self, field)))
--                && (field.is_some() || sk.effects.iter().all(|ef| ef.target == 1))
--                && self.skill_cooldown_ready(&sk.cooldown_key);
-+            let fires = (reserved || (crate::decision_trace::gate("trigger-window", pos >= sk.trigger.start && pos < sk.trigger.end)
-+                && crate::decision_trace::gate("precondition-ready", (sk.prerequisite.is_none() || sk.prerequisite_satisfied))
-+                && crate::decision_trace::gate("sampled-window", sk.windows.iter().any(|r| r.start <= pos && pos < r.end))
-+                && crate::decision_trace::gate("condition", (sk.extra_condition)(self, field))))
-+                && crate::decision_trace::gate("target-available", (field.is_some() || sk.effects.iter().all(|ef| ef.target == 1)))
-+                && crate::decision_trace::gate("cooldown-ready", self.skill_cooldown_ready(&sk.cooldown_key));
-+            crate::decision_trace::gate("activation-ready", fires);
-             if fires {
-                 let (skill_id, perspective, rarity, effects, has_green_tag) = {
-                     let sk = &self.pending_skills[i];
-@@ -2205,6 +2216,8 @@
-     }
- 
-     fn start_skill_cooldown(&mut self,key:String,duration:f64) {
-+        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "cooldown");
-+        crate::decision_trace::event("cooldown-start", || crate::json::obj(vec![("key", crate::json::Value::String((&key).to_string())),("baseDuration", crate::json::num((duration) as f64)),("distance", crate::json::num((self.course.distance) as f64))]));
-         if self.retail.is_some() {
-             let remaining=(duration as f32)*(self.course.distance as f32/1000.);
-             if let Some(timer)=self.retail.as_ref().unwrap().skill_cooldowns.get(&key) {timer.set(-remaining as f64);}
-@@ -2213,6 +2226,9 @@
-     }
- 
-     fn activate_skill(&mut self, skill_id: &str, perspective: Perspective, rarity: SkillRarity, effects: &[SkillEffect], has_green_tag: bool, detail_index: usize, field: Option<&RaceField>) {
-+        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "activation");
-+        let _skill = crate::decision_trace::skill(skill_id, detail_index, "activation");
-+        crate::decision_trace::event("skill-activated", || crate::json::obj(vec![("position", crate::json::num((self.pos) as f64))]));
-         let targets = self.apply_activation(skill_id, perspective, rarity, effects, has_green_tag, field, false, None, false, detail_index);
-         if perspective == Perspective::Self_ && skill_id.parse::<i64>().is_ok() {
-             self.skill_detail_events.push((skill_id.to_string(), detail_index, self.accumulatetime.get()));
-@@ -2225,6 +2241,8 @@
-     }
- 
-     fn apply_activation(&mut self, skill_id: &str, perspective: Perspective, rarity: SkillRarity, effects: &[SkillEffect], has_green_tag: bool, field: Option<&RaceField>, follow_up: bool, duration_override: Option<f64>, reselect_targets: bool, detail_index: usize) -> Vec<Option<Vec<usize>>> {
-+        let _trace = crate::decision_trace::runner(self.field_index, self.accumulatetime.get(), "effects");
-+        let _skill = crate::decision_trace::skill(skill_id, detail_index, "effects");
-         // ExtendEvolvedDuration must apply after other effects on the same
-         // skill, so it doesn't extend its own siblings' durations.
-         let mut effect_order: Vec<usize> = (0..effects.len()).collect();
-@@ -2280,6 +2298,7 @@
-             let scaled_duration = if skill_id == "asitame" && self.retail.is_some() {
-                 self.conserve_release_duration()
-             } else { scaled_duration };
-+            crate::decision_trace::event("effect-evaluated", || crate::json::obj(vec![("type", crate::json::num((ef.effect_type as i32) as f64)),("ability", crate::json::num((ability_index) as f64)),("modifier", crate::json::num((modifier) as f64)),("duration", crate::json::num((scaled_duration) as f64)),("followUp", crate::json::Value::Bool(follow_up))]));
-             runtime_duration = runtime_duration.max(scaled_duration);
-             if !follow_up && perspective == Perspective::Self_ {
-                 let null = matches!(ef.effect_type, SkillType::Noop | SkillType::Runaway);
-@@ -2291,12 +2310,13 @@
-                     self.initial_ability_activations.push((kind, value));
                  }
              }
--            if ef.additional_activate != 0 && !follow_up { delayed.push((*ef, 0)); continue; }
--            if (!follow_up || reselect_targets) && ef.target == 1 && ef.target_is_debuff && self.is_debuff_immune() { continue; }
-+            if ef.additional_activate != 0 && !follow_up { crate::decision_trace::event("effect-deferred", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64))])); delayed.push((*ef, 0)); continue; }
-+            if (!follow_up || reselect_targets) && ef.target == 1 && ef.target_is_debuff && self.is_debuff_immune() { crate::decision_trace::event("effect-immune", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64))])); continue; }
-             if ef.target != 1 && (!follow_up || reselect_targets) {
-                 if let Some(f) = field {
-                     let targets = selected_targets[ability_index].take();
-                     selected_targets[ability_index] = Some(f.queue_skill_effect(self, skill_id, rarity, *ef, modifier, scaled_duration, targets));
-+                    crate::decision_trace::event("effect-queued", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64)),("targets", crate::json::arr(selected_targets[ability_index].as_ref().unwrap().iter().map(|i| crate::json::num(*i as f64)).collect()))]));
-                     if scaled_duration > 0.0 {
-                         let timer = self.new_skill_timer(scaled_duration);
-                         self.active_aux_skills.push(ActiveSkill { token: 0, skill_id: skill_id.to_string(), perspective,
-@@ -2305,6 +2325,7 @@
-                 }
-                 continue;
-             }
-+            crate::decision_trace::event("effect-applied", || crate::json::obj(vec![("ability", crate::json::num((ability_index) as f64)),("type", crate::json::num((ef.effect_type as i32) as f64)),("modifier", crate::json::num((modifier) as f64)),("duration", crate::json::num((scaled_duration) as f64))]));
-             match ef.effect_type {
-                 SkillType::DebuffImmunity => {
-                     let timer = self.new_skill_timer(scaled_duration);
---- a/src/activation_conditions.rs
-+++ b/src/activation_conditions.rs
-@@ -1383,7 +1383,7 @@
-     /// Immutable parsed structure is shared; sampled windows belong to this call.
-     Shared(std::rc::Rc<Op>, Vec<crate::retail_initialization::Windows>),
-     Sampled(usize),
--    Cmp { cond: &'static Condition, kind: CmpKind, arg: f64 },
-+    Cmp { name: String, cond: &'static Condition, kind: CmpKind, arg: f64 },
-     And(Box<Op>, Box<Op>, SamplePolicy),
-     Or(Box<Op>, Box<Op>, SamplePolicy),
- }
-@@ -1413,7 +1413,7 @@
-                 Ok((rmap_multi(regions, |r| windows.iter().map(|&(start,end)|
-                     r.intersect(&Region::new(start as f64,end as f64))).collect()),None))
-             }
--            Op::Cmp { cond, kind, arg } => {
-+            Op::Cmp { name, cond, kind, arg } => {
-                 let f = match kind {
-                     CmpKind::Eq => &cond.filter_eq,
-                     CmpKind::Neq => &cond.filter_neq,
-@@ -1422,7 +1422,18 @@
-                     CmpKind::Gt => &cond.filter_gt,
-                     CmpKind::Gte => &cond.filter_gte,
-                 };
--                f(regions, *arg, course, horse, extra)
-+                let (windows, predicate) = f(regions, *arg, course, horse, extra)?;
-+                let operator = match kind { CmpKind::Eq => "==", CmpKind::Neq => "!=", CmpKind::Lt => "<", CmpKind::Lte => "<=", CmpKind::Gt => ">", CmpKind::Gte => ">=" };
-+                crate::decision_trace::event("static-condition", || crate::json::obj(vec![
-+                    ("predicate", crate::json::Value::String(name.clone())), ("operator", crate::json::Value::String(operator.into())),
-+                    ("argument", crate::json::num(*arg)), ("dynamic", crate::json::Value::Bool(predicate.is_some())),
-+                    ("windows", crate::json::arr(windows.iter().map(|r| crate::json::arr(vec![crate::json::num(r.start),crate::json::num(r.end)])).collect()))]));
-+                let name = format!("{}{}{}", name, operator, arg);
-+                let predicate = predicate.map(|original| -> DynCond { Box::new(move |s, field| {
-+                    let result = original(s, field);
-+                    crate::decision_trace::gate(&name, result)
-+                }) });
-+                Ok((windows, predicate))
-             }
-             Op::And(left, right, _) => {
-                 let (leftval, leftcond) = left.apply_sampled(regions, course, horse, extra, sampled)?;
---- a/src/condition_parser.rs
-+++ b/src/condition_parser.rs
-@@ -205,7 +205,7 @@
-             return Ok(Op::Fixed(trigger.windows));
+@@ -215,7 +226,8 @@ pub fn initialize(seed:i32,horses:&[Value],course:&Value,skills:&Value,parameter
+     }
+     let mut stages=BTreeMap::from([("after_triggers".into(),rng.draw_count)]);
+     let styles=["","RunningOut","Proceding","Insertion","Chasing"];
+-    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
++    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         let style=horse.get_i64("running_style")?;
+         let coefficient=if (1..=4).contains(&style) {number(parameters,&format!("forceInMoveTargetSpeedAdd{}",styles[style as usize]))?} else {0.0};
+         let span=number(parameters,"forceInMoveTargetSpeedAddRandomRange")?;
+@@ -223,19 +235,27 @@ pub fn initialize(seed:i32,horses:&[Value],course:&Value,skills:&Value,parameter
+         row.force_in_move_coefficient=coefficient+offset;
+     }
+     stages.insert("after_ai".into(),rng.draw_count);
+-    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
++    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         let chance=(100.0-9000.0/number(horse,"base_wisdom")?).max(20.0);
+         for entry in horse.get_array("skills")? {
+             let sid=skill_id(entry)?;
+-            let enabled=field(skills,&sid)?.get_i64("wisdomCheck")?!=1 || chance>rng.real(0.0,100.0);
++            let _skill = crate::decision_trace::skill(&sid, 0, "initialization");
++            let checked=field(skills,&sid)?.get_i64("wisdomCheck")?==1;
++            let draw_start = rng.draw_count;
++            let roll=if checked {Some(rng.real(0.0,100.0))} else {None};
++            let enabled=roll.is_none_or(|value| chance>value);
++            crate::decision_trace::event("skill-wit", || crate::json::obj(vec![("checked", Value::Bool(checked)),("roll", roll.map_or(Value::Null, |v| crate::json::num(v as f64))),("threshold", crate::json::num((chance) as f64)),("passed", Value::Bool(enabled)),("drawStart", crate::json::num((draw_start) as f64)),("drawEnd", crate::json::num((rng.draw_count) as f64))]));
+             row.skill_enabled.insert(sid,enabled);
          }
      }
--    Ok(Op::Cmp { cond, kind, arg })
-+    Ok(Op::Cmp { name: name.to_string(), cond, kind, arg })
+     stages.insert("after_wisdom".into(),rng.draw_count);
+-    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
++    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         let mut multiplier=1.0f32;
+         for entry in horse.get_array("skills")? {
+             let sid=skill_id(entry)?;
++            let _skill = crate::decision_trace::skill(&sid, 0, "initialization");
+             if !row.skill_enabled[&sid] {continue;}
+             for alt in field(skills,&sid)?.get_array("alternatives")? {
+                 if alt.get_str("condition")?!="always==1" || !alt.get("precondition").and_then(Value::as_str).unwrap_or("").is_empty() {continue;}
+@@ -319,19 +339,23 @@ pub fn initialize_cached(seed:i32,horses:&[Value],course:&Value,skills:&Value,pa
+     }
+     let mut rng=RetailRandom::new(seed);
+     let mut rows:Vec<HorseInitialization>=(0..horses.len()).map(|_|HorseInitialization::default()).collect();
+-    for (skills,row) in decoded.iter().zip(rows.iter_mut()) {
++    for (i,(skills,row)) in decoded.iter().zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         for (sid,facts) in skills {
++            let _skill = crate::decision_trace::skill(sid, 0, "initialization");
+             for (alternative,column,name,argument) in &facts.random_terms {
+                 let draw_start=rng.draw_count;
+                 let windows=sample_trigger(name,*argument,&mut rng,course)?;
+                 row.triggers.push(Trigger {skill_id:sid.clone(),alternative:*alternative,field:(*column).into(),
+                     name:name.clone(),argument:*argument,windows,draw_start,draw_end:rng.draw_count});
++                trace_trigger(row.triggers.last().unwrap());
+             }
+         }
+     }
+     let mut stages=BTreeMap::from([("after_triggers".into(),rng.draw_count)]);
+     let styles=["","RunningOut","Proceding","Insertion","Chasing"];
+-    for (horse,row) in horses.iter().zip(rows.iter_mut()) {
++    for (i,(horse,row)) in horses.iter().zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         let style=horse.get_i64("running_style")?;
+         let coefficient=if (1..=4).contains(&style) {number(parameters,&format!("forceInMoveTargetSpeedAdd{}",styles[style as usize]))?} else {0.0};
+         let span=number(parameters,"forceInMoveTargetSpeedAddRandomRange")?;
+@@ -339,15 +363,24 @@ pub fn initialize_cached(seed:i32,horses:&[Value],course:&Value,skills:&Value,pa
+         row.force_in_move_coefficient=coefficient+offset;
+     }
+     stages.insert("after_ai".into(),rng.draw_count);
+-    for ((horse,skills),row) in horses.iter().zip(&decoded).zip(rows.iter_mut()) {
++    for (i,((horse,skills),row)) in horses.iter().zip(&decoded).zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         let chance=(100.0-9000.0/number(horse,"base_wisdom")?).max(20.0);
+         for (sid,facts) in skills {
+-            let enabled=!facts.wisdom_checked || chance>rng.real(0.0,100.0);
++            let _skill = crate::decision_trace::skill(sid, 0, "initialization");
++            let draw_start = rng.draw_count;
++            let roll = if facts.wisdom_checked { Some(rng.real(0., 100.)) } else { None };
++            let enabled = roll.is_none_or(|value| chance > value);
++            crate::decision_trace::event("skill-wit", || crate::json::obj(vec![
++                ("checked", Value::Bool(facts.wisdom_checked)), ("roll", roll.map_or(Value::Null, |v| crate::json::num(v as f64))),
++                ("threshold", crate::json::num(chance as f64)), ("passed", Value::Bool(enabled)),
++                ("drawStart", crate::json::num(draw_start as f64)), ("drawEnd", crate::json::num(rng.draw_count as f64))]));
+             row.skill_enabled.insert(sid.clone(),enabled);
+         }
+     }
+     stages.insert("after_wisdom".into(),rng.draw_count);
+-    for (skills,row) in decoded.iter().zip(rows.iter_mut()) {
++    for (i,(skills,row)) in decoded.iter().zip(rows.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+         let mut multiplier=1.0f32;
+         for (sid,facts) in skills {
+             if !row.skill_enabled[sid] {continue;}
+@@ -436,31 +469,41 @@ impl PreparedInitialization {
+     pub(crate) fn initialize(&self, seed: i32) -> Result<Initialization, String> {
+         let mut rng = RetailRandom::new(seed);
+         let mut rows: Vec<_> = self.horses.iter().map(|_| HorseInitialization::default()).collect();
+-        for (horse, row) in self.horses.iter().zip(&mut rows) {
++        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
++            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+             for trigger in &horse.triggers {
++                let _skill = crate::decision_trace::skill(&trigger.skill_id, 0, "initialization");
+                 let draw_start = rng.draw_count;
+                 let windows = sample_trigger(&trigger.name, trigger.argument, &mut rng, &self.course)?;
+                 row.triggers.push(Trigger { skill_id: trigger.skill_id.clone(), alternative: trigger.alternative,
+                     field: trigger.field.clone(), name: trigger.name.clone(), argument: trigger.argument,
+                     windows, draw_start, draw_end: rng.draw_count });
++                trace_trigger(row.triggers.last().unwrap());
+             }
+         }
+         let mut stages = BTreeMap::from([("after_triggers".into(), rng.draw_count)]);
+-        for (horse, row) in self.horses.iter().zip(&mut rows) {
++        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
++            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+             let coefficient = horse.force_coefficient;
+             let offset = if coefficient > 0. { rng.real(0., self.force_span) }
+                 else if coefficient < 0. { rng.real(-self.force_span, 0.) } else { 0. };
+             row.force_in_move_coefficient = coefficient + offset;
+         }
+         stages.insert("after_ai".into(), rng.draw_count);
+-        for (horse, row) in self.horses.iter().zip(&mut rows) {
++        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
++            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+             for (sid, checked) in &horse.skills {
+-                let enabled = !checked || horse.wisdom_chance > rng.real(0., 100.);
++                let _skill = crate::decision_trace::skill(sid, 0, "initialization");
++                let draw_start = rng.draw_count;
++                let roll = if *checked { Some(rng.real(0., 100.)) } else { None };
++                let enabled = roll.is_none_or(|value| horse.wisdom_chance > value);
++                crate::decision_trace::event("skill-wit", || crate::json::obj(vec![("checked", Value::Bool(*checked)),("roll", roll.map_or(Value::Null, |v| crate::json::num(v as f64))),("threshold", crate::json::num((horse.wisdom_chance) as f64)),("passed", Value::Bool(enabled)),("drawStart", crate::json::num((draw_start) as f64)),("drawEnd", crate::json::num((rng.draw_count) as f64))]));
+                 row.skill_enabled.insert(sid.clone(), enabled);
+             }
+         }
+         stages.insert("after_wisdom".into(), rng.draw_count);
+-        for (horse, row) in self.horses.iter().zip(&mut rows) {
++        for (i,(horse, row)) in self.horses.iter().zip(&mut rows).enumerate() {
++            let _trace = crate::decision_trace::runner(Some(i), 0., "initialization");
+             let mut multiplier = 1.0_f32;
+             for (sid, modifiers) in &horse.delay_modifiers {
+                 if row.skill_enabled[sid] {
+@@ -482,7 +525,8 @@ pub fn initialize_sections_and_rushing(init:&mut Initialization, horses:&[(f32,f
+     if horses.len()!=init.horses.len() {return Err("Roster changed during initialization".into());}
+     let base=20.0-(number(course,"distance")?-2000.0)/1000.0;
+     let speeds=field(parameters,"BasetTargetSpeed")?;
+-    for ((wisdom,_),row) in horses.iter().zip(init.horses.iter_mut()) {
++    for (i,((wisdom,_),row)) in horses.iter().zip(init.horses.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "sections");
+         let logarithm=((*wisdom*0.1) as f64).log10() as f32;
+         // Isolated section-only expression-store hypothesis. The logarithm is
+         // still the baseline rounded result. Range results are float32 returns.
+@@ -499,7 +543,8 @@ pub fn initialize_sections_and_rushing(init:&mut Initialization, horses:&[(f32,f
+     }
+     init.stages.insert("after_sections".into(),init.rng.draw_count);
+     let temptation=field(parameters,"Temptation")?;
+-    for ((wisdom,bonus),row) in horses.iter().zip(init.horses.iter_mut()) {
++    for (i,((wisdom,bonus),row)) in horses.iter().zip(init.horses.iter_mut()).enumerate() {
++        let _trace = crate::decision_trace::runner(Some(i), 0., "rushing-initialization");
+         let term=*wisdom*0.1+1.0;
+         let logarithm=((term*term) as f64).log10() as f32;
+         let fraction=number(temptation,"TemptationStartPerVal1")?/logarithm;
+diff --git a/src/retail_random.rs b/src/retail_random.rs
+index 2536655..61faba6 100644
+--- a/src/retail_random.rs
++++ b/src/retail_random.rs
+@@ -52,6 +52,7 @@ impl RetailRandom {
+         if value<0 {value=value.wrapping_add(i32::MAX);}
+         self.state[self.a]=value;
+         self.draw_count+=1;
++        crate::decision_trace::event("rng-draw", || crate::json::obj(vec![("draw", crate::json::num((self.draw_count) as f64)),("raw", crate::json::num((value) as f64))]));
+         value
+     }
+ 
+diff --git a/src/retail_spurt.rs b/src/retail_spurt.rs
+index 34ce709..45d8457 100644
+--- a/src/retail_spurt.rs
++++ b/src/retail_spurt.rs
+@@ -56,12 +56,12 @@ pub fn choose(
+     consumption: impl Fn(f32) -> f32,
+     rng: &mut impl RandomSource,
+ ) -> Plan {
++    crate::decision_trace::event("spurt-input", || crate::json::obj(vec![("distance", crate::json::num((input.distance) as f64)),("position", crate::json::num((input.position) as f64)),("hp", crate::json::num((input.hp) as f64)),("max_speed", crate::json::num((input.max_speed) as f64)),("base_speed", crate::json::num((input.base_speed) as f64)),("wisdom", crate::json::num((input.wisdom) as f64))]));
+     let remaining = ((input.distance - input.position) - parameters.buffer).max(0.);
+     let base_cost = consumption(input.base_speed);
+-    let finish = |start, speed, result| Plan {
+-        start,
+-        speed,
+-        result,
++    let finish = |start: f32, speed: f32, result: i32| {
++        crate::decision_trace::event("spurt-plan", || crate::json::obj(vec![("start", crate::json::num((start) as f64)),("speed", crate::json::num((speed) as f64)),("result", crate::json::num((result) as f64))]));
++        Plan { start, speed, result }
+     };
+     if input.hp < (remaining / input.base_speed) * base_cost {
+         return finish(input.distance, input.max_speed, 4);
+@@ -83,6 +83,7 @@ pub fn choose(
+             let slow_cost = slow_time * base_cost;
+             let needed = slow_cost as f64 + fast_time as f64 * cost as f64;
+             let start = (input.distance - parameters.buffer) - sprint_distance;
++            crate::decision_trace::event("spurt-search", || crate::json::obj(vec![("speed", crate::json::num((speed) as f64)),("start", crate::json::num((start) as f64)),("needed", crate::json::num((needed) as f64)),("feasible", crate::json::Value::Bool(input.hp as f64 >= needed && start < latest))]));
+             if input.hp as f64 >= needed && start < latest {
+                 return Some(Candidate {
+                     start,
+@@ -125,11 +126,14 @@ pub fn choose(
+     }
+     sort_candidates(&mut candidates);
+     let chance = 15. + 0.05f32 * input.wisdom;
+-    for candidate in &candidates {
+-        if (rng.integer(0, 100) as f32) < chance {
++    for (index,candidate) in candidates.iter().enumerate() {
++        let roll = rng.integer(0, 100);
++        crate::decision_trace::event("spurt-roll", || crate::json::obj(vec![("index", crate::json::num((index) as f64)),("roll", crate::json::num((roll) as f64)),("threshold", crate::json::num((chance) as f64)),("passed", crate::json::Value::Bool((roll as f32) < chance)),("start", crate::json::num((candidate.start) as f64)),("speed", crate::json::num((candidate.speed) as f64)),("time", crate::json::num((candidate.time) as f64))]));
++        if (roll as f32) < chance {
+             return finish(input.position.max(candidate.start), candidate.speed, 2);
+         }
+     }
++    crate::decision_trace::event("spurt-fallback", || crate::json::obj(vec![("reason", crate::json::Value::String(("all-rolls-failed").to_string()))]));
+     let last = candidates.last().unwrap();
+     finish(input.position.max(last.start), last.speed, 2)
  }
- 
- /// Parses one condition-expression string (e.g. `"phase==2&distance_rate>=50"`)
---- a/src/race_solver_builder.rs
-+++ b/src/race_solver_builder.rs
-@@ -459,6 +459,8 @@
- 
-     let mut triggers: Vec<SkillData> = Vec::new();
-     for (alt_index,alt) in def.alternatives.iter().enumerate() {
-+        let _trace = crate::decision_trace::skill(skill_id, alt_index, "build-condition");
-+        crate::decision_trace::event("skill-definition", || crate::json::obj(vec![("condition", crate::json::Value::String((&alt.condition).to_string())),("precondition", crate::json::Value::String((alt.precondition.as_deref().unwrap_or("")).to_string()))]));
-         let parse = |expression:&str,column:&str| condition_parser::parse_with_retail_runtime(
-             conditions,expression,sampled.map(|index| sampled_triggers_for(index, skill_id, alt_index, column)),
-             retail.is_some_and(|row|row.runtime_phase));
---- a/src/race_field_retail.rs
-+++ b/src/race_field_retail.rs
-@@ -139,6 +139,8 @@
-             });
+@@ -168,6 +172,7 @@ impl SpurtState {
+                     };
+                 }
+             }
++            crate::decision_trace::event("spurt-accepted", || crate::json::obj(vec![("start", crate::json::num((self.start) as f64)),("speed", crate::json::num((self.speed) as f64)),("result", crate::json::num((self.result) as f64)),("count", crate::json::num((self.count) as f64))]));
+             self.pending = false;
          }
-         for &i in indices {
-+            let time = self.solvers[i].borrow().accumulatetime.get();
-+            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
-             let mut s = self.solvers[i].borrow_mut();
-             s.collect_retail_duel_proximity(&rows, dt);
-             let position = s.pos as f32;
-@@ -151,12 +153,16 @@
-             r.lane.collect_roster(&context, roster, i, r.config.lane);
-         }
-         for &i in indices {
-+            let time = self.solvers[i].borrow().accumulatetime.get();
-+            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
-             self.solvers[i]
-                 .borrow_mut()
-                 .prepare_retail_tick(dt, Some(self), false);
-         }
-         for priority in [1, 0] {
-             for &i in indices {
-+            let time = self.solvers[i].borrow().accumulatetime.get();
-+            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
-                 self.solvers[i]
-                     .borrow_mut()
-                     .process_skill_priority(Some(priority), Some(self));
-@@ -172,6 +178,8 @@
-             rows.push((s.pos as f32, s.lane as f32, s.pos >= s.course.distance));
-         }
-         for &i in indices {
-+            let time = self.solvers[i].borrow().accumulatetime.get();
-+            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
-             let (front, side) = blocking_sample(i, rows, self.retail_block.unwrap());
-             let mut s = self.solvers[i].borrow_mut();
-             #[cfg(test)] {
-@@ -187,6 +195,8 @@
-         advanced.clear();
-         advanced.reserve(indices.len());
-         for &i in indices {
-+            let time = self.solvers[i].borrow().accumulatetime.get();
-+            let _trace = crate::decision_trace::runner(Some(i), time, "field-pass");
-             let (elapsed, dirty) = {
-                 let mut s = self.solvers[i].borrow_mut();
-                 let elapsed = s.step_forward_retail_with_roster(dt, Some(self), Some(roster));
+         matches!(self.result, 1 | 2) && self.start > 0. && position >= self.start

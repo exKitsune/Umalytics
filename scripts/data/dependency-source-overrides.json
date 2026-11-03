@@ -1,0 +1,22 @@
+{
+  "mitmproxy==12.2.3": {
+    "url": "https://codeload.github.com/mitmproxy/mitmproxy/tar.gz/6c09d56e4c29a92f5ad01b03199977584b8ea14f",
+    "sha256": "e08a9b63dfe24e75cf9e3e63c91309813e20ac6cee10cbb51c04dfc772969f24",
+    "upstreamCommit": "6c09d56e4c29a92f5ad01b03199977584b8ea14f"
+  },
+  "mitmproxy-windows==0.12.11": {
+    "url": "https://codeload.github.com/mitmproxy/mitmproxy-rs/tar.gz/40f1dfb5dca7b03ff7793d3c90f23b8bdf873889",
+    "sha256": "81882c66e31451f7d5e1a06c88d5c1940aa35739b9cc9d7a9d8950c0ca1137da",
+    "upstreamCommit": "40f1dfb5dca7b03ff7793d3c90f23b8bdf873889"
+  },
+  "mitmproxy==12.3.1": {
+    "url": "https://codeload.github.com/mitmproxy/mitmproxy/tar.gz/51c1d6b2d8d3367a773411eb7a3eeccec82b3ea7",
+    "sha256": "21ab945012c341300e12a6994928b73b84cf747526054a1b3a53f15d60e59017",
+    "upstreamCommit": "51c1d6b2d8d3367a773411eb7a3eeccec82b3ea7"
+  },
+  "mitmproxy-windows==0.12.15": {
+    "url": "https://codeload.github.com/mitmproxy/mitmproxy-rs/tar.gz/a1ce1d9bfd35d3a593ace483015c9cbcd40ddff8",
+    "sha256": "3fb1d5e11be44d8a4ff7e60c3693b165a56cd2216aaccb8998804b59760b05a3",
+    "upstreamCommit": "a1ce1d9bfd35d3a593ace483015c9cbcd40ddff8"
+  }
+}

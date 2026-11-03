@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "method": "Persistent binary-v1 workers; two warmups; alternating order; fixed consecutive seeds; median includes pipe transfer and protocol validation.",
+  "engines": {
+    "v74": "2d9cdf395aa187f6667b2c35e4c3fb86afa6d4a64913a33b0a57f5597933e9c8",
+    "ported": "f13d9f695618ca084df4fd97432103ef66c2471605a4b0c11aee6891897a346d",
+    "optimized": "589d0a41071d0ec2d598cc9cca49680619b9df2e965a2ee0ba74b15a178bc5b4"
+  },
+  "cases": [
+    {
+      "fixture": "additional-bonus-on-final-skill-tick",
+      "engine": "v74",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 12.787349987775087,
+      "meanBytes": 65458.416666666664
+    },
+    {
+      "fixture": "additional-bonus-on-final-skill-tick",
+      "engine": "v74",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 509.9233998917043,
+      "meanBytes": 6679802.166666667
+    },
+    {
+      "fixture": "additional-bonus-on-final-skill-tick",
+      "engine": "ported",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 9.667900041677058,
+      "meanBytes": 65458.416666666664
+    },
+    {
+      "fixture": "additional-bonus-on-final-skill-tick",
+      "engine": "ported",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 352.5167000479996,
+      "meanBytes": 6222840.583333333
+    },
+    {
+      "fixture": "additional-bonus-on-final-skill-tick",
+      "engine": "optimized",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 9.180699940770864,
+      "meanBytes": 65458.416666666664
+    },
+    {
+      "fixture": "additional-bonus-on-final-skill-tick",
+      "engine": "optimized",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 254.7705500619486,
+      "meanBytes": 6222840.583333333
+    },
+    {
+      "fixture": "additional-bonus-on-final-skill-tick",
+      "engine": "optimized",
+      "mode": "outcome",
+      "count": 12,
+      "medianMs": 8.627749979496002,
+      "meanBytes": 25871.083333333332
+    },
+    {
+      "fixture": "leader-gap-duration-rounding",
+      "engine": "v74",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 45.11390009429306,
+      "meanBytes": 167754.91666666666
+    },
+    {
+      "fixture": "leader-gap-duration-rounding",
+      "engine": "v74",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 1750.9050499647856,
+      "meanBytes": 19682364.416666668
+    },
+    {
+      "fixture": "leader-gap-duration-rounding",
+      "engine": "ported",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 31.5343999536708,
+      "meanBytes": 167754.91666666666
+    },
+    {
+      "fixture": "leader-gap-duration-rounding",
+      "engine": "ported",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 1269.4475000025705,
+      "meanBytes": 18860540.583333332
+    },
+    {
+      "fixture": "leader-gap-duration-rounding",
+      "engine": "optimized",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 29.801450087688863,
+      "meanBytes": 167754.91666666666
+    },
+    {
+      "fixture": "leader-gap-duration-rounding",
+      "engine": "optimized",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 921.8954500975087,
+      "meanBytes": 18860540.583333332
+    },
+    {
+      "fixture": "leader-gap-duration-rounding",
+      "engine": "optimized",
+      "mode": "outcome",
+      "count": 12,
+      "medianMs": 29.09560000989586,
+      "meanBytes": 61544.833333333336
+    },
+    {
+      "fixture": "pacemaker-handover-refresh-1800-a",
+      "engine": "v74",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 28.81389996036887,
+      "meanBytes": 133883.08333333334
+    },
+    {
+      "fixture": "pacemaker-handover-refresh-1800-a",
+      "engine": "v74",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 1117.8137001115829,
+      "meanBytes": 11726394.75
+    },
+    {
+      "fixture": "pacemaker-handover-refresh-1800-a",
+      "engine": "ported",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 22.08360005170107,
+      "meanBytes": 133883.08333333334
+    },
+    {
+      "fixture": "pacemaker-handover-refresh-1800-a",
+      "engine": "ported",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 771.6036500642076,
+      "meanBytes": 11287035.083333334
+    },
+    {
+      "fixture": "pacemaker-handover-refresh-1800-a",
+      "engine": "optimized",
+      "mode": "compact",
+      "count": 12,
+      "medianMs": 20.457000005990267,
+      "meanBytes": 133883.08333333334
+    },
+    {
+      "fixture": "pacemaker-handover-refresh-1800-a",
+      "engine": "optimized",
+      "mode": "trace",
+      "count": 12,
+      "medianMs": 556.4895999850705,
+      "meanBytes": 11287035.083333334
+    },
+    {
+      "fixture": "pacemaker-handover-refresh-1800-a",
+      "engine": "optimized",
+      "mode": "outcome",
+      "count": 12,
+      "medianMs": 19.813099992461503,
+      "meanBytes": 56431.083333333336
+    }
+  ],
+  "optimizedOutcomeResultsIdentical": true
+}

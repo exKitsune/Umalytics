@@ -128,21 +128,15 @@ jobs:
           python-version-file: '.python-version'
       - name: Read saved simulator source lock
         id: simulator-source
-        env:
-          GLOBALSIM_SOURCE_DEPLOY_KEY: ${{ secrets.GLOBALSIM_SOURCE_DEPLOY_KEY }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:GLOBALSIM_SOURCE_DEPLOY_KEY)) {
-            throw 'Set GLOBALSIM_SOURCE_DEPLOY_KEY to the read-only deploy key for the private simulator backup; see docs/simulator-backup.md.'
-          }
           python scripts/simulator_source.py --github-output $env:GITHUB_OUTPUT
           if ($LASTEXITCODE -ne 0) { throw 'Invalid simulator source lock.' }
-      - name: Check out pinned simulator from private backup
+      - name: Check out pinned simulator from the public fork
         uses: actions/checkout@v4
         with:
           repository: ${{ steps.simulator-source.outputs.repository }}
           ref: ${{ steps.simulator-source.outputs.revision }}
           path: .cache/globalsim-saved
-          ssh-key: ${{ secrets.GLOBALSIM_SOURCE_DEPLOY_KEY }}
           persist-credentials: false
           fetch-depth: 1
       - name: Verify saved simulator source
@@ -307,11 +301,17 @@ jobs:
             if ($test.Process.ExitCode -ne 0) { $failed += "$($test.Name): exit $($test.Process.ExitCode)" }
           }
           if ($failed.Count) { throw ($failed -join '; ') }
-      - name: Share only the tested unsigned executable
+      - name: Package matching corresponding source
+        run: |
+          .cache/proxy-venv/Scripts/python.exe scripts/package-source.py
+          if ($LASTEXITCODE -ne 0) { throw 'Corresponding source packaging failed.' }
+      - name: Share tested executable and matching source
         uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ github.run_id }}
-          path: .cache/dist/Umalytics.exe
+          path: |
+            .cache/dist/Umalytics.exe
+            .cache/dist/Umalytics-source.zip
           compression-level: 0
           retention-days: 1
           overwrite: true
@@ -435,9 +435,10 @@ jobs:
               echo 'The published release tag belongs to another commit.' >&2; exit 1
             fi
           else
-            gh release create "$tag" --draft --target "$RELEASE_COMMIT" --title "Umalytics $RELEASE_VERSION" --notes 'Windows x64 desktop app with bundled reference data. Download Umalytics.exe. The signed manifest is verified by the built-in updater.'
+            gh release create "$tag" --draft --target "$RELEASE_COMMIT" --title "Umalytics $RELEASE_VERSION" --notes 'Windows x64 desktop app. Download Umalytics.exe. Umalytics is AGPL-3.0-only, without warranty. Download Umalytics-source.zip alongside it for the corresponding application, modified GlobalSim, dependency sources, licenses, and build instructions. The signed manifest is verified by the built-in updater.'
           fi
-          gh release upload "$tag" .cache/dist/Umalytics.exe .cache/dist/release-manifest.json .cache/dist/release-manifest.sig --clobber
+          test -s .cache/dist/Umalytics-source.zip
+          gh release upload "$tag" .cache/dist/Umalytics.exe .cache/dist/Umalytics-source.zip .cache/dist/release-manifest.json .cache/dist/release-manifest.sig --clobber
           latest="$(gh api repos/exKitsune/Umalytics/commits/master --jq .sha)"
           if [ "$latest" != "$RELEASE_COMMIT" ]; then
             echo 'Master advanced while uploading; the release remains a draft.'

@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([switch]$SkipFrontend, [switch]$SkipService, [ValidatePattern('^[A-Za-z0-9._-]+\.exe$')][string]$OutputFile = 'Umalytics.exe')
+param([switch]$SkipFrontend, [switch]$SkipService, [string]$DevelopmentSimulatorSource,
+    [ValidatePattern('^[A-Za-z0-9._-]+\.exe$')][string]$OutputFile = 'Umalytics.exe')
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location -LiteralPath $workspace
@@ -9,9 +10,15 @@ $requiredPython = (Get-Content -LiteralPath (Join-Path $workspace '.python-versi
 $actualPython = (& $python -c "import platform; print(platform.python_version())").Trim()
 if ($LASTEXITCODE -ne 0 -or $actualPython -ne $requiredPython) { throw "Recreate .cache/proxy-venv with Python $requiredPython; found $actualPython." }
 $simSource = Join-Path $workspace '.cache/globalsim-saved'
-# CI supplies this exact checkout from the private backup repository. Local
-# builds can restore the same checkout from backups; never fetch public upstream.
-& $python scripts/simulator_source.py --source $simSource
+# CI supplies the exact committed fork pin. Local review builds explicitly
+# select a source snapshot; no build fetches or changes the source checkout.
+$simArguments = @()
+if ($DevelopmentSimulatorSource) {
+    $simSource = (Resolve-Path -LiteralPath $DevelopmentSimulatorSource).Path
+    $simArguments = @('--development')
+    if ($OutputFile -eq 'Umalytics.exe') { $OutputFile = 'Umalytics-test.exe' }
+}
+& $python scripts/simulator_source.py --source $simSource @simArguments
 if ($LASTEXITCODE -ne 0) { throw 'Saved simulator source verification failed.' }
 & $python desktop/generate_manifest.py
 if ($LASTEXITCODE -ne 0) { throw 'Reference manifest generation failed.' }
@@ -45,7 +52,7 @@ $env:Path = (Split-Path $cargo) + ';' + $env:Path
 # the combined offline license bundle inside the service.
 & $cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw 'Locked Rust dependency download failed.' }
-& $python scripts/prepare-simulator.py --source $simSource
+& $python scripts/prepare-simulator.py --source $simSource @simArguments
 if ($LASTEXITCODE -ne 0) { throw 'Simulator instrumentation preparation failed.' }
 # The engine's own lockfile includes optional allocator dependencies that the
 # worker's path-dependency lockfile omits, even with default features disabled.
@@ -55,7 +62,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Locked simulator test dependency download fail
 if ($LASTEXITCODE -ne 0) { throw 'Pinned simulator worker build failed.' }
 & $cargo test --locked --offline --manifest-path .cache/globalsim-traced/Cargo.toml --no-default-features --lib decision_trace
 if ($LASTEXITCODE -ne 0) { throw 'Simulator trace regression tests failed.' }
-& $python scripts/package-simulator.py --source $simSource --engine (Join-Path $env:CARGO_TARGET_DIR 'release/umalytics-globalsim-worker.exe')
+& $python scripts/package-simulator.py --source $simSource --engine (Join-Path $env:CARGO_TARGET_DIR 'release/umalytics-globalsim-worker.exe') @simArguments
 if ($LASTEXITCODE -ne 0) { throw 'Simulator bundle verification failed.' }
 & $python desktop/generate_icon.py
 if ($LASTEXITCODE -ne 0) { throw 'Desktop icon generation failed.' }

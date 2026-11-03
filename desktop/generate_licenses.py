@@ -3,6 +3,7 @@ import base64
 import hashlib
 import importlib.metadata
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -27,6 +28,27 @@ def notices(source, label):
         if path.is_file() and re.match(r'^(LICENSE|LICENCE|COPYING|NOTICE)', path.name, re.I):
             add_notice(path, label + '/' + path.name)
 
+
+add_notice(root / 'LICENSE', 'Umalytics/LICENSE')
+add_notice(root / 'NOTICE', 'Umalytics/NOTICE')
+inventory.append('Umalytics original software — AGPL-3.0-only; see NOTICE for source access')
+manifest = json.loads((root / 'simulation/installed-bundles.json').read_bytes())
+for bundle in manifest['bundles']:
+    if bundle.get('kind') != 'simulation':
+        continue
+    folder = (root / bundle['artifact']).resolve().parent
+    if not folder.is_relative_to((root / 'simulation/bundles').resolve()):
+        raise ValueError('Simulator bundle is outside the packaged directory')
+    for name in ('LICENSE', 'NOTICE'):
+        add_notice(folder / name, bundle['engine_id'] + '/' + name)
+    for path in sorted((folder / 'licenses').rglob('*')):
+        if path.is_file():
+            add_notice(path, bundle['engine_id'] + '/' + path.relative_to(folder).as_posix())
+    receipt = json.loads((folder / 'build.json').read_bytes())
+    commit = receipt.get('sourceCommit')
+    source = ('https://github.com/exKitsune/GlobalSim/tree/' + commit if commit else
+              'Unpublished local review snapshot; source has not been released')
+    inventory.append(f"GlobalSim {bundle['version']} — AGPL-3.0-only; {source}; full release source includes Umalytics worker/build scripts")
 
 node_license = root / '.cache/analysis-runtime/LICENSE'
 if node_license.is_file():
@@ -56,10 +78,11 @@ for name in ('svelte', 'pako', '@msgpack/msgpack'):
 # A restored Cargo cache can contain older dependency versions. Include only
 # packages in this build's lockfile so the bundled notices do not keep growing.
 locked = {(package['name'], package['version'])
-          for package in tomllib.loads((root / 'src-tauri/Cargo.lock').read_text(encoding='utf-8'))['package']
+          for lock in ('src-tauri/Cargo.lock', 'simulation/simulator-worker/Cargo.lock')
+          for package in tomllib.loads((root / lock).read_text(encoding='utf-8'))['package']
           if package.get('source', '').startswith('registry+')}
 found = set()
-registry = root / '.cache' / 'cargo' / 'registry' / 'src'
+registry = Path(os.environ.get('CARGO_HOME', root / '.cache/cargo')) / 'registry/src'
 for cargo_toml in sorted(registry.glob('*/*/Cargo.toml')):
     package = tomllib.loads(cargo_toml.read_text(encoding='utf-8'))['package']
     identity = (package['name'], package['version'])

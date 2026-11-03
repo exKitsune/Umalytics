@@ -8,8 +8,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUTS = ('simulation/instrumentation/engine.patch',
-          'simulation/instrumentation/decision_trace.rs',
-          'simulation/instrumentation/compact-trace.patch')
+          'simulation/instrumentation/decision_trace.rs')
 
 
 def main():

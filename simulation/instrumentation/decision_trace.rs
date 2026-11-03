@@ -108,6 +108,9 @@ impl Trace {
             let same = match (&e.data, &data) {
                 (Data::Gate(a), Data::Gate(b)) => a == b,
                 (Data::Object(a), Data::Object(b)) => equivalent(a, b),
+                (Data::Gate(a), Data::Object(Value::Object(b)))
+                | (Data::Object(Value::Object(b)), Data::Gate(a)) =>
+                    b.len() == 1 && b.get("passed").and_then(Value::as_bool) == Some(*a),
                 _ => false,
             };
             if e.last_tick + 1 == self.tick && same {
@@ -164,6 +167,17 @@ pub fn begin_mode(on: bool, diagnostic: bool) {
             last_state: HashMap::new(),
         })
     });
+}
+/// Clears observations on success, error, or unwinding on a reused worker thread.
+pub struct Session;
+impl Session {
+    pub fn new(on: bool, diagnostic: bool) -> Self {
+        begin_mode(on, diagnostic);
+        Self
+    }
+}
+impl Drop for Session {
+    fn drop(&mut self) { begin(false); }
 }
 pub struct Scope(Option<Context>);
 impl Drop for Scope {
@@ -322,6 +336,24 @@ fn base64(bytes: &[u8]) -> String {
 pub fn finish(perm: Option<&[usize]>) -> Option<Value> {
     TRACE.with(|s| {
         s.borrow_mut().take().map(|mut t| {
+            // Preparation may enter observation scopes without emitting events.
+            // Number only emitted strings, in event order, so reused/prepared
+            // workers encode the same trace as the first uncached run.
+            if !t.diagnostic {
+                let mut ids = vec![usize::MAX; t.strings.len()];
+                let mut strings = vec![String::new()];
+                ids[0] = 0;
+                for event in &mut t.events {
+                    for id in [&mut event.key.stage, &mut event.key.skill, &mut event.key.kind] {
+                        if ids[*id] == usize::MAX {
+                            ids[*id] = strings.len();
+                            strings.push(t.strings[*id].clone());
+                        }
+                        *id = ids[*id];
+                    }
+                }
+                t.strings = strings;
+            }
             let mut events = Vec::with_capacity(t.events.len());
             for e in t.events {
                 let mut data = match e.data {
@@ -557,5 +589,80 @@ mod tests {
         assert_eq!(base64(b"f"), "Zg==");
         assert_eq!(base64(b"fo"), "Zm8=");
         assert_eq!(base64(b"foo"), "Zm9v");
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+    #[test] fn unused_scopes_do_not_change_compact_encoding() {
+        fn collect(extra_scope: bool) -> Value {
+            let _session = Session::new(true, false);
+            if extra_scope { let _unused = skill("unused", 0, "preparation"); }
+            let _runner = runner(Some(1), 0.5, "test");
+            let _skill = skill("202999", 0, "activation");
+            gate("condition", true);
+            finish(None).unwrap()
+        }
+        assert!(collect(true).bitwise_eq(&collect(false)));
+    }
+    #[test] fn session_cleans_up_without_finish() {
+        { let _session = Session::new(true, true); gate("unreturned", true); }
+        assert!(!enabled());
+        let _session = Session::new(true, true);
+        assert_eq!(finish(None).unwrap().get_array("events").unwrap().len(), 0);
+    }
+    #[test] fn boolean_fast_path_matches_generic_events() {
+        fn collect(fast: bool) -> Value {
+            let _session = Session::new(true, true);
+            let _runner = runner(Some(1), 0.5, "test");
+            for passed in [false, false, true, true, false] {
+                if fast { gate("test", passed); }
+                else { event("test", || json::obj(vec![("passed", Value::Bool(passed))])); }
+                tick();
+            }
+            event("test", || json::obj(vec![("passed", Value::Bool(false)), ("extra", Value::Bool(true))]));
+            tick();
+            if fast { gate("test", false); }
+            else { event("test", || json::obj(vec![("passed", Value::Bool(false))])); }
+            finish(None).unwrap()
+        }
+        assert!(collect(true).bitwise_eq(&collect(false)));
+    }
+    #[test] fn constructor_events_keep_the_enclosing_runner() {
+        begin(true);
+        { let _r = runner(Some(2), 0., "build");
+          { let _s = runner(None, 0., "effects"); gate("passive", true); }
+          gate("restored", true); }
+        let result = finish(None).unwrap();
+        for event in result.get_array("events").unwrap() {
+            assert_eq!(event.get_i64("horseIndex").unwrap(), 2);
+        }
+    }
+    #[test] fn scope_restores_and_series_only_merges_consecutive_checks() {
+        begin(true);
+        { let _r = runner(Some(1), 1., "runtime"); let _s = skill("100", 0, "condition");
+          assert!(!gate("a", false)); tick(); assert!(!gate("a", false)); tick(); tick(); gate("a", false); }
+        let result = finish(Some(&[1,0])).unwrap();
+        let events = result.get_array("events").unwrap();
+        assert_eq!(events.len(), 2); assert_eq!(events[0].get_i64("count").unwrap(), 2);
+        assert_eq!(events[0].get_i64("horseIndex").unwrap(), 0);
+        assert!(!enabled());
+        begin(false); event("disabled", || panic!("must be lazy"));
+    }
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::*;
+    #[test]
+    fn serially_equal_signed_zero_keeps_existing_coalescing() {
+        begin(true);
+        event("zero", || json::obj(vec![("value", json::num(-0.0))]));
+        tick();
+        event("zero", || json::obj(vec![("value", json::num(0.0))]));
+        let trace = finish(None).unwrap();
+        assert_eq!(trace.get_array("events").unwrap().len(), 1);
+        assert_eq!(trace.get_array("events").unwrap()[0].get_i64("count").unwrap(), 2);
     }
 }

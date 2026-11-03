@@ -1,0 +1,30 @@
+Umalytics
+Copyright (C) 2026 Umalytics contributors.
+
+Umalytics original software is licensed under the GNU Affero General Public
+License, version 3 only (AGPL-3.0-only). You may redistribute and modify it
+under that license. It comes WITHOUT ANY WARRANTY, including any implied
+warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE.
+
+Third-party software, reference data, artwork, names, and game assets retain
+their existing copyright notices and applicable terms. This license does not
+grant rights to third-party material that Umalytics contributors do not own.
+See public/THIRD_PARTY_LICENSE.txt, public/data/NOTICE.txt,
+public/portraits/NOTICE.txt, and public/icons/NOTICE.txt.
+
+GlobalSim: Copyright (C) 2026 Void (daftuyda) and GlobalSim contributors.
+Original project: https://github.com/daftuyda/GlobalSim
+Maintained fork: https://github.com/exKitsune/GlobalSim
+GlobalSim and the linked Umalytics worker are AGPL-3.0-only. Their original
+LICENSE, NOTICE, and licenses/ directory accompany each simulator bundle.
+
+Modifications by Umalytics contributors, 2026-11-03: decision tracing,
+prepared-run trace isolation, trace coalescing optimizations, and integration
+with the Umalytics worker and replay protocol. See simulation/source-lock.json
+and simulation/instrumentation/ for exact source and instrumentation identities.
+
+Corresponding source and build instructions accompany each desktop release:
+https://github.com/exKitsune/Umalytics/releases
+Choose the release matching your app version and download Umalytics-source.zip.
+Source repository: https://github.com/exKitsune/Umalytics
+Local unpublished review builds are not public releases.

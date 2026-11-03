@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'desktop'))
 from globalsim_bridge.adapter import ReferenceData, canonical
 from globalsim_bridge.bundled_skills import ROWS
-from globalsim_bridge.skill_catalog import Compiler, catalog_rows, CONTRACT, AUDITED_SOURCE_COMMITS
+from globalsim_bridge.skill_catalog import Compiler, catalog_rows, CONTRACT, audited_build
 from engine_skill_catalog import EngineSkillCatalog, references
 from simulation_service import SimulationService
 from sandbox_inputs import prepare
@@ -36,8 +36,10 @@ class SkillCompilerTests(unittest.TestCase):
 
     def test_release_engine_pin_has_an_audited_skill_import_contract(self):
         lock=json.loads((ROOT/'simulation/source-lock.json').read_bytes())
-        self.assertIn(lock['revision'], AUDITED_SOURCE_COMMITS,
-                      'Audit the skill import contract when changing the release engine; do not silently disable imports')
+        self.assertTrue(audited_build({'sourceCommit': None if lock.get('pendingReview') else lock['revision'],
+            'upstreamCommit': lock['upstreamRevision'], 'instrumentation': {'sourceSha256': lock['sourceSha256']}}),
+            'Audit the skill import contract when changing the engine; do not silently disable imports')
+        self.assertFalse(audited_build({'sourceCommit':None}), 'An absent receipt must never count as an audited build')
 
     def test_nine_complete_definitions_and_level_scaling(self):
         accepted, presentation, rejected = self.compiler.additions(ROWS, fixture())
@@ -90,6 +92,36 @@ class SkillCompilerTests(unittest.TestCase):
         rows=catalog_rows([row]);self.assertEqual(rows['110671']['condition_groups'][0]['base_time'],40000)
         self.assertEqual(rows['910671']['dataRegion'],'Global')
         del row['loc'];self.assertEqual(catalog_rows([row])['110671']['dataRegion'],'JP')
+
+
+class DisplayReferenceConcurrencyTests(unittest.TestCase):
+    def test_parallel_races_publish_the_reference_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+        import threading, time
+        from unittest.mock import patch
+        from storage import atomic_bytes
+        with tempfile.TemporaryDirectory(dir=ROOT/'.cache') as folder:
+            base=Path(folder)/'base.json'
+            base.write_text(json.dumps({'metadata':{'skills':{},'skillNames':{}},'skillIds':[]}))
+            catalog=EngineSkillCatalog(SimpleNamespace(service=SimpleNamespace(data_dir=Path(folder))))
+            start=threading.Barrier(8)
+            publishing=threading.Lock()
+            def write(path,raw):
+                if not publishing.acquire(blocking=False):
+                    raise PermissionError('Concurrent Windows reference replacement')
+                try:
+                    time.sleep(.03)
+                    return atomic_bytes(path,raw)
+                finally:publishing.release()
+            def run(_):
+                start.wait(timeout=5)
+                return catalog.display_reference(base,{'definitions':{},'presentation':{}})
+            with patch('storage.atomic_bytes',side_effect=write) as writes, ThreadPoolExecutor(max_workers=8) as pool:
+                results=list(pool.map(run,range(8)))
+            self.assertEqual(len(set(results)),1)
+            self.assertEqual(writes.call_count,1)
+            path,key=results[0]
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),key)
 
 
 class InstalledCatalogTests(unittest.TestCase):
@@ -204,6 +236,62 @@ class InstalledCatalogTests(unittest.TestCase):
         value=json.loads(path.read_bytes());value['definitions']['110671']['alternatives'][0]['effects'][0]['modifier']=9999
         path.write_text(json.dumps(value))
         with self.assertRaisesRegex(ValueError,'identity changed'):self.sim.bindings({'bundles':[bundle]},'test')
+
+    def test_installed_master_new_skill_refreshes_worker_without_replacing_old_snapshot(self):
+        import os, sqlite3
+        from game_race_data import GameRaceData
+        from globalsim_bridge.decision_trace import expand_trace
+        from test_sandbox import setup
+        master=Path(self.temp.name)/'master.mdb'
+        db=sqlite3.connect(master)
+        db.executescript('''
+            CREATE TABLE race_instance(id INTEGER,race_id INTEGER,time INTEGER);
+            CREATE TABLE race(id INTEGER,course_set INTEGER,grade INTEGER);
+            CREATE TABLE race_course_set(id INTEGER);
+            CREATE TABLE text_data(category INTEGER,[index] INTEGER,text TEXT);
+            INSERT INTO text_data VALUES(47,202999,'Future installed skill');
+        ''')
+        columns=['id INTEGER','group_id INTEGER DEFAULT 1','rarity INTEGER DEFAULT 1',
+                 'activate_lot INTEGER DEFAULT 0','icon_id INTEGER DEFAULT 10011']
+        for branch in (1,2):
+            columns += [f"condition_{branch} TEXT DEFAULT ''",f"precondition_{branch} TEXT DEFAULT ''",
+                        f'float_cooldown_time_{branch} INTEGER DEFAULT 5000000',
+                        f'float_ability_time_{branch} INTEGER DEFAULT -1',f'ability_time_usage_{branch} INTEGER DEFAULT 1']
+            for i in (1,2,3):
+                columns += [f'{field}_{branch}_{i} INTEGER DEFAULT {default}' for field,default in
+                    [('ability_type',0),('float_ability_value',0),('ability_value_usage',1),
+                     ('ability_value_level_usage',0),('target_type',1),('target_value',0),('additional_activate_type',0)]]
+        db.execute('CREATE TABLE skill_data('+','.join(columns)+')')
+        db.execute("INSERT INTO skill_data(id,condition_1,ability_type_1_1,float_ability_value_1_1) VALUES(202999,'always==1',1,400000)")
+        db.commit();db.close()
+        reader=GameRaceData(lambda:(master,))
+        self.sim.service.game_race_data=reader
+        _,first,config,refs=self.current()
+        self.assertIn('202999',refs.skill_data)
+        self.assertEqual(refs.skill_data['202999']['alternatives'][0]['effects'][0]['modifier'],400000)
+        self.assertEqual(config.skill_catalog['presentation']['202999']['name'],'Future installed skill')
+        value=setup()
+        value['courseId']=10506
+        for participant in value['participants']:participant['uma']['skills']=[{'id':202999,'level':1}]
+        spec,_=prepare(value,refs);spec['retainAllFrames']=False
+        modeled,_,_=_run_worker(config,_canonical(spec)+b'\n')
+        self.assertNotIn('error',modeled)
+        events=expand_trace(modeled['decisionTrace'])['events']
+        self.assertTrue(any(e['kind']=='skill-definition' and e['skillId']=='202999' for e in events))
+        stamp=master.stat()
+        db=sqlite3.connect(master)
+        db.execute('UPDATE skill_data SET float_ability_value_1_1=500000 WHERE id=202999')
+        db.execute("INSERT INTO text_data VALUES(47,203999,'Unsupported future mechanic')")
+        db.execute("INSERT INTO skill_data(id,condition_1,ability_type_1_1,float_ability_value_1_1) VALUES(203999,'future_condition==1',1,400000)")
+        db.commit();db.close()
+        os.utime(master,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+        manifest,second,_,updated=self.current()
+        self.assertNotEqual(first['data_sha256'],second['data_sha256'])
+        self.assertIn(first,manifest['bundles'])
+        self.assertEqual(refs.skill_data['202999']['alternatives'][0]['effects'][0]['modifier'],400000)
+        self.assertEqual(updated.skill_data['202999']['alternatives'][0]['effects'][0]['modifier'],500000)
+        self.assertNotIn('203999',updated.skill_data)
+        self.assertIn('Unsupported condition',self.sim.skill_catalog.rejected['203999'])
 
 
 if __name__=='__main__':unittest.main()

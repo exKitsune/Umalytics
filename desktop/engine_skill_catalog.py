@@ -4,10 +4,12 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import threading
 
 from globalsim_bridge.adapter import ReferenceData, canonical
+from globalsim_bridge.profiles import PROFILE_COMMITS
 from globalsim_bridge.bundled_skills import ROWS, SOURCE
-from globalsim_bridge.skill_catalog import Compiler, CONTRACT, AUDITED_SOURCE_COMMITS
+from globalsim_bridge.skill_catalog import Compiler, CONTRACT, audited_build
 from storage import atomic_json, linked
 
 
@@ -22,6 +24,7 @@ class EngineSkillCatalog:
         self.memo = None
         self.rejected = {}
         self.display_cache = {}
+        self.display_lock = threading.Lock()
 
     def path(self, key, display=False):
         if not re.fullmatch(r'[a-f0-9]{64}', str(key)):
@@ -42,14 +45,14 @@ class EngineSkillCatalog:
         return value
 
     def extend(self, manifest):
-        candidates = [b for b in manifest['bundles'] if b.get('kind') == 'simulation' and b.get('profile') == 'v74'
+        candidates = [b for b in manifest['bundles'] if b.get('kind') == 'simulation' and b.get('profile') in PROFILE_COMMITS
                       and b.get('decisionTraceSchema') in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
         if not candidates: return manifest
         base = candidates[-1]
         build_path = self.simulation.path(base['artifact']).parent / 'build.json'
         if not build_path.is_file(): return manifest
         build = json.loads(build_path.read_bytes())
-        if build.get('sourceCommit') not in AUDITED_SOURCE_COMMITS or build.get('artifactSha256') != base['artifact_sha256']:
+        if not audited_build(build) or build.get('artifactSha256') != base['artifact_sha256']:
             return manifest  # A new engine revision needs its own reviewed contract.
         catalog = getattr(self.simulation.service, 'catalog', None)
         revision, rows, source = catalog.engine_snapshot() if catalog else (None, None, None)
@@ -59,7 +62,7 @@ class EngineSkillCatalog:
         stamp = (sha(manifest), revision, master_source and master_source['sha256'])
         if self.memo and self.memo[0] == stamp:
             return deepcopy(self.memo[1])
-        refs = ReferenceData.load(self.simulation.path(base['appRoot']), self.simulation.path(base['resourceRoot']))
+        refs = ReferenceData.load(self.simulation.path(base['appRoot']), self.simulation.path(base['resourceRoot']), base['profile'])
         if refs.fingerprint != base['data_sha256']:
             raise ValueError('Base simulator data changed')
         rows = {**ROWS, **(rows or {})}
@@ -87,7 +90,7 @@ class EngineSkillCatalog:
                 value = self.read(file.stem)
                 original = by_base.get((value['artifact'], value['baseData']))
                 if not original: continue
-                original_refs = refs if original == base else ReferenceData.load(self.simulation.path(original['appRoot']), self.simulation.path(original['resourceRoot']))
+                original_refs = refs if original == base else ReferenceData.load(self.simulation.path(original['appRoot']), self.simulation.path(original['resourceRoot']), original['profile'])
                 updated = original_refs.with_skill_catalog(value)
                 extended['bundles'].append({**original, 'engine_id': original['engine_id'] + '-skills-' + file.stem[:16],
                     'data_sha256': updated.fingerprint, 'skillCatalog': file.stem})
@@ -99,6 +102,12 @@ class EngineSkillCatalog:
 
     def display_reference(self, base_path, catalog, master_projection=None):
         """Persist matching mechanics for dashboard calculations, too."""
+        # Parallel races share one content-addressed reference. Publish it once
+        # before any dashboard opens it (Windows cannot replace an open file).
+        with self.display_lock:
+            return self._display_reference(base_path, catalog, master_projection)
+
+    def _display_reference(self, base_path, catalog, master_projection):
         if not catalog and not master_projection: return base_path, hashlib.sha256(base_path.read_bytes()).hexdigest()
         stamp = base_path.stat()
         cache_key = (str(base_path), stamp.st_mtime_ns, stamp.st_size, sha(catalog),
@@ -130,5 +139,5 @@ class EngineSkillCatalog:
 
 
 def references(config):
-    refs = ReferenceData.load(config.umalytics_root, config.globalsim_root)
+    refs = ReferenceData.load(config.umalytics_root, config.globalsim_root, config.profile)
     return refs.with_skill_catalog(config.skill_catalog) if getattr(config, "skill_catalog", None) else refs

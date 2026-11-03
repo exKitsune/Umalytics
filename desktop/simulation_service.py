@@ -13,6 +13,7 @@ from collections import OrderedDict
 from globalsim_bridge import (RuntimeConfig, SimulatorBinding, InferenceBinding,
     evaluate_for_analysis, revalidate_inference_plan, select_compatibility)
 from globalsim_bridge.adapter import _external_context
+from globalsim_bridge.profiles import PROFILE_COMMITS
 from globalsim_bridge.versioning import canonical
 from race_evidence import map_evidence, capture_hash
 
@@ -58,7 +59,7 @@ class SimulationService:
             manifest = self.skill_catalog.extend(manifest) if self.skill_catalog else manifest
         if registry.get('allowUnknownVersionSimulation') is True:
             candidates = [row for row in manifest['bundles'] if row.get('kind') == 'simulation'
-                          and row.get('profile') == 'v74' and row.get('decisionTraceSchema') in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
+                          and row.get('profile') in PROFILE_COMMITS and row.get('decisionTraceSchema') in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
             # The last packaged trace-capable build is the preferred trial. This
             # is app-owned configuration; browser/capture inputs cannot select it.
             registry = {**registry, 'unknownVersionSimulators': [{
@@ -88,9 +89,10 @@ class SimulationService:
         for row in manifest['bundles']:
             kwargs = {key: row[key] for key in ('engine_id', 'version', 'profile', 'artifact_sha256', 'data_sha256')}
             if row['kind'] == 'simulation':
-                if row['profile'] != 'v74':
+                if row['profile'] not in PROFILE_COMMITS:
                     continue  # This adapter implements exactly the audited profile.
                 binding = SimulatorBinding(**kwargs, config=RuntimeConfig(
+                    profile=row['profile'],
                     skill_catalog=self.skill_catalog.read(row['skillCatalog']) if row.get('skillCatalog') else None,
                     engine_path=self.path(row['artifact']), umalytics_root=self.path(row['appRoot']),
                     globalsim_root=self.path(row['resourceRoot']),

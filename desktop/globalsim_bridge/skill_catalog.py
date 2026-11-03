@@ -1,4 +1,4 @@
-"""Data-only skill imports for the audited v74 engine. Unknown mechanics fail closed.
+"""Data-only skill imports for audited engines. Unknown mechanics fail closed.
 
 The vocabulary comes from the pinned master table, not from website claims of
 support. New combinations/numeric thresholds are allowed; unknown operators,
@@ -15,6 +15,24 @@ SOURCE_COMMIT = '231f346a46b569dd4d0f91a0046326275667d1c7'
 # b8cd884 changes only decision-trace/JSON serialization. Skill evaluation,
 # condition vocabulary, effects and the import protocol are unchanged.
 AUDITED_SOURCE_COMMITS = frozenset((SOURCE_COMMIT, 'b8cd8842259cc90f90be6d8640e057b98f17ec42'))
+# v77 keeps the same imported vocabulary, target/value encodings and level
+# scaling. Its runtime fixes are exercised by the upstream and importer panels.
+# A pending local build is identified by its exact source, never by claiming
+# the unmodified upstream commit already contains our instrumentation.
+AUDITED_SOURCE_SNAPSHOTS = {
+    '52f17d5c8cc36ca6345ea1e5e30a43469654d8cb431fd92c2c2fdc445acf44e9':
+        '95f1416fb8c130dd2ef4b53c3b8277c6ba4c8055',
+    '47be262fba7fc41e29ec7fd42ea533684001f292bf0f61371de3676dd53939f5':
+        '95f1416fb8c130dd2ef4b53c3b8277c6ba4c8055',
+}
+
+
+def audited_build(build):
+    return (build.get('sourceCommit') in AUDITED_SOURCE_COMMITS
+            or AUDITED_SOURCE_SNAPSHOTS.get(build.get('instrumentation', {}).get('sourceSha256'))
+            == build.get('upstreamCommit') and build.get('upstreamCommit') is not None)
+
+
 ATOM = re.compile(r'([a-z][a-z0-9_]*)(==|!=|>=|<=|>|<)(-?\d+)')
 BLOCKED = {'is_exist_skill_id'}  # Deliberate upstream no-op, not implemented.
 # Metadata-only fields currently supplied by GameTora. A future mechanic at

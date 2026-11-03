@@ -1,9 +1,8 @@
 {
   "schemaVersion": 1,
   "repository": "exKitsune/GlobalSim",
-  "revision": "b8cd8842259cc90f90be6d8640e057b98f17ec42",
-  "upstreamRevision": "efc2decdfeaff227ada0e9847f5deceb42c3b97f",
-  "sourceSha256": "32759d2c11436d252fc0c9326a5a3a0c336acb2d3a4d0cafbce29cb3b98b9da4",
-  "version": "v74",
-  "preparedSourceSha256": "222b7b19c588c18146cb7784f0f1d47fab162d542ccc1e7578f97c4bb3714bc1"
+  "revision": "db33d265a4ab5b03b54688fa540ded288add32eb",
+  "upstreamRevision": "95f1416fb8c130dd2ef4b53c3b8277c6ba4c8055",
+  "sourceSha256": "52f17d5c8cc36ca6345ea1e5e30a43469654d8cb431fd92c2c2fdc445acf44e9",
+  "version": "v77"
 }

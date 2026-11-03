@@ -216,6 +216,17 @@ the same rules. The constrained-CA build still needs a live-game capture check.
 See [capture security details](docs/capture-key-security.md) for the full test
 setup and file layout.
 
+## License and source
+
+Umalytics original software is licensed under [AGPL-3.0-only](LICENSE),
+without warranty. You may redistribute and modify it under those terms.
+Third-party material retains its own licenses; see [NOTICE](NOTICE).
+
+Each desktop release includes **Umalytics-source.zip**, containing the matching
+application, modified GlobalSim, worker, dependency sources, and build instructions.
+Download it beside the executable for the same version. See
+[source and licensing](docs/licensing.md) for rebuilding and release checks.
+
 ## Notices
 
 Third-party code, data and artwork retain their copyrights and licenses. See the [code notice](src/data/THIRD_PARTY_LICENSE.txt), [data notice](public/data/NOTICE.txt), [portrait notice](public/portraits/NOTICE.txt) and [icon notice](public/icons/NOTICE.txt).

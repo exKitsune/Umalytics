@@ -26,7 +26,7 @@ const npm=(...args)=>{
 const files=names=>names.map(name=>py(`tests/${name}.py`));
 const groups={
   frontend:[npm('run','build'),npm('run','build:inference'),py('scripts/audit-public-files.py','--dist')],
-  inputs:[py('scripts/audit-public-files.py',...(staged?['--staged']:[])),...files(['public-inventory-workflow']),py('desktop/generate_manifest.py','--check'),...files(['history-retirement-workflow','simulator-checkout-workflow','simulator-source-workflow'])],
+  inputs:[py('scripts/audit-public-files.py',...(staged?['--staged']:[])),...files(['public-inventory-workflow']),py('desktop/generate_manifest.py','--check'),...files(['history-retirement-workflow','simulator-checkout-workflow','simulator-source-workflow','source-package-workflow'])],
   system:[npm('test')],
   compatibility:[py('-m','unittest','discover','-s','tests/globalsim','-p','test_*.py'),[process.execPath,['tests/globalsim/test_contracts.mjs','--python',python]],...files(['launcher-identity-workflow'])],
   'windows-service':files(['app-components-workflow','updater/test_release_flow','portable-storage-workflow']),

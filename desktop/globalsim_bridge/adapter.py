@@ -1,4 +1,4 @@
-"""Strict, initial-condition-only adapter for the audited GlobalSim v74 profile.
+"""Strict, initial-condition-only adapter for the supported GlobalSim profiles.
 
 Supported documents are Umalytics observed-response captures and its exact
 schemaVersion=1 portable format when the original raceHorse/responseHorseData
@@ -26,8 +26,10 @@ from .skill_additions import definitions as skill_additions, SOURCE as SKILL_ADD
 from .reference_snapshot import freeze
 
 
+from .profiles import CURRENT_PROFILE, upstream_commit
+
 ADAPTER_VERSION = "umalytics-globalsim-initial-v2"
-GLOBALSIM_COMMIT = "efc2decdfeaff227ada0e9847f5deceb42c3b97f"
+GLOBALSIM_COMMIT = upstream_commit(CURRENT_PROFILE)
 # The public master projections are byte-identical at the newer collector
 # commit. Keep the original data audit identity separate from collector code.
 UMALYTICS_BASELINE_COMMIT = "7ebf0f82723b11a49e1676753960b90de7ef9095"
@@ -117,9 +119,10 @@ class ReferenceData:
     parameters: dict
     geometry_hashes: dict[str, str]
     source_files: dict
+    profile: str = CURRENT_PROFILE
 
     @classmethod
-    def load(cls, umalytics_root: Path, globalsim_root: Path) -> "ReferenceData":
+    def load(cls, umalytics_root: Path, globalsim_root: Path, profile: str = CURRENT_PROFILE) -> "ReferenceData":
         """Hash current app projections; verify exact engine data pins without git.
 
         App metadata may change independently of app source. Its exact content
@@ -127,6 +130,7 @@ class ReferenceData:
         must ALSO be verified by the runtime; matching data does not attest a
         particular executable. No absolute installation paths enter the audit.
         """
+        commit = upstream_commit(profile)
         documents, sources = {}, {}
         for relative, expected in APP_BASELINE_PINS.items():
             raw = (Path(umalytics_root) / relative).read_bytes()
@@ -143,7 +147,7 @@ class ReferenceData:
                 raise ReferenceDataError(f"GlobalSim data pin mismatch: {relative}")
             documents[relative] = _json(raw)
             sources[f"engine/{relative}"] = {"sha256": expected, "pinVerified": True,
-                "url": f"https://github.com/daftuyda/GlobalSim/blob/{GLOBALSIM_COMMIT}/{relative}"}
+                "url": f"https://github.com/daftuyda/GlobalSim/blob/{commit}/{relative}"}
         metadata = documents["public/data/metadata.json"]
         identities = documents["src/data/course-identities.json"]
         for name, doc in [("metadata", metadata), ("course-identities", identities)]:
@@ -170,12 +174,12 @@ class ReferenceData:
         return cls(metadata, identities, documents["public/data/courses.json"],
                    documents["data/course_data.json"], skills,
                    documents["examples/v74-settings.json"], documents["data/global_parameters.json"],
-                   geometry_hashes, sources)
+                   geometry_hashes, sources, profile)
 
     @property
     def identity(self) -> dict:
-        return {"schemaVersion": 1, "expectedEngineCommit": GLOBALSIM_COMMIT,
-                "profile": "v74", "sourceFiles": deepcopy(self.source_files),
+        return {"schemaVersion": 1, "expectedEngineCommit": upstream_commit(self.profile),
+                "profile": self.profile, "sourceFiles": deepcopy(self.source_files),
                 "masterProjectionSource": deepcopy(self.metadata.get("source")),
                 "engineParameterSource": deepcopy(self.parameters.get("source"))}
 
@@ -596,7 +600,7 @@ def prepare_capture(capture: dict, references: ReferenceData,
                 "fansAndWins": "captured fan_count and single_mode_win_count; no trained-history derivation",
             },
             "explicitNonCaptureSettings": {
-                "profile": "pinned v74; startup/later-stamina additions disabled",
+                "profile": f"pinned {references.profile}; startup/later-stamina additions disabled",
                 "playerHorseIndex": "0 selects gate-one output telemetry only, not account ownership",
                 "isDirtGrade": "upstream track default; no equipped skill depends on it",
             }})

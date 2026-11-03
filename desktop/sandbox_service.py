@@ -20,6 +20,7 @@ import sandbox_inputs as inputs
 import sandbox_library
 from engine_skill_catalog import references
 from globalsim_bridge.decision_trace import validate_trace
+from globalsim_bridge.profiles import PROFILE_COMMITS
 from globalsim_bridge.runtime import RuntimeConfig, _canonical, _run_worker
 from globalsim_bridge.worker_pool import WorkerPool
 from globalsim_bridge.cache_storage import summary_bytes, summary_value
@@ -111,7 +112,7 @@ class SandboxService:
     def installed(self, expected=None):
         simulation = self.service.simulation
         _, manifest = simulation.config()
-        bundles = [b for b in manifest['bundles'] if b['kind']=='simulation' and b.get('profile')=='v74' and b.get('decisionTraceSchema') in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
+        bundles = [b for b in manifest['bundles'] if b['kind']=='simulation' and b.get('profile') in PROFILE_COMMITS and b.get('decisionTraceSchema')in ('umalytics-decisions-v1', 'umalytics-decisions-v2')]
         if expected:
             bundles = [b for b in bundles if b['artifact_sha256']==expected['artifact_sha256'] and b['data_sha256']==expected['data_sha256']]
         if not bundles:
@@ -289,6 +290,11 @@ class SandboxService:
         outcome_only = summary_only and inputs.outcome_only(job, index)
         if outcome_only:
             spec.update(retainAllFrames=False, decisionTrace=False, traceConservePower=False)
+            if config.profile == 'v77':
+                # v77 can skip replay allocation and transport entirely for
+                # ranking samples. Opening a result still reruns its saved seed
+                # with full frames and decision evidence.
+                spec['omitFrames'] = True
         if batch_context is not None:
             if 'skill_payload' not in batch_context:
                 batch_context['skill_payload'] = _canonical(refs.skill_data)

@@ -7,6 +7,7 @@ mod storage_paths;
 mod diagnostics;
 mod frontend;
 mod tray_policy;
+mod external_links;
 use service_startup::ServiceEndpoint;
 use sha2::{Digest, Sha256};
 use tauri::{menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -287,8 +288,7 @@ fn main() {
                 .disable_drag_drop_handler()
                 .on_navigation(|url| url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(4317))
                 .on_new_window(|url, _features| {
-                    if url.as_str() == "https://umalator.app/umalator-global/" || url.as_str() == "http://127.0.0.1:4317/api/licenses"
-                        || (url.scheme() == "https" && url.host_str() == Some("gametora.com") && (url.path().starts_with("/\u{0075}mamusume/supports/") || url.path().starts_with("/\u{0075}mamusume/characters/") || url.path() == "/\u{0075}mamusume/skill-condition-viewer")) {
+                    if external_links::allowed(url.scheme(), url.host_str(), url.port(), url.path(), 4317) {
                         open_browser(url.as_str());
                     }
                     tauri::webview::NewWindowResponse::Deny

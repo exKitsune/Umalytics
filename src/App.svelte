@@ -116,7 +116,7 @@
   let skillDetailRunner:string|null=null;
   function openSkill(id:number,runnerId=selected){playing=false;skillDetailRunner=runnerId;skillDetail=id;}
   const browserSettings=browserPreferences();
-  let desktopSession=location.port==='4317'||'__TAURI_INTERNALS__' in window;
+  let desktopSession=location.port==='4317'||'__TAURI_INTERNALS__' in window||(['127.0.0.1','localhost'].includes(location.hostname)&&new URLSearchParams(location.search).get('desktop')==='1');
   let storageReady=!desktopSession;
   let migrationRunning=false;
   let migrationAttemptAt=0;
@@ -543,7 +543,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
 <div class="settings-page" hidden={settingsCategory!=='diagnostics'}>{#if desktopSession}<section><h3>Diagnostics</h3>
           <div class="setting-row" style={health?.debugCapture?.enabled?'color:#ff6868;background:#8b202033;border:1px solid #d44;padding:10px;border-radius:6px':''}><span>Raw API debug capture</span><button type="button" class="debug-switch" class:debug-active={health?.debugCapture?.enabled??false} role="switch" aria-label="Raw API debug capture" aria-checked={health?.debugCapture?.enabled??false} title={health?.debugCapture?.mode==='permanent'?'On until you turn it off':health?.debugCapture?.enabled?'Timed capture':'Configure raw API capture'} disabled={!health?.csrfToken||busy} onclick={()=>requestDebug(!(health?.debugCapture?.enabled??false)).catch(e=>error=String(e))}><span aria-hidden="true"></span></button></div>
         </section>{:else}<section><h3>Diagnostics</h3><p>Diagnostics are available in the desktop app.</p></section>{/if}</div>
-<div class="settings-page" hidden={settingsCategory!=='about'}><section>
+<div class="settings-page" hidden={settingsCategory!=='about'}>      <section><h3>License</h3><p>© 2026 Umalytics contributors. AGPL-3.0-only; redistribution and modification permitted under its terms. No warranty.</p><div class="toolbar"><a href="LICENSE.txt" target="_blank" rel="noreferrer">AGPL license ↗</a><a href="https://github.com/exKitsune/Umalytics" target="_blank" rel="noreferrer">Source repository ↗</a>{#if health?.mode==='desktop'}<a href="/api/licenses" target="_blank" rel="noreferrer">Third-party notices ↗</a><a href={health.version&&health.version!=="0.2.0"?`https://github.com/exKitsune/Umalytics/releases/tag/v${health.version}`:"https://github.com/exKitsune/Umalytics/releases"} target="_blank" rel="noreferrer">Release source ↗</a>{/if}</div></section><section>
         <h3>About</h3>
         <a href="https://github.com/exKitsune/Umalytics" target="_blank" rel="noreferrer">GitHub ↗</a>
       </section>{#if desktopSession}<section>

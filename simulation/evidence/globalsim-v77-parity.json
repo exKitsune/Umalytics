@@ -1,0 +1,681 @@
+{
+  "schemaVersion": 1,
+  "upstreamCommit": "95f1416fb8c130dd2ef4b53c3b8277c6ba4c8055",
+  "baselineSha256": "f4ef65a2594ab7896ba8dd539eafae972e0533f0605626223c5ccc3ed97bc7b7",
+  "engineSha256": "2b472ded1120da6cc6c22bce046d87158b0c16281f5d17d248c909543e0df733",
+  "cases": [
+    {
+      "case": "additional-bonus-on-final-skill-tick",
+      "fixtureSha256": "be69b983d018184c1abc635a55e4edbb20b0e6cbecdbb8a6908e4a37dbc42e91",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6270,
+      "motion": 10283
+    },
+    {
+      "case": "additional-bonus-preserves-overtake-target",
+      "fixtureSha256": "d5b1df798dc8e93efa1093ad3a6d9be56eb2ec95ac0012e29c27c3fe9370c957",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 8783,
+      "motion": 10304
+    },
+    {
+      "case": "adjoining-slope-boundary",
+      "fixtureSha256": "a8045e22176019a592735ec8554a6294406e1eb2fb2eff70486fa8bf297fdfa2",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 15809,
+      "motion": 43144
+    },
+    {
+      "case": "career-adjusted-stat-rounding",
+      "fixtureSha256": "aec23063cdda4760ece5f3929726aa85cc69d164a75b20a844c1b06a8446be7b",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 997,
+      "motion": 13996
+    },
+    {
+      "case": "career-guts-order-near-tie",
+      "fixtureSha256": "6d67daf2935ddf05642051cc5714c2b549869a37e1566101326861ce86272700",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 1203,
+      "motion": 15616
+    },
+    {
+      "case": "career-wisdom-order-near-tie",
+      "fixtureSha256": "967785899a4b80e52c23d7278f02793054244b92cf8f9fdb372bea102a965b99",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 530,
+      "motion": 14913
+    },
+    {
+      "case": "competition-base-style-excludes-other-runners",
+      "fixtureSha256": "3dd70acad41e309a980f700b699d3714fbc8b01784b0e41b5a72622d19776ad6",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7385,
+      "motion": 12741
+    },
+    {
+      "case": "competition-base-style-roster-includes-runaways",
+      "fixtureSha256": "0d6533434e164c1d96d3b99ba9cd1260bc87da7d05ea3c2f96f878f500122ccd",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7814,
+      "motion": 33134
+    },
+    {
+      "case": "competition-roster-ties-18-front-runners",
+      "fixtureSha256": "a2e489600bc2f8510621ef9b69bdaec6ecf72e14ad9622e53f0ea8edaac4e9b8",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6973,
+      "motion": 26636
+    },
+    {
+      "case": "competition-runaway-before-front-group-16",
+      "fixtureSha256": "8b65a0435adbc00d5b7ccf75b937682b34cff60a944a3f6239c0776205ae0e65",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9809,
+      "motion": 24762
+    },
+    {
+      "case": "continuous-rank-before-last-straight-entry-a",
+      "fixtureSha256": "30cacef038d21eb1190795c28572ff8472e3341d458f99d15a11c496fdb96f29",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3465,
+      "motion": 8979
+    },
+    {
+      "case": "continuous-rank-before-last-straight-entry-b",
+      "fixtureSha256": "ac79f4aacab12d5585d6727c41078ad510c621aa96ea260de3cdb5c127310d2f",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3871,
+      "motion": 9024
+    },
+    {
+      "case": "cornerless-course-has-no-final-straight-entry",
+      "fixtureSha256": "77ed2ee4326f05e876e8885df2cccc3bc440c7774b2c49aa91e663eaea98ff9c",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3082,
+      "motion": 6398
+    },
+    {
+      "case": "course-11203-geometry-and-final-corner-lottery",
+      "fixtureSha256": "dfe7d49482c89c2c0af383b7f8201230d9cee8aaa1cea66fbe6fc20a505cebea",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9920,
+      "motion": 16549
+    },
+    {
+      "case": "duel-conserve-overlap-finish",
+      "fixtureSha256": "f52543f8b50fc585d0277010aad2e3a429b1e0b9852d1d160a22bf73adb00a43",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 11270,
+      "motion": 15498
+    },
+    {
+      "case": "duel-conserve-overlap-position",
+      "fixtureSha256": "247dff617ce81cd5c923fd43231b4b0f2cffb9a1dceeeef60c02bb35a31c9ad1",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9914,
+      "motion": 15491
+    },
+    {
+      "case": "duel-five-percent-official-practice-10806",
+      "fixtureSha256": "ad3ded10b974470da0360e6380ced53bb77d495a6d347f83d94c76443c68d1f3",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4986,
+      "motion": 11839
+    },
+    {
+      "case": "duel-invites-finished-partner-second-roster",
+      "fixtureSha256": "1e348238396bf5147d78c184d5eb0f04b1f493080fca1ed86b7debdfbfebed37",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3399,
+      "motion": 10312
+    },
+    {
+      "case": "duel-invites-finished-partner",
+      "fixtureSha256": "dcf0756091616d1d71862dcf9c2a254672a92dab031cf908560df11514a058a5",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3755,
+      "motion": 10332
+    },
+    {
+      "case": "duel-joins-finished-group-01",
+      "fixtureSha256": "1fe4ef68fdbb1e743e907b40b11eb0250ae599fdc6412d51815f83b52834ea47",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5187,
+      "motion": 10311
+    },
+    {
+      "case": "duel-joins-finished-group-02",
+      "fixtureSha256": "450ad6a27542c9662f6796ece886645af9b6a89dc167723bb8c99f903a911e0d",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4448,
+      "motion": 11230
+    },
+    {
+      "case": "duel-joins-finished-group-03",
+      "fixtureSha256": "ad8c988547ee9244c9a470963e63e578d0aa63a8620042b99fd58eb3f49879e3",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6124,
+      "motion": 10229
+    },
+    {
+      "case": "duel-joins-finished-group-04",
+      "fixtureSha256": "23fe573707139303629672310b5114d3dc4205e707fc0262d3265d912a285f95",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5853,
+      "motion": 10347
+    },
+    {
+      "case": "duel-joins-finished-group-05",
+      "fixtureSha256": "0f39fb2b242c5bcc9235f9fe73a96cb128d3e1888c1da0a75b1182b36607a734",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7370,
+      "motion": 10375
+    },
+    {
+      "case": "duel-warmup-completes-after-own-finish",
+      "fixtureSha256": "ab8c08546a9551b126ace31681fe049567d558ccfdf0b8b8181b54fb4b342f17",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6717,
+      "motion": 11877
+    },
+    {
+      "case": "final-corner-overtake-on-entry-tick",
+      "fixtureSha256": "ffc5617ed523c149b7d1aae984af8efc8c9f4a1b7dcb835b8b05a5ffb67c6e25",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9822,
+      "motion": 28884
+    },
+    {
+      "case": "finished-lane-movement-affects-trailing-runner",
+      "fixtureSha256": "5af53d5392919c3b37ef10c4d1bc925c9b2ebd26740e261d9281bc659890fe40",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5450,
+      "motion": 19870
+    },
+    {
+      "case": "front-block-excludes-rounded-boundary",
+      "fixtureSha256": "71f555c072dfcac45ad8e8ae77bd55cf6ed4138248942522b3a7b53438b0917c",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 8810,
+      "motion": 15982
+    },
+    {
+      "case": "front-block-inclusive-precision-boundary",
+      "fixtureSha256": "e02d5f8b67963e41d808f369bdff5bb9a42a24798c144e7ff0904b8041de2e77",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6125,
+      "motion": 10312
+    },
+    {
+      "case": "front-block-retains-close-boundary",
+      "fixtureSha256": "03136c5a9189b59b51e9a5e9c21891c9df6707fd81dbb660eef13a5ccf4ec297",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9401,
+      "motion": 25708
+    },
+    {
+      "case": "front-block-retains-far-boundary",
+      "fixtureSha256": "c878c02f51982c4f25b49e53dd079dc11f171a0bd3557635922e02231aedf9da",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 12248,
+      "motion": 30072
+    },
+    {
+      "case": "front-runner-cached-leader-distance-gate-second-course",
+      "fixtureSha256": "f8ce7b7f1dc45f460597fe71c6e0bd9b64955e5aa3521a80ebcbcbe322d77550",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6377,
+      "motion": 10375
+    },
+    {
+      "case": "front-runner-cached-leader-distance-gate",
+      "fixtureSha256": "30d5d21c984b3ef42056dc44026261644720dfc71f752cb7e4a64b9df05e5e1c",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7011,
+      "motion": 10321
+    },
+    {
+      "case": "front-runner-ignores-runaways",
+      "fixtureSha256": "a8c3fd459c3116017ef345a5629c33ca8d4a375c5b0e899232134abef3da975a",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6477,
+      "motion": 11536
+    },
+    {
+      "case": "front-runner-no-eligible-lead",
+      "fixtureSha256": "351403b483542eca8cf8aa8990e6095d7bdfc8be530b414ef9a8898321416232",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5701,
+      "motion": 10365
+    },
+    {
+      "case": "front-runner-waits-for-lead",
+      "fixtureSha256": "ba20186fd9d1079dc9db681ac6e230b1961f0135daf5e0cb17fc403d9b7599d1",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4072,
+      "motion": 10303
+    },
+    {
+      "case": "heal-history-earlier-caster",
+      "fixtureSha256": "c114e6ea5991b856c4ae1295385f3f798006d46fc20aa19385a5e97f1bcf6548",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3676,
+      "motion": 13048
+    },
+    {
+      "case": "heal-history-later-caster",
+      "fixtureSha256": "42662660dab0692826cc3d26aed63f1917ed1a48d6631b5942f34b99c4f4deaf",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3549,
+      "motion": 12039
+    },
+    {
+      "case": "hp-percent-truncation-boundary",
+      "fixtureSha256": "be1628103a1937ab9923bf6fa6cc36fe5ca37b5ac9bc703bed45398f12b53b1d",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5475,
+      "motion": 10233
+    },
+    {
+      "case": "inward-passing-corridor-wide-comparison",
+      "fixtureSha256": "030e8f6cde10163394e6f640ff87b2df4e389c45382385593f9e2745de489c41",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 10615,
+      "motion": 15385
+    },
+    {
+      "case": "last-straight-rank-change-after-entry",
+      "fixtureSha256": "955af5d5bff662006c3c9b21243eb25084530df5012e2fb057a2233eaefda21f",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4354,
+      "motion": 7684
+    },
+    {
+      "case": "late-corner-overtake-cached-state-a",
+      "fixtureSha256": "154aa0e23fe93c49a32f4e9f4f5fc5e73202cec040f1602d76079e26b93f2b35",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5529,
+      "motion": 14891
+    },
+    {
+      "case": "late-corner-overtake-cached-state-b",
+      "fixtureSha256": "e09f444a0fb6255238ed5c68194dd1e2f0cfe6375c68437529b6cf803fe9b276",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4072,
+      "motion": 11051
+    },
+    {
+      "case": "late-gate-activation-preserves-start-delay",
+      "fixtureSha256": "722e1d32779d443f8bf85b7994d1bb845accbe20f2a30d7295fe2593e9e6bdc2",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9507,
+      "motion": 30464
+    },
+    {
+      "case": "lead-competition-fractional-entry-official-10405",
+      "fixtureSha256": "cca60fffe4e7944c8b2e59d1c8f125799d8b828c9f28d5b27ebffdf9e4eea7e6",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4629,
+      "motion": 9906
+    },
+    {
+      "case": "lead-competition-partner-past-entry-cutoff",
+      "fixtureSha256": "c0c87582c2dc5da5315933dfbe6a20361465120d9157eacb795f7255fc66961e",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4239,
+      "motion": 10646
+    },
+    {
+      "case": "leader-gap-duration-rounding",
+      "fixtureSha256": "b0bab0a121c53cd5f0fe37755f6621c6f528c4918753e58275599dfcd41fd708",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 17107,
+      "motion": 29550
+    },
+    {
+      "case": "natural-corner-end-exact-boundary",
+      "fixtureSha256": "4aeb92627845a4dbced3e5a2e4f3163243356355f6a471a26f91299149f85a1e",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7985,
+      "motion": 15812
+    },
+    {
+      "case": "new-activation-on-final-bonus-tick-1000",
+      "fixtureSha256": "b94ccfd2fb461a6e1ea296832859a0e51e91de9268e2e54b52adc879401eebbf",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4802,
+      "motion": 7704
+    },
+    {
+      "case": "new-activation-on-final-bonus-tick-1200",
+      "fixtureSha256": "267108a72748155118bae39f86975937aabb3482d23fa341df41c075410bc3c1",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3794,
+      "motion": 8963
+    },
+    {
+      "case": "new-activation-on-final-bonus-tick-1400",
+      "fixtureSha256": "cab4ebf652c7ba38cb5a3774be667da07bdae3e6077436dc7ea0f58d89ccd928",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4549,
+      "motion": 8980
+    },
+    {
+      "case": "pacemaker-handover-refresh-1800-a",
+      "fixtureSha256": "82ee16faa233634af9466709e3eae63f45577f51e5d0c9d44fb403640cecc6aa",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6593,
+      "motion": 21179
+    },
+    {
+      "case": "pacemaker-handover-refresh-1800-b",
+      "fixtureSha256": "ac6d7885a20f1344bc0cbf81c9da1f62c2c899e59c3901ae810aafb7da786ef8",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6578,
+      "motion": 21127
+    },
+    {
+      "case": "pacemaker-handover-refresh-2100",
+      "fixtureSha256": "5e81db5054452224eb2643cdaa4c6fe58463c88667ee716afdd461c712f9e4a3",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6044,
+      "motion": 14387
+    },
+    {
+      "case": "pacemaker-handover",
+      "fixtureSha256": "e5969e461961873eec84f068c0bc48144240d0d96c9807878f6721b12879c263",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7647,
+      "motion": 14325
+    },
+    {
+      "case": "pacemaker-keeps-incumbent-in-range-large-field",
+      "fixtureSha256": "12ecee2ab2389ffa39f528583094d8cfd37069a94171a94f4ce2eb9d8ac64b8c",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9618,
+      "motion": 21343
+    },
+    {
+      "case": "pacemaker-keeps-incumbent-with-forward-group-in-range",
+      "fixtureSha256": "a309e7a60912d9b729002e67b8074a7eae49af506e67904c339c518c91752c63",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6508,
+      "motion": 8520
+    },
+    {
+      "case": "pacemaker-refresh-before-returning-forward-group",
+      "fixtureSha256": "98088bc68ebc2022b9111035db352e8ff981670fc2b9430f5af6c5bc15fb6576",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6006,
+      "motion": 7459
+    },
+    {
+      "case": "pacemaker-refresh-restarts-count-consecutive-sections",
+      "fixtureSha256": "79f747d60645a71764ed6e6745c8caf8d198551905751b39961511228f774c5c",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7759,
+      "motion": 23591
+    },
+    {
+      "case": "pacemaker-refresh-restarts-count-one-section",
+      "fixtureSha256": "159f472549f5df0d0ba1a9618a375126f294cea54e579b0747989ed19e9de0d7",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6922,
+      "motion": 21005
+    },
+    {
+      "case": "pacemaker-restoration-after-selection-window",
+      "fixtureSha256": "12c7c3efc1fbc1b7ec9176e7f7ca5de99bc5ec7c8a256ea2ac46e7ea8306aa57",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5410,
+      "motion": 9680
+    },
+    {
+      "case": "pacemaker-restoration-at-section-boundary-1000",
+      "fixtureSha256": "2ae4ada563e95c3a20a2f7b3daff5cf901c9bc5c8438cf87c46991aaffd5d74b",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3301,
+      "motion": 6393
+    },
+    {
+      "case": "pacemaker-restoration-at-section-boundary-1200",
+      "fixtureSha256": "f72d184315ce7f240199f73a8f62384a63eb6daa30f5a2d191086a1513279721",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 3951,
+      "motion": 7693
+    },
+    {
+      "case": "pacemaker-restores-nearest-forward-runner-career-a",
+      "fixtureSha256": "12e2a72d9c489c7d4e8bc715e2c91878132fce73492e9da8a682b2b65e6150e2",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 942,
+      "motion": 13901
+    },
+    {
+      "case": "pacemaker-restores-nearest-forward-runner-career-b",
+      "fixtureSha256": "a5512330a5121082263a3ceca9df298f1d4ff16c4b4c342eb8fb6cfb379fadfe",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 937,
+      "motion": 13977
+    },
+    {
+      "case": "pacemaker-restores-nearest-forward-runner-practice-10801",
+      "fixtureSha256": "554daae265a03f208b4fd2df7960ce93e235d68c1bf75d09218127d636ba06d2",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5224,
+      "motion": 10269
+    },
+    {
+      "case": "pacemaker-restores-nearest-forward-runner-practice-10901",
+      "fixtureSha256": "534b8e3520c8bccdc925d523879c67087687afafc05efe410f1904e52878fc93",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5536,
+      "motion": 10221
+    },
+    {
+      "case": "pacemaker-retains-incumbent-at-section-boundary",
+      "fixtureSha256": "82501ec1bad67a9591f85951255c4d143e17763019684c539caf4d15b5ddc13b",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7420,
+      "motion": 13709
+    },
+    {
+      "case": "pacemaker-retains-incumbent-under-later-style-leader",
+      "fixtureSha256": "7039f75d44bc68286b784f0574bf9e6352222299fce332ae8f6d8d42a1416f7b",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4447,
+      "motion": 12540
+    },
+    {
+      "case": "pacemaker-returning-runaway-keeps-incumbent",
+      "fixtureSha256": "51f317b5ee28636d0396fe11623a10d159dcb7f665119fa1614ae2d28866e73a",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 8212,
+      "motion": 23659
+    },
+    {
+      "case": "pacemaker-section-keeps-full-course-precision",
+      "fixtureSha256": "27367f4ae0036e37a94e1c7fb121ef023f0af0eb683df830f87f9ef3396201cf",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 13785,
+      "motion": 33294
+    },
+    {
+      "case": "pacing-gap-2500-float-rounding",
+      "fixtureSha256": "3077627955f9a9d379b384ebdbaf930e88a2bef0012948b314fdd77dc653f1d9",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7744,
+      "motion": 22846
+    },
+    {
+      "case": "passing-corridor-rounded-lower-edge-dirt-16",
+      "fixtureSha256": "13fad78ecfec637b56358ef47d778d4efcc7ed406fa764ae7eff9790eaf5ed72",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 8718,
+      "motion": 21149
+    },
+    {
+      "case": "passing-corridor-rounding-long-12",
+      "fixtureSha256": "6a182882826ada8c5ab1699a3d648f3ae59a4176cac6281c7d8262cbfde3b028",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 8907,
+      "motion": 24213
+    },
+    {
+      "case": "passing-corridor-rounding-turf-16",
+      "fixtureSha256": "0366bb481ca257b18675fd25d52aab794da18f14ccebbe908159cf6f0c380f64",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 8146,
+      "motion": 20939
+    },
+    {
+      "case": "rushing-section-quotient-boundary-1600m-18",
+      "fixtureSha256": "16d07506fd689bde5c30b851ad9fbd8b1ed848b48d67e52610021b9ecdb0d687",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 11527,
+      "motion": 20933
+    },
+    {
+      "case": "speed-stat-ground-penalty-rounding-2200",
+      "fixtureSha256": "6498a6fdab13c89a63058f24c472de13260e4d246332f514adcb11f67e92edbe",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 5853,
+      "motion": 25123
+    },
+    {
+      "case": "speed-stat-ground-penalty-rounding-2300",
+      "fixtureSha256": "bae3fe34a8c1cc5038c6c00f20435371318009372551d5974f4c5d322b00dd47",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 6507,
+      "motion": 26369
+    },
+    {
+      "case": "spurt-guts-product-retains-wide-precision",
+      "fixtureSha256": "cf9c242fcddad5385dc2efed856863c401840585c4d95d25b504401effa7fc54",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4849,
+      "motion": 17455
+    },
+    {
+      "case": "spurt-normal-cost-rounding-accepts-plan",
+      "fixtureSha256": "263a1fd05154d709f221e97e4260dfd6f20cee5d657b5e950a6a58c07a2cdfb9",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 8001,
+      "motion": 24200
+    },
+    {
+      "case": "spurt-normal-cost-rounding-rejects-plan",
+      "fixtureSha256": "06b8d3c0ced7dc52cdf5ab49e716497c3a4d9b9c36df6be22185630276b3a879",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 7016,
+      "motion": 26292
+    },
+    {
+      "case": "stacked-vision-debuffs-remove-visible-corridor",
+      "fixtureSha256": "8e23b312390b785ef46e0d8ae71b9c9afecf0cccc0cc2a6b2c0d166adc49741e",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 10595,
+      "motion": 32249
+    },
+    {
+      "case": "straight-entry-clears-overlapping-corner",
+      "fixtureSha256": "54faecfb57f0655a06553d2e799e6848566df30326c1bd673f0bf25232b9e829",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 4742,
+      "motion": 11951
+    },
+    {
+      "case": "visible-cone-width-rounding-boundary",
+      "fixtureSha256": "bb7b21be97d20268ed699ef1d86229f0182b6c5b5afb2fa0044da159407f39d6",
+      "traceParity": true,
+      "observationsPass": true,
+      "events": 9899,
+      "motion": 19768
+    }
+  ],
+  "repeatedAndBatchedTraceParity": true
+}

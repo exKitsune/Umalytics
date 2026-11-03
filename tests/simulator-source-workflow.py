@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from simulator_source import source_lock, verify_source
+from simulator_source import source_lock, verify_source, source_digest
 spec = importlib.util.spec_from_file_location('prepare_simulator', ROOT / 'scripts/prepare-simulator.py')
 prepare_simulator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare_simulator)
@@ -72,6 +72,24 @@ class SavedSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'local changes'):
             verify_source(self.source, self.revision)
         self.assertTrue(extra.is_file())
+
+    def test_pending_review_requires_explicit_development_and_exact_source(self):
+        (self.source / 'src').mkdir()
+        code = self.source / 'src/lib.rs'
+        code.write_bytes(b'fn observed() {}\n')
+        lock = {**source_lock(), 'revision': self.revision, 'pendingReview': True,
+                'sourceSha256': source_digest(self.source)}
+        with patch('simulator_source.source_lock', return_value=lock):
+            with self.assertRaisesRegex(ValueError, 'await user review'):
+                verify_source(self.source)
+            self.assertTrue(verify_source(self.source, development=True)['development'])
+            code.write_bytes(b'fn changed() {}\n')
+            with self.assertRaisesRegex(ValueError, 'pending-review source hash'):
+                verify_source(self.source, development=True)
+            code.write_bytes(b'fn observed() {}\n')
+            (self.source / 'Cargo.toml').write_text('unreviewed build inputs')
+            with self.assertRaisesRegex(ValueError, 'outside the pinned instrumentation'):
+                verify_source(self.source, development=True)
 
     def test_missing_checkout_does_not_fetch(self):
         absent = self.base / 'absent'

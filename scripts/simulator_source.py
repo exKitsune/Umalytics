@@ -26,7 +26,15 @@ def source_git(source, *args):
                                     '-C', str(source), *args], stderr=subprocess.PIPE)
 
 
-def verify_source(source, revision=None):
+def source_digest(source):
+    import hashlib
+    source = Path(source)
+    return hashlib.sha256(b''.join(
+        p.relative_to(source).as_posix().encode() + b'\0' + p.read_bytes()
+        for p in sorted((source / 'src').rglob('*')) if p.is_file())).hexdigest()
+
+
+def verify_source(source, revision=None, *, development=False):
     source = Path(source).resolve()
     lock = source_lock()
     expected = revision or lock['revision']
@@ -34,6 +42,8 @@ def verify_source(source, revision=None):
                f'or check out {lock["repository"]} at {expected}; no upstream fetch is attempted.')
     if not source.is_dir():
         raise ValueError(missing)
+    if revision is None and lock.get('pendingReview') and not development:
+        raise ValueError('Simulator changes await user review. Use --development for local review builds; releases require an approved committed pin.')
     try:
         top = Path(source_git(source, 'rev-parse', '--show-toplevel').decode().strip()).resolve()
         if top != source:
@@ -41,17 +51,30 @@ def verify_source(source, revision=None):
         actual = source_git(source, 'rev-parse', 'HEAD').decode().strip()
         if actual != expected:
             raise ValueError(f'Saved simulator revision mismatch: expected {expected}, got {actual}.')
-        if source_git(source, 'status', '--porcelain', '--untracked-files=all').strip():
+        if development:
+            # Only the exact pending source snapshot may bypass cleanliness.
+            # Cargo inputs, assets and all other tracked files still match HEAD.
+            if not lock.get('pendingReview') or revision is not None:
+                raise ValueError('Development staging requires a pending-review source lock.')
+            changed = source_git(source, 'diff', 'HEAD', '--name-only').decode().splitlines()
+            untracked = source_git(source, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
+            if any(not (p.startswith('src/') or p in ('instrumentation.json', '.gitattributes', 'NOTICE')) for p in changed + untracked):
+                raise ValueError('Development source contains changes outside the pinned instrumentation files.')
+            if source_digest(source) != lock['sourceSha256']:
+                raise ValueError('Development source differs from the pending-review source hash.')
+        elif source_git(source, 'status', '--porcelain', '--untracked-files=all').strip():
             raise ValueError('Saved simulator checkout contains local changes; originals were left untouched.')
         tree = source_git(source, 'rev-parse', 'HEAD^{tree}').decode().strip()
     except subprocess.CalledProcessError as error:
         raise ValueError(missing) from error
-    return {'repository': lock['repository'], 'revision': actual, 'tree': tree}
+    return {'repository': lock['repository'], 'revision': actual, 'tree': tree,
+            **({'development': True, 'sourceSha256': lock['sourceSha256']} if development else {})}
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=ROOT / '.cache/globalsim-saved')
+    parser.add_argument('--development', action='store_true')
     parser.add_argument('--github-output', type=Path,
                         help='Emit locked repository/ref for the private checkout step; no source required.')
     args = parser.parse_args()
@@ -60,4 +83,4 @@ if __name__ == '__main__':
         with args.github_output.open('a', encoding='utf-8') as output:
             output.write(f'repository={lock["repository"]}\nrevision={lock["revision"]}\n')
     else:
-        print(json.dumps(verify_source(args.source), indent=2))
+        print(json.dumps(verify_source(args.source, development=args.development), indent=2))

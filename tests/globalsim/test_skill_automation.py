@@ -77,7 +77,7 @@ class AutomaticSkills(unittest.TestCase):
             original=source();manifest={'bundles':[original['engine'],{'kind':'inference','data_sha256':'ref'}]}
             host=SimpleNamespace(data_dir=Path(folder),simulation=SimpleNamespace(config=lambda:(None,manifest)))
             store=SandboxService(host);store.write_job(original);store.impact_concurrency=1
-            config=SimpleNamespace(umalytics_root=Path(folder),globalsim_root=Path(folder))
+            config=SimpleNamespace(umalytics_root=Path(folder),globalsim_root=Path(folder),profile='v77')
             refs=references();seen=[]
             def outcome(job,config,refs,index):
                 _, run=inputs.prepare(job['setup'],refs,index,job['seedSchedule']);seen.append(index)

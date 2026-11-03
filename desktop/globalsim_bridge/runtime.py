@@ -26,7 +26,7 @@ from .comparator import COMPARATOR_VERSION, compare_observations, decode_scenari
 from .cache_storage import SHARED, read_blob, write_shared
 
 RUNTIME_VERSION = "bounded-local-runtime-v1"
-UPSTREAM_REVISION = "efc2decdfeaff227ada0e9847f5deceb42c3b97f"
+UPSTREAM_REVISION = adapter.GLOBALSIM_COMMIT
 VERIFICATION_SCOPE = "recorded_observations_v1"
 CACHE_SCHEMA = 1
 REQUIRED_PROFILE = {
@@ -69,8 +69,10 @@ class RuntimeConfig:
     decode_frames: bool = True
     # Internal analysis IPC: the consumer validates and decodes retained frames.
     retain_binary_frames: bool = False
+    profile: str = adapter.CURRENT_PROFILE
 
     def __post_init__(self):
+        adapter.upstream_commit(self.profile)
         if self.worker_protocol not in ('json', 'binary-v1'):
             raise ValueError('Unsupported worker protocol')
         for name in ("engine_path", "umalytics_root", "globalsim_root", "work_root", "cache_root"):
@@ -448,7 +450,7 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
         return finish("unsupported", "INVALID_CAPTURE", "Capture cannot be decoded safely", {"reason": str(error)})
 
     try:
-        references = adapter.ReferenceData.load(config.umalytics_root, config.globalsim_root)
+        references = adapter.ReferenceData.load(config.umalytics_root, config.globalsim_root, config.profile)
         if config.skill_catalog:
             references = references.with_skill_catalog(config.skill_catalog)
         initial, audit = adapter.prepare_capture(capture, references, context=context)
@@ -482,7 +484,7 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
                        "argumentsSha256": _digest(_canonical(config.engine_args))},
             "code": code_identity, "data": references.identity,
             "profile": _profile_identity(initial),
-            "worker": {"expectedUpstreamRevision": UPSTREAM_REVISION, "sourceRevision": "expected/not attested",
+            "worker": {"expectedUpstreamRevision": adapter.upstream_commit(config.profile), "sourceRevision": "expected/not attested",
                        "api": "globalsim::run_worker",
                        "defaultProfileReliedOn": False, "decisionTraceSchema": config.decision_trace_schema},
         }

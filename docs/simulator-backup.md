@@ -1,99 +1,81 @@
-# Saved simulator source and private builds
+# GlobalSim source and local review builds
 
-`simulation/source-lock.json` pins the traced source in `exKitsune/GlobalSim` to
-`231f346a46b569dd4d0f91a0046326275667d1c7`. Its original v74 parent is
-`efc2decdfeaff227ada0e9847f5deceb42c3b97f`. The lock also records the exact
-instrumented Rust source hash. This changes source storage and retrieval;
-it does not upgrade the engine or change mechanics or compatibility policy.
+`simulation/source-lock.json` identifies the maintained public fork,
+`exKitsune/GlobalSim`. The old private repository was renamed
+`exKitsune/GlobalSimBackup`; it preserves the v74 tracing history.
+The current upgrade starts at upstream v77 commit
+`95f1416fb8c130dd2ef4b53c3b8277c6ba4c8055`.
 
-## One maintained source
+The approved tracing source is committed as
+`db33d265a4ab5b03b54688fa540ded288add32eb` on
+`codex/umalytics-tracing-v77`. Release builds use this clean committed revision.
+The local fork checkout remains `.cache/globalsim-v77`.
 
-The private repository's `master` branch contains the traced version. The original
-source remains in its Git history; a separate original branch is unnecessary.
-`UMALYTICS.md` explains the observation hooks and their parity checks. Original
-files and third-party notices are preserved. Tracing does not intentionally alter
-race decisions, RNG draws or physics.
+## Updating the maintained fork
 
-Builds authenticate a clean Git archive against `sourceSha256`, then apply the
-app-owned compact-observer module and `compact-trace.patch`. The prepared tree
-must match `preparedSourceSha256` and its instrumentation manifest before it is
-compiled with `cargo build --offline --locked`. The original instrumentation
-patch is not applied again; the saved private checkout is never modified.
-The archived patch remains in Umalytics as provenance and for upgrade review.
-Packaging separately records both the original and traced commit identities.
+The fork is the simulator we use. The lock is a build receipt for an exact
+revision of that fork, not a policy to remain on an old upstream version.
+After changing the fork, rebuild and validate the worker, update the source
+lock and import-contract audit together, and package the resulting worker.
+Release builds do not follow a moving branch: otherwise rebuilding the same
+Umalytics release could silently change physics, traces, or imported skills.
+Saved jobs keep their original worker and definition snapshots; new jobs use
+the latest packaged compatible worker.
 
-## Recovery copies
+Skill releases do not require a simulator source update when their mechanics
+are already supported. The catalog merges bundled additions and available
+catalog rows with installed game master definitions taking precedence. It
+imports missing IDs, including branches and scaling, into immutable snapshots
+passed to the engine and matching dashboard references. The installed database
+reader detects content changes even when its size and timestamp stay the same.
+Existing engine definitions are not overwritten. Unknown conditions, targets,
+effects, or scaling are explicitly rejected until support is implemented and
+tested. An engine upgrade must pass the import-contract test; it must not
+silently turn this path off.
 
-`backups/globalsim-v74-2026-10-18/` holds the original, byte-verified recovery copies:
+The v77 fork now includes master's compact v2 trace format and optional full
+diagnostic traces, including both cached/prepared and legacy execution paths.
+The former v74-only compact overlay is no longer applied during builds.
 
-- `globalsim-source/`: the original checkout, including Git history and tags.
-- `globalsim-traced/`: the instrumented source used by Umalytics.
-- `globalsim-history.bundle`: portable original Git history and refs.
-- `backup-manifest.json`: SHA-256 hashes, file counts and sizes.
-
-The maintained private checkout is `F:\CodeWorkspace\GlobalSim`, beside
-`F:\CodeWorkspace\Umalytics`. `backups/GlobalSim-review/` is a local compatibility
-junction to that checkout. The previous Umalytics path also redirects to F:, so
-existing development tools continue to work without keeping a second copy on C:.
-`backups/globalsim-traced-v74.bundle` preserves the committed traced version and
-its parent history for offline recovery. These local recovery files are outside
-`.cache`; the entire `backups/` directory is ignored and rejected by Umalytics'
-public-file audit. They must not enter its public Git history or release artifacts.
-
-## GitHub Actions access
-
-Umalytics uses a dedicated read-only SSH deploy key on `exKitsune/GlobalSim`.
-Its private half belongs in Umalytics' Actions secret `GLOBALSIM_SOURCE_DEPLOY_KEY`.
-Keep **Allow write access** unchecked when adding the deploy key. Never put the
-private key in source, logs or chat.
-
-The Windows job reads the source lock and checks out that exact private commit
-into `.cache/globalsim-saved`, with `persist-credentials: false`. A missing secret
-fails early with setup instructions. The default Umalytics `GITHUB_TOKEN` does not
-grant access to a separate private repository. See
-[checkout's private repository support](https://github.com/actions/checkout/tree/v4#checkout-multiple-repos-private)
-and [GitHub's deploy-key instructions](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys).
-
-## Local build and offline recovery
-
-For a new checkout with private repository access:
+## Build the committed source
 
 ```powershell
-git clone git@github.com:exKitsune/GlobalSim.git .cache/globalsim-saved
-git -C .cache/globalsim-saved checkout --detach 231f346a46b569dd4d0f91a0046326275667d1c7
-python scripts/simulator_source.py --source .cache/globalsim-saved
+python scripts/prepare-simulator.py --source .cache/globalsim-v77
+cargo build --release --locked --offline --manifest-path simulation/simulator-worker/Cargo.toml
+python scripts/package-simulator.py --source .cache/globalsim-v77 --engine simulation/simulator-worker/target/release/umalytics-globalsim-worker.exe
 ```
 
-Alternatively, restore without network access from the traced Git bundle into a
-new path, then verify the locked commit:
+For a full desktop build, check out the locked fork revision at
+`.cache/globalsim-saved` and run `scripts/build-desktop.ps1`. Future uncommitted
+review builds use `-DevelopmentSimulatorSource` with an explicit `pendingReview`
+lock and exact source hash. Such snapshots cannot pass release verification.
 
-```powershell
-git clone backups/globalsim-traced-v74.bundle .cache/globalsim-saved
-git -C .cache/globalsim-saved checkout --detach 231f346a46b569dd4d0f91a0046326275667d1c7
-python scripts/simulator_source.py --source .cache/globalsim-saved
-```
+Release builds verify a clean checkout, stage its Git archive and compile it as
+a local path dependency. They do not reapply the instrumentation patch, fetch
+upstream, or overwrite a dirty checkout. The patch and trace module in
+`simulation/instrumentation/` are reproducible provenance inputs.
 
-Do not overwrite a checkout containing local work. Verification rejects missing,
-dirty or wrong-revision checkouts without changing them. The older original
-`.cache/globalsim-source` checkout can remain available for comparison.
-The full desktop build still downloads its ordinary Python, npm, Tauri and Node
-license inputs when needed; the simulator worker itself builds offline.
+GitHub Actions checks out the exact public fork revision into
+`.cache/globalsim-saved` with credentials persistence disabled. The old private
+backup deploy key is no longer required by the build workflow. No account keys
+are changed by this upgrade.
 
-## Validation before publication
+## Recovery
 
-- Run `python tests/simulator-source-workflow.py` and
-  `python tests/simulator-checkout-workflow.py`: immutable checkout verification,
-  preservation of local changes, offline bundle recovery, source/trace tampering,
-  Actions lock outputs and cross-platform instrumentation byte identity.
-- Clone the pinned private commit or restore its bundle into a fresh directory.
-  Verify the staged source hash matches the saved traced copy. Build the worker
-  offline with an empty `CARGO_HOME` and target directory.
-- Compare rebuilt output and decision traces with the previous worker on the
-  unchanged private capture fixtures. Package and smoke-test the desktop.
-- Lint the workflow, check the public-file audit and obtain review approval before
-  committing or pushing. A successful private checkout in Actions confirms the
-  deploy-key/secret pair is configured correctly.
+The prior sibling `GlobalSim` checkout and ignored `backups/` copies remain
+available for v74 comparisons. Its old remote name may now resolve to the new
+public fork; treat that checkout as a recovery copy, not a push target.
+`backups/globalsim-traced-v74.bundle` preserves the old traced history offline.
+Private recovery files must not enter Umalytics' public Git history.
 
-This backup does not automatically mirror future upstream releases. Updating it
-requires authorized source access, reviewed tracing changes, fresh parity checks
-and a coordinated update to the source lock, resources and compatibility data.
+## Verification
+
+- `python tests/simulator-source-workflow.py`
+- `python tests/simulator-checkout-workflow.py`
+- `cargo test --no-default-features --offline --lib --manifest-path .cache/globalsim-v77/Cargo.toml`
+- `python tests/globalsim-upgrade-parity.py --source .cache/globalsim-v77 --baseline .cache/globalsim-v77-baseline/target/release/race_engine_rs_v2.exe --engine simulation/simulator-worker/target/release/umalytics-globalsim-worker.exe --output simulation/evidence/globalsim-v77-parity.json`
+
+The parity panel compares untouched v77, tracing off and tracing on. It also
+checks repeated prepared races, rejected requests and threaded seed batches.
+Historical v74 and v77 bundles keep separate reference identities, cache keys
+and saved-job bindings. See `docs/globalsim-v77-upgrade.md` for results and limits.

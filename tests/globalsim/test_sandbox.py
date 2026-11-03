@@ -130,11 +130,13 @@ class CustomInputs(unittest.TestCase):
                 def worker(config,payload):
                     actual=json.loads(payload);expected,_=inputs.prepare(value,refs,4)
                     expected.update(retainAllFrames=False,decisionTrace=False,traceConservePower=False)
+                    if config.profile == 'v77': expected['omitFrames'] = True
                     self.assertEqual(actual,expected)
                     return {'results':[{'finishOrder':i,'finishTimeRaw':60+i} for i in range(9)]},.01,''
                 with patch('sandbox_service._run_worker',side_effect=worker):
-                    result,_=store.execute(job,None,refs,4,True,_canonical(refs.skill_data))
-                    self.assertTrue(result['outcomeOnly'])
+                    for profile in ('v74', 'v77'):
+                        result,_=store.execute(job,SimpleNamespace(profile=profile),refs,4,True,_canonical(refs.skill_data))
+                        self.assertTrue(result['outcomeOnly'])
             finally:store.close()
 
     def test_shared_mood_overrides_preserve_individual_choices_and_pairing(self):
@@ -241,7 +243,7 @@ class CustomInputs(unittest.TestCase):
             try:
                 with patch('sandbox_service._run_worker',side_effect=worker),patch('sandbox_service.validate_trace',side_effect=AssertionError('Trace analysis must not run')):
                     for index in (0,value['count']):
-                        summary,packed=store.execute(job,None,references(),index,True)
+                        summary,packed=store.execute(job,SimpleNamespace(profile='v77'),references(),index,True)
                         self.assertTrue(summary['outcomeOnly']);self.assertIsNone(packed)
             finally:store.close()
 
@@ -308,7 +310,7 @@ class CustomInputs(unittest.TestCase):
             store=SandboxService(host)
             store.write_job({'id':'source','phase':'complete','total':3,'setup':original,'engine':bundle,'referenceKey':'reference'})
             def submit():
-                with patch.object(store,'installed',return_value=(bundle,SimpleNamespace(umalytics_root=Path(folder),globalsim_root=Path(folder)))),patch('engine_skill_catalog.ReferenceData.load',return_value=references()),patch.object(store.executor,'submit'):
+                with patch.object(store,'installed',return_value=(bundle,SimpleNamespace(umalytics_root=Path(folder),globalsim_root=Path(folder),profile='v77'))),patch('engine_skill_catalog.ReferenceData.load',return_value=references()),patch.object(store.executor,'submit'):
                     return store.submit({'setup':changed,'impactSourceId':'source'})
             try:
                 first=submit();self.assertEqual(len(first['seedSchedule']),5)
@@ -359,7 +361,7 @@ class CustomInputs(unittest.TestCase):
                 with patch.object(store.render_executor,'submit'):
                     store.open_run({'jobId':'curve','index':2})
                     with self.assertRaisesRegex(ValueError,'not finished'):store.open_run({'jobId':'curve','index':1})
-                with patch.object(store,'installed',return_value=({},SimpleNamespace(umalytics_root=Path(folder),globalsim_root=Path(folder)))),patch('engine_skill_catalog.ReferenceData.load'),patch.object(store,'execute',return_value=(saved['runs'][1],b'dashboard')):
+                with patch.object(store,'installed',return_value=({},SimpleNamespace(umalytics_root=Path(folder),globalsim_root=Path(folder),profile='v77'))),patch('engine_skill_catalog.ReferenceData.load'),patch.object(store,'execute',return_value=(saved['runs'][1],b'dashboard')):
                     store.render(saved,2)
                 self.assertEqual(store.dashboard('curve',2),b'dashboard')
             finally:store.close()
