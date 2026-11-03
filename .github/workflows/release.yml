@@ -19,7 +19,7 @@ env:
 
 jobs:
   web:
-    name: Build shared web bundle
+    name: Build desktop frontend
     if: github.ref == 'refs/heads/master' && github.repository == 'exKitsune/Umalytics'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -37,12 +37,8 @@ jobs:
       - name: Install web dependencies
         id: node-deps
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Build once for Pages and desktop
-        run: |
-          npm run build
-          npm run build:inference
-          python3 scripts/audit-public-files.py --dist
-          cmp public/data/update-manifest.json dist/data/update-manifest.json
+      - name: Build desktop frontend and analysis workers
+        run: node scripts/check-release.mjs --group frontend --python python3
       - name: Include only frontend license inputs needed by Windows
         run: |
           node --input-type=module <<'NODE'
@@ -101,20 +97,11 @@ jobs:
         id: node-deps
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Audit public inputs and reference manifest
-        run: |
-          python scripts/audit-public-files.py --staged
-          python tests/public-inventory-workflow.py
-          python desktop/generate_manifest.py --check
-          python tests/history-retirement-workflow.py
-          python tests/simulator-checkout-workflow.py
-          python tests/simulator-source-workflow.py
+        run: node scripts/check-release.mjs --group inputs --staged
       - name: Run every platform-neutral system workflow once
-        run: npm test
+        run: node scripts/check-release.mjs --group system
       - name: Validate independent simulator and inference compatibility gates
-        run: |
-          python -m unittest discover -s tests/globalsim -p 'test_*.py'
-          node tests/globalsim/test_contracts.mjs --python python
-          python tests/launcher-identity-workflow.py
+        run: node scripts/check-release.mjs --group compatibility
       - name: Save npm downloads even after test failure
         if: always() && steps.node-deps.outcome == 'success' && steps.npm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -230,32 +217,16 @@ jobs:
           path: .
       - name: Test Windows source service and updater
         run: |
-          .cache/proxy-venv/Scripts/python.exe tests/app-components-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'App/collector boundary tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/updater/test_release_flow.py
-          if ($LASTEXITCODE -ne 0) { throw 'Updater integration tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/portable-storage-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'Portable storage integration tests failed.' }
+          node scripts/check-release.mjs --group windows-service --python .cache/proxy-venv/Scripts/python.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source service checks failed.' }
       - name: Test frozen runtime restart after parent cleanup
         run: |
-          .cache/proxy-venv/Scripts/python.exe tests/frozen-handoff-workflow.py
+          node scripts/check-release.mjs --group windows-handoff --python .cache/proxy-venv/Scripts/python.exe
           if ($LASTEXITCODE -ne 0) { throw 'Frozen runtime restart test failed.' }
       - name: Test API envelope and opt-in HTTPS capture
         run: |
-          .cache/proxy-venv/Scripts/python.exe tests/proxy-envelope-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'API envelope regression tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/local-catalog-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'Local MDB catalog tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/debug-controls-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'Guarded debug capture tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/saved-data-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'Saved-data removal tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/root-constraints-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'Constrained-root Windows tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/capture-identity-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'Protected capture identity tests failed.' }
-          .cache/proxy-venv/Scripts/python.exe tests/capture-inspection-workflow.py
-          if ($LASTEXITCODE -ne 0) { throw 'HTTPS capture integration tests failed.' }
+          node scripts/check-release.mjs --group windows-capture --python .cache/proxy-venv/Scripts/python.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows capture checks failed.' }
       - name: Restore independent collector artifact
         uses: actions/cache@v4
         with:
@@ -388,47 +359,6 @@ jobs:
             !.cache/updater-helper-target/debug/incremental
           key: ${{ steps.cargo-targets.outputs.cache-primary-key }}
 
-  pages:
-    name: Deploy validated viewer
-    needs: [web, validate]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Check this is still the newest master commit
-        id: latest
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_COMMIT: ${{ github.sha }}
-        run: |
-          latest="$(gh api repos/exKitsune/Umalytics/commits/master --jq .sha)"
-          if [ "$latest" = "$RELEASE_COMMIT" ]; then echo 'current=true' >> "$GITHUB_OUTPUT"; else echo 'current=false' >> "$GITHUB_OUTPUT"; fi
-      - uses: actions/download-artifact@v4
-        if: steps.latest.outputs.current == 'true'
-        with:
-          name: web-${{ github.run_id }}
-          path: .cache/web-build
-      - uses: actions/configure-pages@v5
-        if: steps.latest.outputs.current == 'true'
-      - uses: actions/upload-pages-artifact@v3
-        if: steps.latest.outputs.current == 'true'
-        with:
-          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .cache/web-build/dist
-          retention-days: 1
-      - name: Deploy
-        id: deployment
-        if: steps.latest.outputs.current == 'true'
-        uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-
   publish:
     name: Sign and publish tested desktop
     needs: [validate, windows]
@@ -523,7 +453,7 @@ jobs:
 
   retire-legacy-history:
     name: Retire legacy public history
-    needs: [pages, publish]
+    needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -535,4 +465,4 @@ jobs:
       - name: Remove old references only after the new root release is ready
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python scripts/retire-legacy-history.py --commit "${{ github.sha }}" --run-id "${{ github.run_id }}" --apply
+        run: python scripts/retire-legacy-history.py --commit "${{ github.sha }}" --run-id "${{ github.run_id }}" --desktop-only --apply

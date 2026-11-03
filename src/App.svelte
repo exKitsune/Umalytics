@@ -72,12 +72,11 @@
   import {formatRaceTime} from './data/race-time';
   import { importRace, parseRaceJson, sampleAt } from './data';
   import type { Race, RaceCategory } from './data/types';
-  import { toPortableRace } from './data/share';
   import { loadReferenceData, loadInstalledRaceLookup, getCourse, runnerName, runnerOutfit, skillName, type ReferenceData } from './data/reference';
   import { buildUmalatorExport, jsonDownloadName, umaDownloadName } from './data/umalator';
   import { categories, captureFacet, facetInfo, libraryFacets, runnerColors, saveRace, savedRaces, deleteSavedRace, createLibraryCaptionHydrator, type LibraryEntry } from './library';
   import { api, saveDesktopExport, revealDesktop, defaultSettings, type Health, type CollectionSettings, type CertificateStatus } from './api';
-  import { browserPreferences, migrateBrowserStorage, saveDesktopRace, raceForExport, THEME_KEY } from './desktop-storage';
+  import { browserPreferences, migrateBrowserStorage, saveDesktopRace, raceSourceForExport, THEME_KEY } from './desktop-storage';
   import AnalysisDetails from './components/AnalysisDetails.svelte';
   import AppUpdates from './components/AppUpdates.svelte';
   import CollectorUpdatePrompt from './components/CollectorUpdatePrompt.svelte';
@@ -271,8 +270,8 @@
     workspaceMode='races';
     if(removingId===entry.id||(!force&&entry.id===activeId))return;
     lastCapturedId=entry.id;checkpointWorkspace({lastCapturedId});if(record&&!restoringRoute)writeRoute({kind:'races',id:entry.id},!location.hash);
-    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;
-    try {if(referenceReady){if(bundledRaceLookup)raceLookup=await loadInstalledRaceLookup(bundledRaceLookup);if(request!==selectionRequest)return;if(bundledRaceLookup)reference=withRaceLookup(bundledRaceLookup,raceLookup);if(raceLookup)await analysisClient.configure(raceLookup);await analysisClient.open(entry);}}catch(e){if(request===selectionRequest)error=String(e);}
+    const request=++selectionRequest;error='';activeId=entry.id;race=entry.race??null;recordedRace=race;analysis=null;analysisGate=null;historical=null;selected='';runnerSelectionTouched=false;time=0;playing=false;skillDetail=null;analysisState={busy:true,background:false,done:0,total:0,message:'Opening race…'};
+    try {if(referenceReady){if(bundledRaceLookup)raceLookup=await loadInstalledRaceLookup(bundledRaceLookup);if(request!==selectionRequest)return;if(bundledRaceLookup)reference=withRaceLookup(bundledRaceLookup,raceLookup);if(raceLookup)await analysisClient.configure(raceLookup);await analysisClient.open(entry);}}catch(e){if(request===selectionRequest){analysisState={...analysisState,busy:false,background:false};error=String(e);}}
   }
   async function saveTags(){
     const tags=normalizeTags(tagDraft),next={...raceTags};if(tags.length)next[activeId]=tags;else delete next[activeId];
@@ -300,9 +299,9 @@
     const recorded=recordedRace??analysisRace;if(!recorded)return;
     const entry=library.find(item=>item.id===activeId);
     try{
-      const original=await raceForExport(entry,recorded);
-      const filename=jsonDownloadName(courseCaption(original,reference),(original.capturedAt??'').replace(/[:.]/g,'-')||'race');
-      await saveJsonFile(filename,JSON.stringify(toPortableRace(original),null,2),'Race JSON');
+      const content=await raceSourceForExport(entry,recorded);
+      const filename=jsonDownloadName(courseCaption(recorded,reference),(recorded.capturedAt??'').replace(/[:.]/g,'-')||'race');
+      await saveJsonFile(filename,content,'Race JSON');
     }catch(e){error=String(e);}
   }
   async function exportAnalysis() {
@@ -440,7 +439,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
     <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>{workspaceMode==='simulator'?'Race simulator':workspaceMode==='umas'?'Uma library':workspaceMode==='simulation'?'Simulation analysis':'Race analysis'}</strong>{#if workspaceMode==='simulation'&&race?.sandbox}<small class="analysis-source">Simulated race · Seed {race.sandbox.seed}</small>{:else if workspaceMode==='races'&&analysisGate?.mode==='verified_simulation'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Simulation matched</small>{:else if workspaceMode==='races'&&analysisGate?.mode==='inference_plan'}<small class="analysis-source" title={analysis?.source==='simulation'?'All supported recorded fields match.':'Analysis estimated from the recorded race.'}>Inferred analysis</small>{/if}{#if (workspaceMode==='races'||workspaceMode==='simulation')&&race&&reference}<button class="load-simulator" onclick={loadSimulator}>Load race into simulator</button>{/if}</div><div class="toolbar"><button onclick={()=>faqOpen=true}>FAQ</button><span class="connection"><i class="status-dot" class:live={gameConnected} class:ready={collecting&&!gameConnected}></i>{collectorLabel}</span><button class="icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} title="Toggle theme" onclick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'☀':'☾'}</button></div></header>
     {#if migrationError}<div class="notice" role="status">{migrationError}</div>{/if}
     {#if error||message}<div class="notice" class:error={!!error} role="status"><span>{error||message}</span><button aria-label="Dismiss message" onclick={()=>{message='';error=''}}>×</button></div>{/if}
-    {#if workspaceMode==='races'&&race&&analysis&&analysis.source!=='simulation'}
+    {#if workspaceMode==='races'&&race&&analysis&&(!analysisState.busy||analysisState.background)&&analysis.source!=='simulation'}
       <div class="analysis-fallback-banner" role="status"><div><strong>{analysis.source==='recorded'?'Analysis unavailable · recorded data only':'Inferred analysis · simulation did not match'}</strong><span>{analysis.source==='recorded'?'Unsupported analysis fields are left blank.':'Modeled values are estimates and may be inaccurate.'}</span></div><a class="button" href="https://github.com/exKitsune/Umalytics/issues" target="_blank" rel="noreferrer">Report issue ↗</a></div>
     {/if}
     {#if simulatorReference}<SimulatorWorkspace bind:this={simulatorWorkspace} mode={workspaceMode==='simulation'?'races':workspaceMode} reference={simulatorReference} token={health?.csrfToken} incoming={simulatorInput} onOpen={openSimulated} onMode={switchWorkspace} onNavigate={simulatorNavigated}/>{/if}
@@ -535,6 +534,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
 <div class="settings-page" hidden={settingsCategory!=='updates'}>{#if desktopSession}<AppUpdates csrfToken={health?.csrfToken} beforeInstall={flushWorkspaceSession}/>{:else}<section><h3>Reference data</h3><p>Game names, course paths and skill data are included with this viewer.</p><a href="data/NOTICE.txt" target="_blank" rel="noreferrer">Sources and licenses ↗</a></section>{/if}</div>
 <div class="settings-page" hidden={settingsCategory!=='storage'}>{#if desktopSession}<section>
           <h3>Downloads</h3>
+          <label class="setting-row"><span>Anonymize trainer names and IDs on export</span><input type="checkbox" role="switch" checked={settings.anonymizeExports??true} disabled={!health?.csrfToken||busy} onchange={e=>updateSettings({anonymizeExports:e.currentTarget.checked})}/></label>
           <p>Race JSON and Uma JSON are saved here, then shown in Explorer.</p>
           <label class="export-folder"><span class="muted">Folder</span><input aria-label="JSON download folder" bind:value={exportDraft} disabled={!health?.csrfToken||busy}/></label>
           <div class="toolbar"><button onclick={()=>saveExportFolder(exportDraft)} disabled={!health?.csrfToken||busy||!exportDraft.trim()}>Save folder</button><button onclick={()=>saveExportFolder(null)} disabled={!health?.csrfToken||busy}>Use Downloads folder</button><button onclick={()=>revealFolder('exports')} disabled={!health?.csrfToken}>Open folder</button></div>
@@ -545,13 +545,7 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
         </section>{:else}<section><h3>Diagnostics</h3><p>Diagnostics are available in the desktop app.</p></section>{/if}</div>
 <div class="settings-page" hidden={settingsCategory!=='about'}><section>
         <h3>About</h3>
-        {#if desktopSession}
-          <a href="https://exkitsune.github.io/Umalytics/" target="_blank" rel="noreferrer">Web viewer ↗</a>
-          <p>Import replay JSON in your browser. You can also drop a race JSON onto this window.</p>
-        {:else}
-          <a href={DOWNLOAD_URL} target="_blank" rel="noreferrer">Download the Windows app ↗</a>
-          <p>This web viewer opens race JSON in your browser, including files you drop onto the window. Auto collection only works in the desktop app.</p>
-        {/if}
+        <a href="https://github.com/exKitsune/Umalytics" target="_blank" rel="noreferrer">GitHub ↗</a>
       </section>{#if desktopSession}<section>
           <h3>Uninstall</h3>
           <ol><li>Open <strong>Collection &amp; Certificate → Remove certificate</strong>. Approve the Windows prompt. This also deletes the capture key.</li><li>Clear the game’s Steam Launch Options.</li><li>Optional: use <strong>Delete all saved data</strong> below.</li><li>Choose <strong>Exit Umalytics and stop collection</strong> in the tray menu.</li><li>Delete <code>Umalytics.exe</code>.</li></ol>

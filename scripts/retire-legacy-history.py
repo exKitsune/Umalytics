@@ -49,6 +49,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--run-id", type=int, required=True)
+    parser.add_argument("--desktop-only", action="store_true", help="Require the desktop release only; leave Pages deployments untouched.")
     parser.add_argument("--apply", action="store_true", help="Delete the verified legacy entries; otherwise only list them.")
     args = parser.parse_args()
     commit = api(f"commits/{args.commit}")
@@ -77,16 +78,18 @@ def main():
             and item["head_sha"] != args.commit]
     if any(item["status"] != "completed" for item in runs):
         raise RuntimeError("An older workflow is still running; stopping.")
-    deployments = [item for item in pages("deployments") if item["environment"] == "github-pages"]
-    current_deployments = [item for item in deployments if item["sha"] == args.commit]
-    if not current_deployments:
-        raise RuntimeError("The new site's deployment is not ready.")
-    current_deployment = max(current_deployments, key=lambda item: item["id"])
-    statuses = api(f"deployments/{current_deployment['id']}/statuses?per_page=1")
-    if not statuses or statuses[0]["state"] != "success":
-        raise RuntimeError("The new site's deployment has not succeeded.")
-    old_deployments = [item for item in deployments if item["sha"] != args.commit
-                       and item["created_at"] < current_run["created_at"]]
+    old_deployments = []
+    if not args.desktop_only:
+        deployments = [item for item in pages("deployments") if item["environment"] == "github-pages"]
+        current_deployments = [item for item in deployments if item["sha"] == args.commit]
+        if not current_deployments:
+            raise RuntimeError("The new site's deployment is not ready.")
+        current_deployment = max(current_deployments, key=lambda item: item["id"])
+        statuses = api(f"deployments/{current_deployment['id']}/statuses?per_page=1")
+        if not statuses or statuses[0]["state"] != "success":
+            raise RuntimeError("The new site's deployment has not succeeded.")
+        old_deployments = [item for item in deployments if item["sha"] != args.commit
+                           and item["created_at"] < current_run["created_at"]]
     print(json.dumps({"apply": args.apply, "keepRelease": expected_tag,
                       "removeReleases": [item["tag_name"] for item in releases],
                       "removeTags": [item["name"] for item in tags], "removeWorkflowRuns": len(runs),

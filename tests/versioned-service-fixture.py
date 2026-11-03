@@ -7,7 +7,8 @@ import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'desktop'))
-from service import Service, LocalServer, make_handler
+from service import Service, LocalServer, make_handler, initialize_request_tracking
+import diagnostics
 from simulation_service import SimulationService
 
 class Store:
@@ -17,6 +18,8 @@ class Store:
         self.data_dir = root / 'storage'
         self.inbox = self.data_dir / 'races'
         self.inbox.mkdir(parents=True, exist_ok=True)
+        self.diagnostics = diagnostics.initialize(self.data_dir, 'service', 'synthetic')
+        initialize_request_tracking(self)
         self.csrf = secrets.token_hex(32)
         self.lock = threading.RLock()
         self._race_metadata = {}

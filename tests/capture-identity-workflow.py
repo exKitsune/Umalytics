@@ -62,20 +62,46 @@ with tempfile.TemporaryDirectory(prefix='capture-identity-', dir=ROOT / '.cache'
     get_security(str(fresh / LEAF_KEY), 4, None, 0, ctypes.byref(size))
     descriptor = ctypes.create_string_buffer(size.value)
     assert get_security(str(fresh / LEAF_KEY), 4, descriptor, size, ctypes.byref(size))
-    convert = advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW
-    convert.argtypes = [ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
-                        ctypes.POINTER(wintypes.LPWSTR), ctypes.c_void_p]
-    text = wintypes.LPWSTR()
-    assert convert(descriptor, 1, 4, ctypes.byref(text), None)
-    try:
-        # Only the current SID and SYSTEM can access the encrypted key.
-        acl = text.value
-        assert acl.count('(A;') == 2 and user_sid() in acl and ';;;SY)' in acl, acl
-        assert ';;;BU)' not in acl and ';;;WD)' not in acl and ';;;AU)' not in acl, acl
-    finally:
-        free = ctypes.WinDLL('kernel32').LocalFree
-        free.argtypes = [ctypes.c_void_p]
-        free(text)
+    # Read the binary ACL: Windows can render the same SID as LA/SY or a
+    # full SID string depending on the runner's account identity.
+    get_dacl = advapi.GetSecurityDescriptorDacl
+    get_dacl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.BOOL),
+                        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.BOOL)]
+    present, defaulted, dacl = wintypes.BOOL(), wintypes.BOOL(), ctypes.c_void_p()
+    assert get_dacl(descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted))
+    assert present.value and dacl.value, 'A missing/null DACL would allow unrestricted access'
+
+    class AclSize(ctypes.Structure):
+        _fields_ = [('count', wintypes.DWORD), ('used', wintypes.DWORD), ('free', wintypes.DWORD)]
+
+    information = advapi.GetAclInformation
+    information.argtypes = [ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.c_int]
+    size = AclSize()
+    assert information(dacl, ctypes.byref(size), ctypes.sizeof(size), 2)
+    assert size.count == 2, 'Only the current account and SYSTEM should have access'
+    get_ace = advapi.GetAce
+    get_ace.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)]
+    stringify = advapi.ConvertSidToStringSidW
+    stringify.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR)]
+    free = ctypes.WinDLL('kernel32').LocalFree
+    free.argtypes = [ctypes.c_void_p]
+    trustees = set()
+    for index in range(size.count):
+        ace, sid = ctypes.c_void_p(), wintypes.LPWSTR()
+        assert get_ace(dacl, index, ctypes.byref(ace))
+        assert ctypes.c_ubyte.from_address(ace.value).value == 0, 'Expected an allow ACE'
+        assert wintypes.DWORD.from_address(ace.value + 4).value == 0x1f01ff, 'Expected full file access'
+        assert stringify(ace.value + 8, ctypes.byref(sid))
+        try:
+            trustees.add(sid.value)
+        finally:
+            free(sid)
+    assert trustees == {user_sid(), 'S-1-5-18'}, 'Unexpected key ACL trustees'
+    control, revision = wintypes.WORD(), wintypes.DWORD()
+    get_control = advapi.GetSecurityDescriptorControl
+    get_control.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.WORD), ctypes.POINTER(wintypes.DWORD)]
+    assert get_control(descriptor, ctypes.byref(control), ctypes.byref(revision))
+    assert control.value & 0x1000, 'Key ACL must be protected from inheritance'
     # Corruption must fail closed, leave files unchanged, and never reissue.
     (fresh / LEAF_KEY).write_bytes(b'broken DPAPI key')
     damaged = snapshot(fresh)

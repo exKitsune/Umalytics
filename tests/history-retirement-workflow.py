@@ -80,8 +80,8 @@ def reset():
     })
 
 
-def run(apply=False, failure=False):
-    sys.argv = ["retire-legacy-history.py", "--commit", snapshot, "--run-id", "11"] + (["--apply"] if apply else [])
+def run(apply=False, failure=False, desktop_only=False):
+    sys.argv = ["retire-legacy-history.py", "--commit", snapshot, "--run-id", "11"] + (["--apply"] if apply else []) + (["--desktop-only"] if desktop_only else [])
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             command.main()
@@ -137,6 +137,17 @@ with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
     reset()
     state['deployments?per_page=100&page=1'] = []
     run(apply=True, failure=True)
+    # With Pages shelved, desktop publication is sufficient and existing site
+    # records must stay untouched.
+    reset()
+    state['deployments?per_page=100&page=1'] = []
+    run(apply=True, desktop_only=True)
+    assert deleted == ['releases/7', 'releases/10', 'git/refs/tags/v0.2.7', 'git/refs/tags/v0.2.10', 'actions/runs/7']
+    assert not inactivated
+    reset()
+    run(apply=True, desktop_only=True)
+    assert not any(path.startswith('deployments/') for path in deleted)
+    assert not inactivated
     reset()
     os.environ.pop("GH_TOKEN")
     run(apply=True, failure=True)

@@ -141,6 +141,66 @@ def cache_workflow(instance, data, race_id):
     return prefs
 
 
+def source_export_workflow(instance, data, export_dir):
+    # Exercise the full HTTP source -> export path, including opaque fields and
+    # integer IDs which would lose precision in a JavaScript JSON round trip.
+    source = b'{\n  "weather": 1, "race_scenario": "opaque", "viewer_id": 9007199254740993, "future_field": {"keep": true}\n}\n'
+    (data / 'races/source-fixture.json').write_bytes(source)
+    digest = hashlib.sha256(source).hexdigest()
+    url = '/api/races/source-fixture~0/source?sha256=' + digest
+    with instance.opener.open(instance.origin + url, timeout=5) as response:
+        received = response.read()
+    assert instance.request('/api/settings')[1]['anonymizeExports'] is True
+    anonymous = json.loads(received)
+    assert anonymous['viewer_id'] == 1 and anonymous['weather'] == 1
+    assert anonymous['future_field'] == {'keep': True}
+    assert instance.request('/api/settings', {'anonymizeExports': 'yes'})[0] == 400
+    instance.request('/api/settings', {'anonymizeExports': False})
+    with instance.opener.open(instance.origin + url, timeout=5) as response:
+        received = response.read()
+    assert received == source
+    receipt = instance.request('/api/exports', {'filename': 'source.json', 'content': received.decode(), 'reveal': False})[1]
+    assert Path(receipt['path']).read_bytes() == source
+    assert json.loads(received)['viewer_id'] == 9007199254740993
+    assert instance.request(url.replace(digest, '0' * 64))[0] == 409
+    array = [{'opaque': 9007199254740993}, {'opaque': 9007199254740995}]
+    (data / 'races/multiple-fixture.json').write_text(json.dumps(array), encoding='utf-8')
+    listing = instance.request('/api/races?summary=1')[1]['races']
+    item = next(row for row in listing if row['id'] == 'multiple-fixture~1')
+    selected_url = '/api/races/multiple-fixture~1/source?sha256=' + item['sha256']
+    assert instance.request(selected_url) == (200, array[1])
+    assert instance.request('/api/races/multiple-fixture/source')[0] == 400
+    assert instance.request('/api/races/multiple-fixture~99/source')[0] == 400
+    assert instance.request('/api/races/..%2Fsettings/source')[0] == 400
+    instance.request('/api/settings', {'anonymizeExports': True})
+    runtime = {'raceHorse': [
+        {'trainerName': 'PRIVATE_NAME', 'responseHorseData': {'viewer_id': 9007199254740993, 'owner_viewer_id': '9007199254740993', 'owner_trainer_name': 'PRIVATE_NAME', 'trained_chara_id': 777}},
+        {'trainerName': 'SECOND_NAME', 'responseHorseData': {'viewer_id': 9007199254740995, 'owner_trainer_name': 'SECOND_NAME'}},
+        {'trainerName': 'PRIVATE_NAME', 'responseHorseData': {'viewer_id': 9007199254740993}},
+    ], 'weather': 'Sunny', 'raceType': 'RoomMatch', 'simDataBase64': 'unchanged'}
+    (data / 'races/runtime-fixture.json').write_text(json.dumps(runtime), encoding='utf-8')
+    redacted = instance.request('/api/races/runtime-fixture/source')[1]
+    horses = redacted['raceHorse']
+    assert horses[0]['trainerName'] == horses[2]['trainerName'] == 'Trainer 1'
+    assert horses[1]['trainerName'] == 'Trainer 2'
+    assert horses[0]['responseHorseData']['viewer_id'] == horses[2]['responseHorseData']['viewer_id'] == 1
+    assert horses[1]['responseHorseData']['viewer_id'] == 2
+    assert horses[0]['responseHorseData']['owner_viewer_id'] == '1'
+    assert horses[0]['responseHorseData']['owner_trainer_name'] == 'Trainer 1'
+    assert horses[0]['responseHorseData']['trained_chara_id'] == 777
+    assert redacted['weather'] == 'Sunny' and redacted['raceType'] == 'RoomMatch'
+    assert redacted['simDataBase64'] == 'unchanged'
+    assert json.loads((data / 'races/runtime-fixture.json').read_text()) == runtime
+    exported = instance.request('/api/exports', {'filename': 'anonymous-analysis.json', 'content': json.dumps(runtime), 'reveal': False})[1]
+    assert json.loads(Path(exported['path']).read_bytes()) == redacted
+    Path(exported['path']).unlink()
+    (data / 'races/runtime-fixture.json').unlink()
+    assert (data / 'races/source-fixture.json').read_bytes() == source
+    (data / 'races/source-fixture.json').unlink()
+    (data / 'races/multiple-fixture.json').unlink()
+    (export_dir / 'source.json').unlink()
+
+
 def workflows(temporary):
     resources = temporary / 'resources'
     (resources / 'desktop').mkdir(parents=True)
@@ -221,6 +281,7 @@ def workflows(temporary):
         exported = instance.request('/api/exports', {'filename': 'portable-export.json', 'content': '{"ok":true}'})[1]
         assert Path(exported['path']).parent == export_dir.resolve()
         assert Path(exported['path']).read_text(encoding='utf-8') == '{"ok":true}'
+        source_export_workflow(instance, data, export_dir)
         assert instance.request('/api/settings', {'exportDirectory': None})[1]['exportDirectory'] == str(desktop.default_downloads())
         assert instance.request('/api/settings', {'exportDirectory': str(data / 'capture')})[0] == 400
         cert = instance.request('/api/certificate')[1]
@@ -234,6 +295,8 @@ def workflows(temporary):
         assert next(item for item in listed if item['id'] == race_id)['courseId'] == 101
         assert (data / 'races/captured.json').read_bytes() == capture_raw
         prefs = cache_workflow(instance, data, race_id)
+        # Storage fixtures do not need mechanics workers when a real local runtime is installed.
+        instance.request('/api/analysis-cache', {'action': 'policy', 'policy': {'mode': 'unlimited', 'value': 1000, 'background': False}})
         # Accept repository updates under this bundle, then replace them when
         # starting the next bundled app release, including source=repository.
         repository_manifest, repository_contents = snapshot('newer-repository')

@@ -190,3 +190,15 @@ The app, update helper and rollback helper request a fresh PyInstaller runtime
 at each independent launch; ordinary collector workers can still share their
 living parent's runtime. Native helper workflows also check replacement and
 rollback launches with stale inherited runtime state.
+
+## Check a release locally
+
+Run `npm run check:release` before publishing. It uses the same source checks as
+Actions: frontend build, public-file audit, system workflows, compatibility
+checks, and the Windows service/capture workflows when running on Windows.
+Use `-- --python <executable>` if the build dependencies are in a virtualenv.
+Each group stops on the first failure and names the failed command.
+
+A frontend build alone does not test HTTP routes, Windows permissions, updater
+process lifetimes, or simulator compatibility. Packaged and native smoke tests
+still run against the release executable in Actions before publication.

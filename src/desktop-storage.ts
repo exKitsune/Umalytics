@@ -33,6 +33,16 @@ export async function raceForExport(entry:LibraryEntry|undefined,recorded:Race):
   return races[0];
 }
 
+/** Keep unknown source fields and large integer IDs intact when exporting captures. */
+export async function raceSourceForExport(entry:LibraryEntry|undefined,recorded:Race):Promise<string> {
+  if(!entry?.remoteId)return JSON.stringify(toPortableRace(recorded),null,2);
+  const query=entry.sha256?`?sha256=${encodeURIComponent(entry.sha256)}`:'';
+  const response=await fetch(`/api/races/${encodeURIComponent(entry.remoteId)}/source${query}`,{signal:AbortSignal.timeout(15000)});
+  if(!response.ok){const detail=await response.json().catch(()=>null);throw new Error(detail?.error??`Race export failed (${response.status}).`);}
+  if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('Desktop collector is unavailable in this viewer.');
+  return response.text();
+}
+
 export async function saveDesktopRace(race:Race,csrfToken:string):Promise<LibraryEntry> {
   return importEntry(await raceLibraryEntry(race),csrfToken);
 }

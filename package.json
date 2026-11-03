@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:release": "node scripts/check-release.mjs",
     "build:inference": "node scripts/build-inference.mjs",
     "pretest": "node scripts/build-inference.mjs",
     "dev": "vite --host 127.0.0.1",

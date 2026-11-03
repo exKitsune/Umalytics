@@ -116,4 +116,4 @@ try{
   const hostile=await fetch(connection.url+'/api/simulation/races/selected~1',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://unrelated.example'},body:'{}'});assert.equal(hostile.status,403);
   assert.deepEqual(normalizeTags('Finals, finals, Wet'),['Finals','Wet']);assert.ok(withinDateRange('2026-10-14T12:00:00Z','2026-10-14','2026-10-14'));
   console.log(JSON.stringify({calculationEquality:'passed',diskRestore:'passed',noRecalculation:'passed',unknownNoWorkersOrCache:'passed',stalePolicy:'passed',artifactMismatch:'passed',futureWarnings:'passed',selectedSingleton:'passed',filters:'passed',coldMs:Math.round(built.ms),restoreMs:Math.round(restored.ms),compressedBytes:built.packed.length}));
-}finally{globalThis.fetch=originalFetch;child.kill();await new Promise(done=>child.once('exit',done));}
+}catch(error){if(errors)console.error('Isolated HTTP fixture stderr:\n'+errors);throw error;}finally{globalThis.fetch=originalFetch;child.kill();await new Promise(done=>child.once('exit',done));}

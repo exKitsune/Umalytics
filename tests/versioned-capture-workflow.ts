@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseRaceJson } from '../src/data/import';
 import { toPortableRace, toShareableRace } from '../src/data/share';
-import { raceForExport } from '../src/desktop-storage';
+import { raceForExport, raceSourceForExport } from '../src/desktop-storage';
 import { sampleRecordedAt } from '../src/data/observational-sample';
 const capture=JSON.parse(execFileSync('python',['-c',"import sys,json;sys.path.insert(0,'tests/globalsim');from test_runtime import fixture;print(json.dumps(fixture()[0]))"],{encoding:'utf8'}));
 const careerCapture={...capture,race_category:'career',race_program_id:2224};
@@ -64,3 +64,17 @@ assert.equal(stored.simDataBase64,portable.simDataBase64);
 assert.deepEqual(stored.raceHorse,JSON.parse(JSON.stringify(portable.raceHorse)));
 for(const key of ['originalRace','raceDistance','raceCourseAliases','raceDistanceAliases','capture','racedAt','racedAtSource'])assert.deepEqual(stored[key],JSON.parse(JSON.stringify((portable as any)[key])));
 console.log(JSON.stringify({rawAliases:'passed',distanceFeedbackPrevented:'passed',provenance:'passed',serviceRoundTrip:'passed',cachedDashboardExport:'passed',observationalSampler:'passed'}));
+
+// The export action must bypass normalization and preserve opaque source text.
+const exportFetch=globalThis.fetch;
+try {
+ const sourceText='{ "weather": 1, "viewer_id": 9007199254740993, "unknown": true }\n';
+ globalThis.fetch=async(input)=>{
+  assert.equal(String(input),'/api/races/saved~0/source?sha256='+ 'a'.repeat(64));
+  return new Response(sourceText,{headers:{'content-type':'application/json; charset=utf-8'}});
+ };
+ assert.equal(await raceSourceForExport({remoteId:'saved~0',sha256:'a'.repeat(64)} as any,parsed),sourceText);
+ globalThis.fetch=async()=>new Response(JSON.stringify({error:'The saved race changed. Reopen it before exporting.'}),{status:409});
+ await assert.rejects(()=>raceSourceForExport({remoteId:'saved~0'} as any,parsed),/saved race changed/);
+ assert.equal(await raceSourceForExport(undefined,parsed),JSON.stringify(toPortableRace(parsed),null,2));
+} finally { globalThis.fetch=exportFetch; }

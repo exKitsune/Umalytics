@@ -8,13 +8,13 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'desktop'))
-from service import Service
+from service import Service, settings_default
 
 
 class ExportRevealTests(unittest.TestCase):
     def test_headless_and_default_exports(self):
         with tempfile.TemporaryDirectory() as folder, patch('service.reveal_file', return_value=True) as reveal:
-            host = SimpleNamespace(export_lock=threading.Lock(), prepared_export_directory=lambda: Path(folder))
+            host = SimpleNamespace(settings=settings_default(), export_lock=threading.Lock(), prepared_export_directory=lambda: Path(folder))
             body = {'filename': 'export.json', 'content': '{"ok":true}'}
             hidden = Service.export_json(host, {**body, 'reveal': False})
             self.assertFalse(hidden['revealed'])
@@ -27,7 +27,7 @@ class ExportRevealTests(unittest.TestCase):
 
     def test_invalid_reveal_cannot_write_or_launch(self):
         with tempfile.TemporaryDirectory() as folder, patch('service.reveal_file') as reveal:
-            host = SimpleNamespace(export_lock=threading.Lock(), prepared_export_directory=lambda: Path(folder))
+            host = SimpleNamespace(settings=settings_default(), export_lock=threading.Lock(), prepared_export_directory=lambda: Path(folder))
             for value in ('false', 0, None):
                 with self.assertRaises(ValueError):
                     Service.export_json(host, {'filename': 'export.json', 'content': '{}', 'reveal': value})

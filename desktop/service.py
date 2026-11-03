@@ -55,9 +55,35 @@ class LocalServer(ThreadingHTTPServer):
 
 
 def settings_default():
-    return {'schemaVersion': 1, 'collectionEnabled': True,
+    return {'schemaVersion': 1, 'collectionEnabled': True, 'anonymizeExports': True,
             'categories': {category: category not in ('career', 'team-trials') for category in CATEGORIES},
             'preferences': {'theme': 'dark', 'fontScale': 100, 'courseAssignments': {}, 'browserMigrationComplete': False}}
+
+
+def anonymize_trainers(document):
+    """Keep ID equality within a race while removing the original trainer identity."""
+    names, ids = {}, {}
+    name_keys = {'trainername', 'ownertrainername', 'trainer', 'ownertrainer'}
+    id_keys = {'viewerid', 'ownerviewerid', 'trainerid', 'ownertrainerid'}
+
+    def copy(value):
+        if isinstance(value, list):
+            return [copy(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = {}
+        for key, item in value.items():
+            normalized = key.replace('_', '').replace('<', '').replace('>kBackingField', '').lower()
+            if normalized in name_keys and isinstance(item, str) and item:
+                result[key] = names.setdefault(item, f'Trainer {len(names) + 1}')
+            elif normalized in id_keys and isinstance(item, (int, str)) and not isinstance(item, bool) and item not in (0, '', '0'):
+                alias = ids.setdefault(str(item), len(ids) + 1)
+                result[key] = str(alias) if isinstance(item, str) else alias
+            else:
+                result[key] = copy(item)
+        return result
+
+    return copy(document)
 
 
 def default_downloads():
@@ -136,6 +162,13 @@ def current_user_trust(der, install=False, uninstall=False):
     return trust(der, install=install, uninstall=uninstall)
 
 
+def initialize_request_tracking(service):
+    """Shared HTTP lifecycle state for the app and isolated route fixtures."""
+    service.maintenance = False
+    service.operations = threading.Condition()
+    service.active_operations = 0
+
+
 class Service:
     def __init__(self, data_dir, no_proxy=False, desktop_exe=None, proxy_port=PROXY_PORT):
         self.diagnostics = diagnostics.initialize(data_dir, 'service', diagnostic_version())
@@ -166,9 +199,7 @@ class Service:
             pass
         self.remove_login_startup()
         atomic_json(self.settings_path, self.settings)
-        self.maintenance = False
-        self.operations = threading.Condition()
-        self.active_operations = 0
+        initialize_request_tracking(self)
         self.no_proxy = no_proxy
         self.proxy = None
         self.proxy_state = 'disabled' if no_proxy else 'starting'
@@ -298,19 +329,23 @@ class Service:
             pass
 
     def update_settings(self, patch, persist=True):
-        if not isinstance(patch, dict) or set(patch) - {'schemaVersion', 'collectionEnabled', 'categories', 'preferences', 'exportDirectory'}:
+        if not isinstance(patch, dict) or set(patch) - {'schemaVersion', 'collectionEnabled', 'categories', 'preferences', 'exportDirectory', 'anonymizeExports'}:
             raise ValueError('Unknown setting.')
         if 'schemaVersion' in patch and patch['schemaVersion'] != 1:
             raise ValueError('Unsupported settings version.')
         if 'collectionEnabled' in patch:
             if not isinstance(patch['collectionEnabled'], bool):
                 raise ValueError('Collection enabled must be boolean.')
+        if 'anonymizeExports' in patch and not isinstance(patch['anonymizeExports'], bool):
+            raise ValueError('Export anonymization must be boolean.')
         categories = patch.get('categories', {})
         if not isinstance(categories, dict) or set(categories) - set(CATEGORIES) or any(not isinstance(v, bool) for v in categories.values()):
             raise ValueError('Invalid collection categories.')
         preferences = self.validate_preferences(patch.get('preferences', {}))
         if 'collectionEnabled' in patch:
             self.settings['collectionEnabled'] = patch['collectionEnabled']
+        if 'anonymizeExports' in patch:
+            self.settings['anonymizeExports'] = patch['anonymizeExports']
         self.settings['categories'].update(categories)
         self.settings['preferences'].update(preferences)
         if 'exportDirectory' in patch:
@@ -615,8 +650,13 @@ class Service:
         if not 0 < len(raw) <= MAX_RACE:
             raise ValueError('Export exceeds the file size limit.')
         from reference_data import strict_json
-        if not isinstance(strict_json(raw), (dict, list)):
+        document = strict_json(raw)
+        if not isinstance(document, (dict, list)):
             raise ValueError('Export must contain a JSON object or array.')
+        if self.settings.get('anonymizeExports', True):
+            anonymous = anonymize_trainers(document)
+            if anonymous != document:
+                raw = json.dumps(anonymous, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
         with self.export_lock:
             folder = self.prepared_export_directory()
             target = folder / filename
@@ -871,6 +911,37 @@ class Service:
             return {'races': page, 'total': len(results), 'nextOffset': offset + len(page) if offset + len(page) < len(results) else None}
         return results[offset:offset + limit]
 
+    def race_source(self, race_id, expected_sha256=None):
+        """Export the saved document without passing it through the analysis schema."""
+        if not isinstance(race_id, str) or not 1 <= len(race_id) <= 240 or any(part in race_id for part in ('/', '\\', '..')):
+            raise ValueError('Invalid race.')
+        stem, sep, suffix = race_id.rpartition('~')
+        index = int(suffix) if sep and suffix.isdigit() else None
+        path = self.inbox / f'{stem if index is not None else race_id}.json'
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != self.inbox.resolve():
+            raise ValueError('Race not found.')
+        with path.open('rb') as stream:
+            raw = stream.read(MAX_RACE + 1)
+        if len(raw) > MAX_RACE:
+            raise ValueError('Race is too large.')
+        data = json.loads(raw.decode('utf-8-sig'))
+        entries = data if isinstance(data, list) else [data]
+        if index is None:
+            if len(entries) != 1:
+                raise ValueError('Select one saved race to export.')
+            index = 0
+        if index >= len(entries) or not isinstance(entries[index], dict):
+            raise ValueError('Race not found.')
+        selected = json.dumps(entries[index], ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
+        digest = hashlib.sha256(raw if len(entries) == 1 else selected).hexdigest()
+        if expected_sha256 is not None and expected_sha256 != digest:
+            raise StaleAnalysis('The saved race changed. Reopen it before exporting.')
+        # A single capture keeps its original bytes. A multi-race file exports
+        # only the selected record, with Python preserving integer precision.
+        if self.settings.get('anonymizeExports', True):
+            return json.dumps(anonymize_trainers(entries[index]), ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
+        return raw if isinstance(data, dict) else selected
+
     def delete_race(self, race_id):
         if not isinstance(race_id, str) or not 1 <= len(race_id) <= 240 or any(part in race_id for part in ('/', '\\', '..')):
             raise ValueError('Invalid race.')
@@ -1046,6 +1117,10 @@ def make_handler(service):
                     self.send(200, result if summary else {'races': result})
                 elif path == '/api/races/latest':
                     self.send(200, next(iter(service.races(1)), {'filename': None, 'receivedAt': None, 'sha256': None, 'data': None}))
+                elif path.startswith('/api/races/') and path.endswith('/source'):
+                    race_id = unquote(path[len('/api/races/'):-len('/source')])
+                    expected = parse_qs(url.query).get('sha256', [None])[0]
+                    self.send(200, raw=service.race_source(race_id, expected))
                 elif path.startswith('/api/races/'):
                     found = service.races(1, unquote(path[len('/api/races/'):]))
                     self.send(200 if found else 404, found[0] if found else {'error': 'Race not found.'})
