@@ -204,9 +204,8 @@ def load_identity(directory, key_size=2048):
     # The supervisor and collector may initialize together. Never issue two
     # different identities or delete the old signing key during another write.
     with (directory / 'identity.lock').open('a+b') as lock:
-        if lock.seek(0, 2) == 0:
-            lock.write(b'\0')
-            lock.flush()
+        # Windows can lock past EOF. Writing an initial byte before acquiring
+        # the lock races with another opener that already locked that byte.
         deadline = time.monotonic() + 20
         while True:
             lock.seek(0)

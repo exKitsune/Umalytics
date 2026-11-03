@@ -3,10 +3,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import ctypes
 import json
+import msvcrt
 from ctypes import wintypes
 import subprocess
 import sys
 import tempfile
+from threading import Event
 from unittest.mock import patch
 
 from cryptography import x509
@@ -26,6 +28,31 @@ def snapshot(folder):
 
 with tempfile.TemporaryDirectory(prefix='capture-identity-', dir=ROOT / '.cache') as temporary:
     base = Path(temporary)
+    # An empty lock file may already be locked by another initializer. The
+    # contender must wait for it, without first trying to write the locked byte.
+    contended = base / 'contended'
+    contended.mkdir()
+    attempted = Event()
+    locking = msvcrt.locking
+    with (contended / 'identity.lock').open('w+b') as held:
+        locking(held.fileno(), msvcrt.LK_NBLCK, 1)
+
+        def observe_lock(fd, mode, size):
+            try:
+                return locking(fd, mode, size)
+            except OSError:
+                if mode == msvcrt.LK_NBLCK:
+                    attempted.set()
+                raise
+
+        with ThreadPoolExecutor(max_workers=1) as workers, patch('msvcrt.locking', observe_lock):
+            pending = workers.submit(load_store, contended)
+            try:
+                assert attempted.wait(5), 'Initializer did not wait for the existing lock'
+                assert not pending.done(), 'Initializer must wait until the lock is released'
+            finally:
+                locking(held.fileno(), msvcrt.LK_UNLCK, 1)
+            pending.result(timeout=20)
     fresh = base / 'fresh'
     # Concurrent supervisor/collector initialization must share one identity.
     with ThreadPoolExecutor(max_workers=4) as workers:
