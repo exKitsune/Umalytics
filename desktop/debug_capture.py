@@ -75,7 +75,7 @@ class DebugCapture:
                 if sys.platform == 'win32':
                     from capture_identity import restrict
                     restrict(self.archive.folder)
-                atomic_json(self.archive.flag, {'enabled': True, 'mode': mode,
+                atomic_json(self.archive.flag, {'enabled': True, 'mode': mode, 'session': secrets.token_hex(16),
                             **({'expiresAt': time.time() + 30 * 60} if mode == '30m' else {})})
             self.challenge = None
             return self.status()

@@ -27,6 +27,7 @@ from veterans import record_veterans
 
 API_HOST = 'api.games.\x75mamusume.com'
 PREFIXES = ('/\x75mamusume/',)
+IGNORED_RACE_ROUTES = frozenset(('/\x75mamusume/champions/get_race_history_info',))
 MAX_BODY = 16 * 1024 * 1024
 MAX_SETTINGS = 16 * 1024
 
@@ -74,7 +75,7 @@ class RaceObserver:
                        'write_failed': 0, 'races_filtered': 0, 'collection_paused': 0}
         self.status.update(api_http_requests=0, api_http_responses=0,
                            http_connect_requests=0, api_connect_requests=0,
-                           development_capture=0, development_captures_written=0,
+                           development_capture=0, development_captures_written=0, development_captures_dropped=0,
                            activeGameConnections=0, lastGameTrafficAt=None)
 
     def load(self, loader):
@@ -212,7 +213,8 @@ class RaceObserver:
     def _eligible(self, flow):
         request = flow.request
         return (self._api_flow(flow) and request.method == 'POST'
-                and request.path.split('?', 1)[0].startswith(PREFIXES))
+                and request.path.split('?', 1)[0].startswith(PREFIXES)
+                and request.path.split('?', 1)[0] not in IGNORED_RACE_ROUTES)
 
     def requestheaders(self, flow):
         if not self._eligible(flow) and not self._full_capture(flow):
@@ -228,8 +230,7 @@ class RaceObserver:
     def _record_full(self, flow, phase):
         if self._full_capture(flow):
             try:
-                self.development_capture.record(flow, phase)
-                self._count('development_captures_written')
+                self.development_capture.submit(flow, phase, self._count)
             except (OSError, ValueError, TypeError):
                 self._count('write_failed')
 
@@ -402,6 +403,8 @@ class RaceObserver:
             self.monitor.cancel()
         self.contexts.clear()
         self.pool.shutdown(wait=True, cancel_futures=True)
+        if self.development_capture:
+            self.development_capture.close()
         self.status['state'] = 'stopped'
         self._write_status(force=True)
         self.status_socket.close()

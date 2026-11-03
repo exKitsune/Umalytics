@@ -28,7 +28,7 @@ from capture_store import load_store
 HOST = 'api.games.\x75mamusume.com'
 
 
-def workflow(folder, full_capture=False):
+def workflow(folder, full_capture=False, ignored_history=False):
     data = folder / 'Umalytics-data'
     data.mkdir()
     CertStore.create_store(data / 'proxy', 'mitmproxy', 2048, organization='Preserved Fixture CA', cn='Preserved Fixture CA')
@@ -57,6 +57,8 @@ def workflow(folder, full_capture=False):
     key_pem.write_bytes(upstream_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     payload = json.dumps({'data': {'race_scenario': 'SYNTHETIC_LOOPBACK_SCENARIO', 'race_course_id': 10606,
         'auth': {'token': 'PRIVATE_LOOPBACK_FIXTURE'}, 'trainer_info': {'name': 'PRIVATE_LOOPBACK_FIXTURE'}}}).encode()
+    route = '/\x75mamusume/champions/get_race_history_info' if ignored_history else '/\x75mamusume/room_match/result'
+    wire_path = route + '?fixture=1' if ignored_history else route
     requests = []
     class Upstream(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -137,7 +139,7 @@ response = requestheaders
             assert leaf.issuer == ca.subject
             assert leaf.fingerprint(hashes.SHA256()) != upstream_cert.fingerprint(hashes.SHA256()), 'TLS was passed through instead of inspected.'
             request_body = b'{}'
-            encrypted.sendall(f'POST /\x75mamusume/room_match/result HTTP/1.1\r\nHost: {HOST}\r\nContent-Type: application/json\r\nContent-Length: {len(request_body)}\r\nConnection: close\r\n\r\n'.encode() + request_body)
+            encrypted.sendall(f'POST {wire_path} HTTP/1.1\r\nHost: {HOST}\r\nContent-Type: application/json\r\nContent-Length: {len(request_body)}\r\nConnection: close\r\n\r\n'.encode() + request_body)
             response = b''
             while True:
                 block = encrypted.recv(65536)
@@ -148,19 +150,24 @@ response = requestheaders
         for _ in range(100):
             stats = json.loads(status.read_bytes())
             outputs = list((data / 'races').glob('*.json'))
-            if stats['races_written'] == 1 and len(outputs) == 1:
+            if (stats['api_http_responses'] == 1
+                    and stats['races_written'] == int(not ignored_history) and len(outputs) == int(not ignored_history)
+                    and (not full_capture or stats['development_captures_written'] == 2)):
                 break
             time.sleep(.05)
         else:
             raise AssertionError('Observer did not extract the synthetic HTTPS response: ' + json.dumps(stats))
-        assert requests == [('/\x75mamusume/room_match/result', b'{}')]
-        for key in ('api_tls_hellos', 'api_tls_established', 'api_http_requests', 'api_http_responses', 'eligible_requests', 'eligible_responses', 'races_written'):
+        assert requests == [(wire_path, b'{}')]
+        for key in ('api_tls_hellos', 'api_tls_established', 'api_http_requests', 'api_http_responses'):
             assert stats[key] == 1, (key, stats[key])
         assert stats['api_tls_failed'] == 0 and stats['decode_failed'] == 0 and stats['write_failed'] == 0
-        saved_raw = outputs[0].read_bytes()
-        saved = json.loads(saved_raw)
-        assert saved['race_scenario'] == 'SYNTHETIC_LOOPBACK_SCENARIO' and saved['race_category'] == 'practice'
-        assert b'PRIVATE_LOOPBACK_FIXTURE' not in saved_raw and b'auth' not in saved_raw and b'trainer' not in saved_raw
+        for key in ('eligible_requests', 'eligible_responses', 'races_written'):
+            assert stats[key] == int(not ignored_history), (key, stats[key])
+        if not ignored_history:
+            saved_raw = outputs[0].read_bytes()
+            saved = json.loads(saved_raw)
+            assert saved['race_scenario'] == 'SYNTHETIC_LOOPBACK_SCENARIO' and saved['race_category'] == 'practice'
+            assert b'PRIVATE_LOOPBACK_FIXTURE' not in saved_raw and b'auth' not in saved_raw and b'trainer' not in saved_raw
         captures = list((data / 'development-captures').glob('*.json.gz'))
         assert stats['development_capture'] == int(full_capture)
         if full_capture:
@@ -187,6 +194,7 @@ response = requestheaders
 
 if __name__ == '__main__':
     for full_capture in (False, True):
-        with tempfile.TemporaryDirectory(prefix='capture-inspection-', dir=ROOT / '.cache') as temporary:
-            workflow(Path(temporary), full_capture)
-    print('HTTPS inspection passed with development capture off/on: verified TLS, exact raw capture only when enabled, sanitized race export, fixed hostname certificate, protected key, CA signing key removed.')
+        for ignored_history in (False, True):
+            with tempfile.TemporaryDirectory(prefix='capture-inspection-', dir=ROOT / '.cache') as temporary:
+                workflow(Path(temporary), full_capture, ignored_history)
+    print('HTTPS inspection passed with development capture off/on: verified TLS, exact raw capture only when enabled, sanitized race export, history-results excluded from collection but retained in raw debug capture, fixed hostname certificate, protected key, CA signing key removed.')

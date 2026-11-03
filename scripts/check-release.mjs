@@ -31,7 +31,7 @@ const groups={
   compatibility:[py('-m','unittest','discover','-s','tests/globalsim','-p','test_*.py'),[process.execPath,['tests/globalsim/test_contracts.mjs','--python',python]],...files(['launcher-identity-workflow'])],
   'windows-service':files(['app-components-workflow','updater/test_release_flow','portable-storage-workflow']),
   'windows-handoff':files(['frozen-handoff-workflow']),
-  'windows-capture':files(['proxy-envelope-workflow','local-catalog-workflow','debug-controls-workflow','saved-data-workflow','root-constraints-workflow','capture-identity-workflow','capture-inspection-workflow']),
+  'windows-capture':files(['proxy-envelope-workflow','local-catalog-workflow','debug-controls-workflow','debug-writer-workflow','saved-data-workflow','root-constraints-workflow','capture-identity-workflow','capture-inspection-workflow']),
 };
 if(group&&!Object.hasOwn(groups,group))throw new Error(`Unknown check group: ${group}`);
 const selected=group?[group]:Object.keys(groups).filter(name=>process.platform==='win32'||!name.startsWith('windows-'));
