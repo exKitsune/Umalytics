@@ -1,5 +1,6 @@
 """Read a real SQLite master, prefer it to stale bundles, refresh without network."""
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -77,10 +78,14 @@ with tempfile.TemporaryDirectory(prefix='local-catalog-', dir=ROOT / '.cache') a
         assert 'NEVER_EXPORT_PRIVATE' not in json.dumps(first)
         live = json.loads(reader.metadata(json.dumps(stale).encode()))
         assert live['skillNames']['2048'] == 'MDB skill'
+        before_update = master.stat()
         db = sqlite3.connect(master)
         db.execute("UPDATE text_data SET text='MDB updated' WHERE category=47 AND [index]=2048")
         db.commit()
         db.close()
+        # A same-size SQLite commit can share the filesystem's cached timestamp.
+        os.utime(master, ns=(before_update.st_atime_ns, before_update.st_mtime_ns))
+        assert master.stat().st_size == before_update.st_size
         now[0] += 61
         assert catalog.check()
         assert catalog.snapshot()['fallback']['skillNames']['2048'] == 'MDB updated'

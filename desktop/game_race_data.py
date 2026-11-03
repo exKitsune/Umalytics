@@ -30,6 +30,15 @@ def master_candidates():
     return tuple(dict.fromkeys(root / '\x43ygames' / '\x75mamusume' / 'master' / 'master.mdb' for root in roots))
 
 
+def master_stamp(path, stat=None):
+    stat = stat or path.stat()
+    # SQLite's header includes its transaction change counter and schema cookie.
+    # File timestamps alone can miss a same-size commit on fast/cached filesystems.
+    with path.open('rb') as stream:
+        header = stream.read(100)
+    return stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino, header
+
+
 class GameRaceData:
     def __init__(self, candidates=master_candidates):
         self.candidates = candidates
@@ -46,7 +55,7 @@ class GameRaceData:
                     if path.is_file() and not any(p.is_symlink() or getattr(p, 'is_junction', lambda: False)() for p in (path, *path.parents)):
                         stat = path.stat()
                         if 0 < stat.st_size <= 512 * 1024 * 1024:
-                            selected = (path, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+                            selected = (path, *master_stamp(path, stat))
                             break
                 except OSError:
                     continue
@@ -109,8 +118,7 @@ class GameRaceData:
                         except (sqlite3.Error, KeyError, IndexError, TypeError, ValueError):
                             pass
                 digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                stat = path.stat()
-                if selected[1:] != (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size):
+                if selected[1:] != master_stamp(path):
                     self.stamp = None
                     return self.projection
                 if career:
