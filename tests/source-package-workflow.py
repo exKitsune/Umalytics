@@ -112,6 +112,17 @@ class SourcePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
             download(url, cache, expected=hashlib.sha256(b'expected').digest())
 
+    def test_generated_icon_bytes_are_exported_without_allowing_code_changes(self):
+        icon=self.source/'src-tauri/icons/icon.png'
+        icon.parent.mkdir(parents=True)
+        icon.write_bytes(b'committed icon')
+        self.commit()
+        icon.write_bytes(b'regenerated with locked Pillow')
+        self.assertEqual(package.app_files(self.source)['src-tauri/icons/icon.png'],icon.read_bytes())
+        (self.source/'src/lib.rs').write_bytes(b'changed code')
+        with self.assertRaisesRegex(ValueError,'must be committed'):
+            package.app_files(self.source)
+
     def test_license_and_public_copy_are_exact(self):
         self.assertEqual((ROOT / 'LICENSE').read_bytes(), (ROOT / 'public/LICENSE.txt').read_bytes())
         self.assertEqual(json.loads((ROOT / 'package.json').read_bytes())['license'], 'AGPL-3.0-only')

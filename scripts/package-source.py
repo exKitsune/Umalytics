@@ -15,6 +15,9 @@ from source_dependencies import collect
 ROOT = Path(__file__).resolve().parents[1]
 STAMPED = {'desktop/build-info.json', 'package.json', 'package-lock.json',
            'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock', 'src-tauri/tauri.conf.json'}
+# generate_icon.py runs with the locked build Pillow version. Its encoded PNG
+# and ICO bytes can differ from the checked-in assets; export the built bytes.
+GENERATED = {'src-tauri/icons/icon.ico', 'src-tauri/icons/icon.png', 'src-tauri/icons/icon.rgba'}
 
 
 def git(root, *args, data=None):
@@ -25,8 +28,8 @@ def git(root, *args, data=None):
 def app_files(root, development=False):
     changed = set(git(root, 'diff', 'HEAD', '--name-only').decode().splitlines())
     untracked = git(root, 'ls-files', '--others', '--exclude-standard', '-z').decode().split('\0')
-    if not development and (changed - STAMPED or any(untracked)):
-        raise ValueError('Release source must be committed; only version stamping may change tracked files')
+    if not development and (changed - STAMPED - GENERATED or any(untracked)):
+        raise ValueError('Release source must be committed; only version stamping and generated icons may change tracked files')
     names = git(root, 'ls-files', '-z').decode().split('\0')
     if development:
         names += untracked
