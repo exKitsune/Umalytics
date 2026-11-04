@@ -2,6 +2,8 @@ use std::{path::Path, process::{Command, Stdio}};
 #[path="../../../src-tauri/src/service_startup.rs"]mod service_startup;
 #[path="../../../src-tauri/src/updater.rs"]mod updater;
 #[path="../../../src-tauri/src/storage_paths.rs"]mod storage_paths;
+#[path="../../../src-tauri/src/game_launcher.rs"]mod game_launcher;
+mod diagnostics { pub fn event(_: &'static str) {} }
 #[cfg(test)]
 #[path="../../../src-tauri/src/tray_policy.rs"]mod tray_policy;
 #[cfg(windows)]use std::os::windows::process::CommandExt;
@@ -15,6 +17,10 @@ fn main(){
         std::fs::write(receipts.join(std::process::id().to_string()),"owned fixture").unwrap();
     }
     let arguments:Vec<String>=std::env::args().skip(1).collect();
+    if arguments.first().is_some_and(|arg|arg=="--launch-game-workflow"){
+        let result=game_launcher::launch(&arguments[5..],&service_startup::ServiceEndpoint{port:arguments[1].parse().unwrap()},Path::new(&arguments[2]),Path::new(&arguments[3]),&arguments[4]);
+        match result{Ok(code)=>std::process::exit(code),Err(error)=>{eprintln!("{error}");std::process::exit(1);}}
+    }
     if arguments.first().is_some_and(|arg|arg=="--delayed-exit-fixture"){
         let install=fixture_install.as_ref().unwrap();
         std::fs::write(install.join("delayed-ready"),"ready").unwrap();

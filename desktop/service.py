@@ -305,7 +305,10 @@ class Service:
                 if active:
                     try:
                         executable, created = process_identity(pid)
-                        if Path(executable).resolve() != Path(process_identity(os.getpid())[0]).resolve():
+                        allowed = {Path(process_identity(os.getpid())[0]).resolve()}
+                        if getattr(self, 'desktop_exe', None):
+                            allowed.add(Path(self.desktop_exe).resolve())
+                        if Path(executable).resolve() not in allowed:
                             raise ValueError('Launcher must use this installation runtime.')
                         self.launcher_pids[pid] = created
                     except OSError as error:
@@ -695,7 +698,9 @@ class Service:
             self.proxy_state = 'certificate_error'
             return
         retry_after = 0
-        while not self.closed.wait(1):
+        first = True
+        while not self.closed.wait(0 if first else 1):
+            first = False
             with self.lock:
                 if (self.ca_dir / 'disabled').exists():
                     self.stop_proxy()

@@ -252,3 +252,48 @@ component identities uses that conservative path too. Frontend assets are gzip
 compressed in the native executable and reference data remains collector-owned.
 The portable download still contains the collector for offline installation;
 separate CI artifacts do not yet mean a smaller app-only download.
+
+## Launch preparation
+
+Desktop, background/autostart and update relaunches now publish two immutable
+frontend files instead of decompressing and checking every UI asset at startup.
+The service decompresses requested entries on demand, verifies their SHA-256,
+and caches up to 16 MiB. Manifest bounds, decompression limits, linked-path
+rejection and cache invalidation protect this path. Existing schema-1 frontend
+directories remain readable. Normal desktop launches compare the packed bytes
+and repair damaged files before publishing the bundle pointer.
+
+Steam launches reuse the matching live collector and current frontend bundle.
+They check the runtime/data identity, runtime digest, frontend manifest and pack
+size; requested frontend content remains individually verified. The native
+wrapper waits for capture, registers its lifetime with the service, forwards
+arguments and the child-only proxy environment, and waits for the game itself.
+This removes a second frozen Python startup. Legacy Python launchers remain
+supported. The collector also performs its first supervision pass immediately,
+removing the unconditional initial one-second delay on every cold capture start.
+
+The packaged native smoke test reports collector readiness, capture readiness,
+warm and cold Steam child creation, and repeated background launch timings.
+It uses a harmless child executable and disposable data; it does not change
+Steam configuration or certificate trust. These timings exclude game-engine
+loading and do not imply an equivalent reduction in time to the game's menu.
+
+One paired Windows packaged run on 2026-11-03, against master `3b1bc8c`,
+measured the following. Both builds used identical simulator bundle contents,
+isolated ports/app identifiers, fresh disposable app data and a hidden WebView.
+
+| Path / milestone | Before | After |
+| --- | ---: | ---: |
+| First desktop launch: service ready | 5.84 s | 5.04 s |
+| First desktop launch: capture ready | 9.00 s | 8.07 s |
+| Steam child, collector already running | 2.30 s | 0.59 s |
+| Repeated background desktop launch | 0.59 s | 0.08 s |
+| Steam child, collector stopped, data retained | 6.84 s | 5.47 s |
+
+These are single-run observations, not medians or fully cold OS-cache results.
+Service/capture milestones are sampled every 250 ms. Child timings come from
+the fixture's output-file timestamp. Background/autostart and update relaunch
+share the optimized preparation path; complete updater duration was not measured
+here. Frozen-runtime extraction and collector/proxy initialization still dominate
+cold starts. Full native checks also passed frontend loading, argument/environment
+forwarding, migration, repeated-launch no-write behavior and owned shutdown.

@@ -242,6 +242,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Native tray policy tests failed.' }
           cargo build --locked --manifest-path tests/updater-helper/Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw 'Native update test harness build failed.' }
+          .cache/proxy-venv/Scripts/python.exe tests/native-launch-workflow.py --harness "$env:CARGO_TARGET_DIR/debug/umalytics-updater-helper-workflow.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native launcher tests failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/appdata-migration-workflow.py --harness "$env:CARGO_TARGET_DIR/debug/umalytics-updater-helper-workflow.exe"
           if ($LASTEXITCODE -ne 0) { throw 'AppData migration tests failed.' }
           .cache/proxy-venv/Scripts/python.exe tests/updater-helper-workflow.py --harness "$env:CARGO_TARGET_DIR/debug/umalytics-updater-helper-workflow.exe"

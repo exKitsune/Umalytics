@@ -29,7 +29,7 @@ const groups={
   inputs:[py('scripts/audit-public-files.py',...(staged?['--staged']:[])),...files(['public-inventory-workflow']),py('desktop/generate_manifest.py','--check'),...files(['history-retirement-workflow','simulator-checkout-workflow','simulator-source-workflow','source-package-workflow'])],
   system:[npm('test')],
   compatibility:[py('-m','unittest','discover','-s','tests/globalsim','-p','test_*.py'),[process.execPath,['tests/globalsim/test_contracts.mjs','--python',python]],...files(['launcher-identity-workflow'])],
-  'windows-service':files(['app-components-workflow','updater/test_release_flow','portable-storage-workflow']),
+  'windows-service':files(['app-components-workflow','frontend-bundle-workflow','updater/test_release_flow','portable-storage-workflow']),
   'windows-handoff':files(['frozen-handoff-workflow']),
   'windows-capture':files(['proxy-envelope-workflow','local-catalog-workflow','debug-controls-workflow','debug-writer-workflow','saved-data-workflow','root-constraints-workflow','capture-identity-workflow','capture-inspection-workflow']),
 };

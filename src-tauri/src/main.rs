@@ -8,6 +8,7 @@ mod diagnostics;
 mod frontend;
 mod tray_policy;
 mod external_links;
+mod game_launcher;
 use service_startup::ServiceEndpoint;
 use sha2::{Digest, Sha256};
 use tauri::{menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -113,10 +114,14 @@ fn extract_service(path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-fn start_service(path: &PathBuf, data: &PathBuf) -> Result<(), String> {
-    frontend::prepare(data)?;
+fn start_service(path: &PathBuf, data: &PathBuf, launch_game: bool) -> Result<(), String> {
+    if launch_game && health().is_some_and(|s|ServiceEndpoint::matches_instance(&s,path,data)
+        && s["runtimeBuildSha256"].as_str()==Some(SERVICE_DIGEST)) && frontend::current(data) {return Ok(());}
     let started=std::time::Instant::now();
     let executable = std::env::current_exe().map_err(|_| "Could not resolve desktop executable.")?;
+    let begin=std::time::Instant::now();
+    frontend::prepare(data)?;
+    diagnostics::detail("frontend_prepared",serde_json::json!({"elapsedMs":begin.elapsed().as_millis(),"ok":true}));
     let result=ServiceEndpoint { port: 4317 }.ensure_service_build(path, data, Some(SERVICE_DIGEST), || {
         extract_service(path)?;
         hidden(Command::new(path).arg("--serve").arg("--data-dir").arg(data).arg("--desktop-exe").arg(executable)).spawn().map_err(|_| "Could not start UmaTrace background service.")?;
@@ -249,7 +254,7 @@ fn main() {
         && !health().is_some_and(|status| ServiceEndpoint::matches_instance(&status, &path, &data));
     if std::env::var_os("UMALYTICS_FOLLOW_SERVICE").is_some() {
         if !follow_service(&path, &data) { diagnostics::event("exit_follow_service_timeout"); std::process::exit(0); }
-    } else if let Err(error) = start_service(&path, &data) { diagnostics::event("service_start_failed"); show_error(&error); std::process::exit(1); }
+    } else if let Err(error) = start_service(&path, &data, launch_game) { diagnostics::event("service_start_failed"); show_error(&error); std::process::exit(1); }
     diagnostics::event("service_connected");
     // Cleanup is not a prerequisite for opening the window. Keep verified,
     // lock-protected cleanup off the relaunch's critical path.
@@ -266,7 +271,10 @@ fn main() {
         let mut tray = std::env::current_exe().ok().and_then(|executable| {
             hidden(Command::new(executable).arg("--background").env("UMALYTICS_FOLLOW_SERVICE", "1")).spawn().ok()
         });
-        let code = hidden(Command::new(&path).args(&arguments)).status().ok().and_then(|s| s.code()).unwrap_or(1);
+        let code = match game_launcher::launch(&arguments,&ServiceEndpoint{port:4317},&path,&data,SERVICE_DIGEST){
+            Ok(code)=>code,
+            Err(error)=>{diagnostics::event("game_launch_failed");show_error(&error);1}
+        };
         diagnostics::detail("game_session_ended", serde_json::json!({"code": code, "ownsService": stop_after_game}));
         if stop_after_game {
             ServiceEndpoint { port: 4317 }.stop_owned(&path, &data);

@@ -3,6 +3,8 @@ import hashlib
 from pathlib import Path
 import sys
 import tempfile
+import threading
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'desktop'))
@@ -33,4 +35,26 @@ with tempfile.TemporaryDirectory() as folder:
             pass
         else:
             raise AssertionError('Development launcher accepted an installed runtime')
-print('Launcher identity checks passed.')
+    desktop = root / 'Umalytics.exe'
+    desktop.write_bytes(b'synthetic desktop identity')
+    instance = SimpleNamespace(desktop_exe=desktop, launcher_lock=threading.RLock(), launcher_pids={},
+                               updater=SimpleNamespace(lock=threading.RLock(), status=lambda:{'phase':'idle'}))
+    import os
+    for launcher, accepted in ((executable, True), (desktop, True), (root/'foreign.exe', False)):
+        with patch('processes.process_identity', side_effect=lambda pid:(str(executable if pid==os.getpid() else launcher),123)):
+            try:
+                service.Service.launcher_state(instance, {'pid':123456,'active':True})
+            except ValueError:
+                assert not accepted
+            else:
+                assert accepted
+                assert instance.launcher_pids[123456]==123
+                service.Service.launcher_state(instance, {'pid':123456,'active':False})
+                assert not instance.launcher_pids
+    instance.updater.status=lambda:{'phase':'restarting'}
+    try:
+        service.Service.launcher_state(instance, {'pid':123456,'active':True})
+        raise AssertionError('Native launch raced an authorized update restart')
+    except ValueError:
+        pass
+print('Launcher identity, native/legacy authorization and update exclusion checks passed.')

@@ -10,15 +10,23 @@ fn main() {
         }
     }
     let root=Path::new("../dist");let mut files=Vec::new();collect(root,root,&mut files);files.sort();
-    let mut source=String::from("pub const FILES:&[(&str,&[u8])]=&[\n");
-    for (index,(name,path)) in files.into_iter().enumerate() {
-        let output=Path::new(&std::env::var("OUT_DIR").unwrap()).join(format!("frontend-{index}.gz"));
+    use sha2::{Digest,Sha256};
+    let mut packed=Vec::new();
+    let mut manifest=serde_json::Map::new();
+    for (name,path) in files {
+        let raw=fs::read(path).unwrap();
         let mut encoder=flate2::write::GzEncoder::new(Vec::new(),flate2::Compression::default());
-        encoder.write_all(&fs::read(path).unwrap()).unwrap();fs::write(&output,encoder.finish().unwrap()).unwrap();
-        let path=output.to_str().unwrap();source.push_str(&format!("({name:?},include_bytes!({path:?})),\n"));
+        encoder.write_all(&raw).unwrap();let compressed=encoder.finish().unwrap();
+        manifest.insert(name,serde_json::json!([packed.len(),compressed.len(),raw.len(),format!("{:x}",Sha256::digest(&raw))]));
+        packed.extend_from_slice(&compressed);
     }
-    source.push_str("];\n");
-    fs::write(Path::new(&std::env::var("OUT_DIR").unwrap()).join("frontend.rs"),source).unwrap();
+    let manifest=serde_json::to_vec(&manifest).unwrap();
+    let id=format!("{:x}",Sha256::digest(&manifest));
+    let out=std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let pack_path=out.join("frontend.pack");let manifest_path=out.join("frontend-manifest.json");
+    fs::write(&pack_path,packed).unwrap();fs::write(&manifest_path,manifest).unwrap();
+    let source=format!("pub const BUNDLE_ID:&str={id:?};\npub const PACK:&[u8]=include_bytes!({:?});\npub const MANIFEST:&[u8]=include_bytes!({:?});\n",pack_path.to_str().unwrap(),manifest_path.to_str().unwrap());
+    fs::write(out.join("frontend.rs"),source).unwrap();
     println!("cargo:rerun-if-changed=../dist");
     println!("cargo:rerun-if-env-changed=UMATRACE_SERVICE_DIGEST");
     println!("cargo:rerun-if-changed=../.cache/desktop-service/UmaTraceService.exe");

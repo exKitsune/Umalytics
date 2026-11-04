@@ -114,7 +114,9 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
     export_path = None
     started = False
     resident = None
+    timings = {}
     try:
+        boot_started = time.perf_counter()
         resident = subprocess.Popen([str(executable), '--background'], creationflags=no_window, env=environment)
         started = True
         for _ in range(240):
@@ -127,6 +129,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         else:
             raise AssertionError('Native background tray did not start its collector.')
         assert health['staticReady'] and not health['certificate']['trusted']
+        timings['coldDesktopServiceMs'] = round((time.perf_counter() - boot_started) * 1000, 2)
         assert health['analysisService'] and health['analysisBackground']['available'], 'Bundled background analysis runtime missing.'
         assert not legacy.exists(), 'The old adjacent data directory was not removed.'
         assert str(executable) in health['launchOption']
@@ -138,6 +141,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         else:
             raise AssertionError('Native embedded collector did not listen.')
         assert health['proxy']['stage'] == 'probe' and not health['proxy']['gameConnected']
+        timings['coldDesktopCaptureMs'] = round((time.perf_counter() - boot_started) * 1000, 2)
         assert health['certificate']['exists'] and not health['certificate']['trusted']
         assert not (data / 'webview').exists()
         assert (data / 'cache/webview/legacy-profile-marker.txt').read_text() == 'legacy browser profile preserved'
@@ -175,9 +179,11 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
                        creationflags=no_window, check=True)
         output = install / 'child-argv.json'
         forwarded = [str(output), '', 'two words', 'quote"inside', 'C:\\ends with slash\\', '日本語', '%command%', '$literal`value', '--check']
+        launch_started = time.time_ns()
         result = subprocess.run([str(executable), '--launch-game', '--', str(fixture), *forwarded],
                                 creationflags=no_window, timeout=30, env=environment)
         assert result.returncode == 37
+        timings['warmSteamChildMs'] = round((output.stat().st_mtime_ns - launch_started) / 1e6, 2)
         assert resident.poll() is None, 'Steam launch closed a tray that was already running.'
         assert own_health(data)['proxy']['listening']
         record = json.loads(output.read_text(encoding='utf-8'))
@@ -201,7 +207,9 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
                   if p.is_file() and p.relative_to(data).parts[0] not in ('cache', 'logs')}
         legacy.mkdir()
         (legacy / 'ignore-after-migration.txt').write_text('stale folder must stay untouched')
+        reopen_started = time.perf_counter()
         subprocess.run([str(executable), '--background'], creationflags=no_window, timeout=60, check=True, env=environment)
+        timings['repeatedDesktopMs'] = round((time.perf_counter() - reopen_started) * 1000, 2)
         assert own_health(data)['proxy']['listening']
         assert resident.poll() is None, 'A second background launch closed the resident tray.'
         changed = [str(p.relative_to(data)) for p, modified in before.items() if p.stat().st_mtime_ns != modified]
@@ -220,9 +228,11 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
             raise AssertionError('Native service/proxy did not release their ports.')
         wait_for_owned_runtime(data)
         assert resident.wait(timeout=15) == 0, 'Native tray stayed alive after the collector was stopped.'
+        launch_started = time.time_ns()
         steam = subprocess.run([str(executable), '--launch-game', '--', str(fixture), *forwarded],
                                creationflags=no_window, timeout=90, env=environment)
         assert steam.returncode == 37
+        timings['coldSteamChildMs'] = round((output.stat().st_mtime_ns - launch_started) / 1e6, 2)
         for _ in range(80):
             if all(port_available(port) for port in (4317, 4327)):
                 break
@@ -231,7 +241,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
             started = True
             raise AssertionError('Steam-owned launch left collection running after the game fixture exited.')
         wait_for_owned_runtime(data)
-        print(json.dumps({'nativeExecutable':'passed', 'appDataInstallation':'passed', 'adjacentDataMigration':'passed',
+        print(json.dumps({'startupTimings':timings, 'nativeExecutable':'passed', 'appDataInstallation':'passed', 'adjacentDataMigration':'passed',
                           'embeddedRuntimeHash':'passed', 'nativeLauncherFixture':'passed',
                           'desktopExportExplorerSelection':'skipped (headless)' if args.headless else 'passed', 'courseSummary':'passed',
                           'residentTrayLifetime':'passed', 'singleInstanceBackground':'passed',

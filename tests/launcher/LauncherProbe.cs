@@ -17,6 +17,7 @@ internal static class LauncherProbe
         [DataMember] public string https_proxy;
         [DataMember] public string all_proxy;
         [DataMember] public string no_proxy;
+        [DataMember] public string sslkeylogfile;
         [DataMember] public string working_directory;
         [DataMember] public bool console_attached;
     }
@@ -29,6 +30,7 @@ internal static class LauncherProbe
             https_proxy = Environment.GetEnvironmentVariable("https_proxy"),
             all_proxy = Environment.GetEnvironmentVariable("all_proxy"),
             no_proxy = Environment.GetEnvironmentVariable("no_proxy"),
+            sslkeylogfile = Environment.GetEnvironmentVariable("SSLKEYLOGFILE"),
             working_directory = Environment.CurrentDirectory,
             console_attached = GetConsoleWindow() != IntPtr.Zero
         };
