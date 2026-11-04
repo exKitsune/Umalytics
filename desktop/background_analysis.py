@@ -14,6 +14,10 @@ from analysis_cache import AnalysisCache
 from simulation_service import StaleAnalysis, digest, read_json
 
 
+class AnalysisInterrupted(Exception):
+    pass
+
+
 class BackgroundAnalysis:
     def __init__(self, service, root):
         self.service, self.root = service, Path(root)
@@ -25,6 +29,8 @@ class BackgroundAnalysis:
         self.volatile = OrderedDict()
         self.failures = {}
         self.active = None
+        self.active_job = None
+        self.generation = 0
         self.last_error = None
         self.checked = {}
         self.last_scan = 0
@@ -121,6 +127,7 @@ class BackgroundAnalysis:
 
     def read(self, key, payload=False):
         with self.lock:
+            generation = self.generation
             cached = self.volatile.get(key)
             if cached:
                 self.volatile.move_to_end(key)
@@ -135,31 +142,41 @@ class BackgroundAnalysis:
             return None
         decoded = json.loads(summary)
         with self.lock:
+            if generation != self.generation:
+                return None
             self.volatile[key] = (decoded, packed)
             while len(self.volatile) > 2:
                 self.volatile.popitem(last=False)
         return decoded, packed if payload else None
 
-    def save(self, key, summary, packed, race_id, date, revision):
+    def save(self, key, summary, packed, race_id, date, revision, generation=None):
         text = json.dumps(summary, separators=(',', ':'), allow_nan=False)
         auth = self.service.simulation.cache_auth_key()
         if not auth:
             raise ValueError('Analysis cache authentication unavailable.')
         signature = hmac.digest(auth, key.encode() + text.encode() + packed, 'sha256')
-        with self.service.lock, self.cache.connect() as db:
-            db.execute('DELETE FROM prepared WHERE race=?', (race_id,))
-            capture = summary.get('entrySha256')
-            if isinstance(capture, str) and len(capture) == 64:
-                # Context/engine cache keys used to accumulate multiple complete
-                # dashboards for the same source capture. Only its latest derived
-                # view is needed; native model caches retain their own bindings.
-                db.execute("DELETE FROM prepared WHERE CASE WHEN json_valid(summary) THEN json_extract(summary,'$.entrySha256') END=?", (capture,))
-            db.execute('INSERT OR REPLACE INTO prepared VALUES (?,?,?,?,?,?,?)', (key, race_id, revision, date, packed, signature, text))
-            self.cache.prune(db)
+        with self.service.lock, self.lock:
+            if generation is not None and (generation != self.generation or self.closed):
+                raise AnalysisInterrupted()
+            with self.cache.connect() as db:
+                db.execute('DELETE FROM prepared WHERE race=?', (race_id,))
+                capture = summary.get('entrySha256')
+                if isinstance(capture, str) and len(capture) == 64:
+                    # Context/engine cache keys used to accumulate multiple complete
+                    # dashboards for the same source capture. Only its latest derived
+                    # view is needed; native model caches retain their own bindings.
+                    db.execute("DELETE FROM prepared WHERE CASE WHEN json_valid(summary) THEN json_extract(summary,'$.entrySha256') END=?", (capture,))
+                db.execute('INSERT OR REPLACE INTO prepared VALUES (?,?,?,?,?,?,?)', (key, race_id, revision, date, packed, signature, text))
+                self.cache.prune(db)
+            self.volatile[key] = (summary, packed)
+            while len(self.volatile) > 2:
+                self.volatile.popitem(last=False)
 
     def request(self, race_id, body):
         if set(body) - {'expectedEntrySha256', 'revision', 'knownKey'} or not self.available:
             raise ValueError('Service analysis unavailable.')
+        with self.lock:
+            generation = self.generation
         snap, key, build = self.identity(race_id, body.get('expectedEntrySha256'))
         if body.get('revision') != build['revision']:
             raise StaleAnalysis('The application was updated. Reload the window.')
@@ -169,20 +186,30 @@ class BackgroundAnalysis:
         with self.lock:
             if self.closed:
                 raise ValueError('Service is shutting down.')
+            if generation != self.generation:
+                raise StaleAnalysis('Analysis cache changed. Reopen the race.')
             job = self.jobs.get(key)
+            if self.active_job and not self.active_job['cancel'].is_set():
+                if self.active_job['key'] == key:
+                    job = self.jobs[key] = self.active_job
+                    job['foreground'] = True
+                    self.node_pool.set_background(False)
+                elif not self.active_job.get('foreground'):
+                    self.active_job['cancel'].set()
             if job and job['phase'] == 'failed' and self.failures.get(race_id, 0) > time.monotonic():
                 raise ValueError(job['error'])
-            if job and job['phase'] in ('complete', 'failed'):
+            if job and (job['phase'] in ('complete', 'failed', 'cancelled') or job['cancel'].is_set()):
                 self.jobs.pop(key)
                 job = None
             if not job:
                 if len(self.jobs) >= 32:
                     for old in list(self.jobs):
-                        if self.jobs[old]['phase'] in ('complete', 'failed'):
+                        if self.jobs[old]['phase'] in ('complete', 'failed', 'cancelled'):
                             self.jobs.pop(old)
                 if len(self.jobs) >= 32:
                     raise ValueError('Analysis queue is full.')
-                self.jobs[key] = dict(raceId=race_id, key=key, snap=snap, build=build, phase='queued')
+                self.jobs[key] = dict(raceId=race_id, key=key, snap=snap, build=build, phase='queued',
+                                      foreground=True, generation=self.generation, cancel=threading.Event())
             self.jobs.move_to_end(key, last=False)  # Foreground ahead of old captures.
             self.wake.set()
         return {'phase': 'queued', 'key': key, 'entrySha256': snap['entry_hash']}
@@ -246,7 +273,8 @@ class BackgroundAnalysis:
             if self.read(key):
                 self.checked[entry['id']] = stamp
                 continue
-            return dict(raceId=entry['id'], key=key, snap=snap, build=build, phase='queued', stamp=stamp)
+            return dict(raceId=entry['id'], key=key, snap=snap, build=build, phase='queued', stamp=stamp,
+                        foreground=False, generation=self.generation, cancel=threading.Event())
         return None
 
     def loop(self):
@@ -264,8 +292,12 @@ class BackgroundAnalysis:
                     job = self.background_candidate()
                 if job:
                     with self.lock:
+                        if not job.get('foreground') and any(j['phase'] == 'queued' for j in self.jobs.values()):
+                            continue
                         job['phase'] = 'running'
                         self.active = job['raceId']
+                        self.active_job = job
+                    self.checkpoint(job)
                     if not self.read(job['key']):
                         self.run(job)
                     job['phase'] = 'complete'
@@ -273,6 +305,10 @@ class BackgroundAnalysis:
                         self.checked[job['raceId']] = job['stamp']
                     self.failures.pop(job['raceId'], None)
                     self.last_error = None
+            except AnalysisInterrupted:
+                if job:
+                    job['phase'] = 'cancelled'
+                job = None
             except StaleAnalysis as error:
                 # A capture or catalog can change while this job is running.
                 # Discard the old result and rescan current inputs without the
@@ -286,27 +322,41 @@ class BackgroundAnalysis:
                     self.last_scan = 0
                 job = None  # Yield before retrying, even if inputs keep changing.
             except Exception as error:
-                self.last_error = str(error)
-                if job:
-                    job.update(phase='failed', error=str(error))
-                    self.failures[job['raceId']] = time.monotonic() + 60
+                if job and job['cancel'].is_set():
+                    job['phase'] = 'cancelled'
+                    job = None
+                    self.last_error = None
+                else:
+                    self.last_error = str(error)
+                    if job:
+                        job.update(phase='failed', error=str(error))
+                        self.failures[job['raceId']] = time.monotonic() + 60
             finally:
                 with self.lock:
                     self.active = None
+                    self.active_job = None
             if job is None:
+                with self.lock:
+                    if any(j['phase'] == 'queued' for j in self.jobs.values()):
+                        continue
                 self.wake.wait(1)
                 self.wake.clear()
 
+    def checkpoint(self, job):
+        if self.closed or job['cancel'].is_set() or job['generation'] != self.generation:
+            raise AnalysisInterrupted()
+
     def run(self, job):
+        self.checkpoint(job)
         race_id, snap = job['raceId'], job['snap']
         simulation = self.service.simulation
-        selected = simulation.submit(race_id, {'expectedEntrySha256': snap['entry_hash']}, transient=True)
+        selected = simulation.submit(race_id, {'expectedEntrySha256': snap['entry_hash']}, transient=True, cancel_event=job['cancel'])
         while selected['phase'] != 'complete':
-            if self.closed:
-                return
+            self.checkpoint(job)
             self.wake.wait(.05)
             self.wake.clear()
             selected = simulation.get(race_id, selected['jobId'])
+        self.checkpoint(job)
         detail = simulation.get(race_id, selected['jobId'], True)
         report = detail['report']
         summary = {'phase': 'complete', 'key': job['key'], 'entrySha256': snap['entry_hash'],
@@ -350,7 +400,8 @@ class BackgroundAnalysis:
                     config = RuntimeConfig(Path(self.node), self.root, self.root, work_root=folder,
                         engine_args=('--max-old-space-size=2048', str(self.worker), '--serve'),
                         expected_engine_sha256=hashlib.sha256(Path(self.node).read_bytes()).hexdigest(),
-                        timeout_seconds=180, max_input_bytes=128*1024*1024, max_output_bytes=16384, low_priority=True)
+                        timeout_seconds=180, max_input_bytes=128*1024*1024, max_output_bytes=16384,
+                        low_priority=not job.get('foreground', False), cancel_event=job['cancel'])
                     # Keep each request self-contained if an idle worker exits.
                     # The worker still reuses its assembled immutable reference.
                     reply, _, _ = self.node_pool.run(config, json.dumps(payload, separators=(',', ':')).encode() + b'\n')
@@ -366,11 +417,8 @@ class BackgroundAnalysis:
         simulation.get(race_id, selected['jobId'])
         entry = self.service.races(1, race_id, summary=True)['races'][0]
         group = 'capture:' + snap['entry_hash']
-        self.save(key, summary, packed, group, entry.get('racedAt') or entry['receivedAt'], job['build']['revision'])
-        with self.lock:
-            self.volatile[key] = (summary, packed)
-            while len(self.volatile) > 2:
-                self.volatile.popitem(last=False)
+        self.checkpoint(job)
+        self.save(key, summary, packed, group, entry.get('racedAt') or entry['receivedAt'], job['build']['revision'], job['generation'])
         with simulation.lock:
             simulation.jobs.pop(selected['jobId'], None)
         job.pop('snap', None)
@@ -379,6 +427,12 @@ class BackgroundAnalysis:
 
     def changed(self):
         with self.lock:
+            self.generation += 1
+            if self.active_job:
+                self.active_job['cancel'].set()
+            for job in self.jobs.values():
+                job['cancel'].set()
+            self.jobs.clear()
             self.volatile.clear()
         self.checked.clear()
         self.last_scan = 0
@@ -386,6 +440,7 @@ class BackgroundAnalysis:
 
     def close(self):
         self.closed = True
+        self.changed()
         self.wake.set()
         self.node_pool.close()
         if self.thread and self.thread is not threading.current_thread():

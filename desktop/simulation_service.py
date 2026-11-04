@@ -84,7 +84,7 @@ class SimulationService:
             raise ValueError('Bundle path leaves installed resources.')
         return path
 
-    def bindings(self, manifest, namespace):
+    def bindings(self, manifest, namespace, cancel_event=None):
         simulators, inferences = {}, {}
         for row in manifest['bundles']:
             kwargs = {key: row[key] for key in ('engine_id', 'version', 'profile', 'artifact_sha256', 'data_sha256')}
@@ -100,7 +100,7 @@ class SimulationService:
                     worker_pool=self.worker_pool if row.get('persistentWorker') is True else None,
                     worker_protocol=row.get('workerProtocol', 'json'),
                     decision_trace_schema=row.get('decisionTraceSchema'),
-                    cache_auth_key=self.cache_auth_key(),
+                    cache_auth_key=self.cache_auth_key(), cancel_event=cancel_event,
                     cache_root=self.service.data_dir / 'cache/globalsim' / namespace,
                     work_root=self.service.data_dir / 'cache/simulation-work'))
                 simulators[binding.engine_id] = binding
@@ -195,7 +195,7 @@ class SimulationService:
         except (OSError, ValueError, TypeError, KeyError):
             return {'schemaVersion': 1, 'available': False, 'reason': 'Engine configuration is unavailable.'}
 
-    def submit(self, race_id, body, transient=False):
+    def submit(self, race_id, body, transient=False, cancel_event=None):
         if set(body) - {'expectedEntrySha256', 'context'} or not re.fullmatch(r'[a-f0-9]{64}', str(body.get('expectedEntrySha256', ''))):
             raise ValueError('Only expectedEntrySha256 and independently sourced context are accepted.')
         context = _external_context(body.get('context')) or None
@@ -204,26 +204,30 @@ class SimulationService:
             if self.closed:
                 raise QueueFull('Analysis service is shutting down.')
             for job in self.jobs.values():
-                if job.get('transient', False) == transient and job['raceId'] == race_id and job['identity'] == snap['identity'] and job['phase'] in ('queued', 'running'):
+                if job.get('transient', False) == transient and job['raceId'] == race_id and job['identity'] == snap['identity'] and job['phase'] in ('queued', 'running') and not job['cancel'].is_set():
                     return self.project(job)
-            if sum(j['phase'] in ('queued', 'running') for j in self.jobs.values()) >= 2:
+            if sum(j['phase'] in ('queued', 'running') and not j['cancel'].is_set() for j in self.jobs.values()) >= 2:
                 raise QueueFull('Analysis is busy. Recorded replay remains available; retry shortly.')
             for ident in list(self.jobs):
                 if len(self.jobs) < 8:
                     break
-                if self.jobs[ident]['phase'] == 'complete' and time.monotonic() - self.jobs[ident].get('accessed', 0) > 20:
+                if self.jobs[ident]['phase'] == 'cancelled' or self.jobs[ident]['phase'] == 'complete' and time.monotonic() - self.jobs[ident].get('accessed', 0) > 20:
                     del self.jobs[ident]
             if len(self.jobs) >= 64:
                 raise QueueFull('Analysis is busy; retry shortly.')
             job = dict(schemaVersion=1, jobId=secrets.token_hex(16), raceId=race_id,
                        entrySha256=snap['entry_hash'], phase='queued', report=None,
-                       identity=snap['identity'], snapshot=snap, accessed=time.monotonic(), transient=transient)
+                       identity=snap['identity'], snapshot=snap, accessed=time.monotonic(), transient=transient,
+                       cancel=cancel_event if cancel_event is not None else threading.Event())
             self.jobs[job['jobId']] = job
             self.executor.submit(self.run, job)
             return self.project(job)
 
     def run(self, job):
         with self.lock:
+            if job['cancel'].is_set() or self.closed:
+                job['phase'] = 'cancelled'
+                return
             job['phase'] = 'running'
         snap = job['snapshot']
         try:
@@ -233,7 +237,7 @@ class SimulationService:
             if current['identity'] != job['identity']:
                 raise StaleAnalysis('Queued selection changed before execution.')
             decision = select_compatibility(capture_hash(snap['capture']), snap['evidence'], snap['registry'])
-            sims, infers = self.bindings(snap['manifest'], snap['identity']) if decision['mode'] != 'recorded_only' else ({}, {})
+            sims, infers = self.bindings(snap['manifest'], snap['identity'], job['cancel']) if decision['mode'] != 'recorded_only' else ({}, {})
             report = evaluate_for_analysis(snap['capture'], snap['registry'], sims,
                 evidence=snap['evidence'], context=snap['context'], inference_bindings=infers)
             report['applicationEvidenceNotes'] = snap['notes']
@@ -248,10 +252,14 @@ class SimulationService:
             if current['identity'] != job['identity']:
                 raise StaleAnalysis('Evidence or support configuration changed during evaluation.')
         except Exception as error:
+            if job['cancel'].is_set():
+                with self.lock:
+                    job['phase'] = 'cancelled'
+                return
             report = evaluate_for_analysis(snap['capture'], {}, {}, evidence=None)
             report['applicationEvidenceNotes'] = [str(error)]
         with self.lock:
-            job.update(phase='complete', report=report)
+            job.update(phase='cancelled' if job['cancel'].is_set() else 'complete', report=report)
 
     def trim_simulation_cache(self):
         from analysis_cache import AnalysisCache
@@ -342,5 +350,7 @@ class SimulationService:
     def close(self):
         with self.lock:
             self.closed = True
+            for job in self.jobs.values():
+                job['cancel'].set()
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.worker_pool.close()

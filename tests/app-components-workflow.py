@@ -4,11 +4,12 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'desktop'))
 from app_components import append_components, read_components
 from frontend import DesktopFrontend
-from updater import UpdateController
+from updater import UpdateController, staging_lock
 
 with tempfile.TemporaryDirectory(prefix='umalytics-components-') as directory:
     root = Path(directory)
@@ -63,8 +64,50 @@ with tempfile.TemporaryDirectory(prefix='umalytics-components-') as directory:
     assert controller.status()['reopenGameRequired']
     active[0] = True
     assert controller.status()['reopenGameRequired'], 'A game launch must not substitute for update verification'
-    marker.unlink()  # The native helper removes this after verified completion.
-    assert not controller.status()['reopenGameRequired']
+    # A fresh controller represents reopening the app after a failed helper or
+    # manually replacing its executable. No update helper is needed to recover.
+    ready = [False]
+    controller = UpdateController(data, old, resources.parent, collector_ready=lambda: ready[0])
+    controller.collector_sha256 = digest
+    assert controller.status()['reopenGameRequired'], 'Starting is not working'
+    ready[0] = True
+    controller.reopen_check_at = 0
+    controller.collector_sha256 = 'a' * 64
+    assert controller.status()['reopenGameRequired'], 'Wrong running build must not clear the flag'
+    controller.collector_sha256 = digest
+    runtime.write_bytes(b'tampered collector')
+    controller.reopen_check_at = 0
+    assert controller.status()['reopenGameRequired'], 'Wrong runtime bytes must not clear the flag'
+    runtime.write_bytes(b'unchanged collector')
+    folder = data / 'cache/update'
+    folder.mkdir(exist_ok=True)
+    backup = folder / 'backup'
+    backup.mkdir()
+    backup.joinpath('journal.json').write_text('{}')
+    controller.reopen_check_at = 0
+    assert controller.status()['reopenGameRequired'], 'Pending rollback must stay authoritative'
+    backup.joinpath('journal.json').unlink()
+    backup.rmdir()
+    with staging_lock(folder):
+        controller.reopen_check_at = 0
+        assert controller.status()['reopenGameRequired'], 'An active helper must not race reconciliation'
+    controller.phase = 'restarting'
+    controller.reopen_check_at = 0
+    assert controller.status()['reopenGameRequired'], 'An in-flight handoff must not clear its flag'
+    controller.phase = 'error'
+    controller.error = 'The update failed.'
+    controller.reopen_check_at = 0
+    assert not controller.status()['reopenGameRequired'], 'Verified working app must recover after failure'
+    assert not marker.exists()
+    assert controller.error == 'The update failed.', 'Clearing an orphan flag must not hide the actual error'
+    # A later failed attempt creates a new flag; reconciliation must still work.
+    marker.write_text('{}')
+    ready[0] = False
+    assert controller.status()['reopenGameRequired']
+    ready[0] = True
+    time.sleep(5.05)
+    assert not controller.status()['reopenGameRequired'], 'Polling must recover automatically once ready'
+    assert not UpdateController(data, old, resources.parent).status()['reopenGameRequired']
     frontend = DesktopFrontend(data)
     base = data / 'runtime/frontend'
     for name, content in (('a', b'old frontend'), ('b', b'new frontend')):

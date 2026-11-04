@@ -65,6 +65,7 @@ class RuntimeConfig:
     worker_pool: Any = field(default=None, repr=False, compare=False)
     worker_protocol: str = 'json'
     low_priority: bool = False
+    cancel_event: Any = field(default=None, repr=False, compare=False)
     skill_catalog: dict | None = field(default=None, repr=False, compare=False)
     decode_frames: bool = True
     # Internal analysis IPC: the consumer validates and decodes retained frames.
@@ -199,6 +200,8 @@ def _run_worker(config: RuntimeConfig, payload: bytes) -> tuple[dict, float, str
     terminate it before unbounded captured output accumulates. The optional
     upstream helper is disabled; the shipped worker creates no child workers.
     """
+    if config.cancel_event is not None and config.cancel_event.is_set():
+        raise _WorkerFailure('CANCELLED', 'Analysis was interrupted')
     if config.worker_pool is not None:
         return config.worker_pool.run(config, payload)
     if len(payload) > config.max_input_bytes:
@@ -263,6 +266,9 @@ def _run_worker(config: RuntimeConfig, payload: bytes) -> tuple[dict, float, str
         deadline = started + config.timeout_seconds
         try:
             while True:
+                if config.cancel_event is not None and config.cancel_event.is_set():
+                    failure = _WorkerFailure('CANCELLED', 'Analysis was interrupted')
+                    break
                 if overflow.is_set():
                     failure = _WorkerFailure("OUTPUT_LIMIT", "Simulator exceeded a configured output limit",
                                              {"streams": list(limits)})
@@ -348,7 +354,7 @@ def _read_cache(path: Path | None, key: str, byte_limit: int, auth_key: bytes | 
         return None
 
 
-def _write_cache(path: Path | None, key: str, modeled: dict, byte_limit: int, auth_key: bytes | None = None):
+def _write_cache(path: Path | None, key: str, modeled: dict, byte_limit: int, auth_key: bytes | None = None, cancel_event=None):
     if path is None:
         return
     model_bytes = _canonical(modeled)
@@ -358,7 +364,10 @@ def _write_cache(path: Path | None, key: str, modeled: dict, byte_limit: int, au
                 "modeledSha256": _digest(model_bytes), "modeled": modeled}
     if auth_key is not None:
         metadata["authentication"] = _cache_mac(auth_key, key, metadata["modeledSha256"])
-    write_shared(path, metadata, model_bytes)
+    from .cache_storage import CACHE_LOCK
+    with CACHE_LOCK:
+        if cancel_event is None or not cancel_event.is_set():
+            write_shared(path, metadata, model_bytes)
 
 
 def _metric_status(metrics: list[dict]) -> str:
@@ -536,7 +545,7 @@ def evaluate_capture(capture: dict, config: RuntimeConfig, *, context: dict | No
                 report["warnings"].append("Decision trace unavailable: " + trace_error)
         if not report["cacheHit"]:
             try:
-                _write_cache(cache_path, report["cacheKey"], modeled, config.max_output_bytes, config.cache_auth_key)
+                _write_cache(cache_path, report["cacheKey"], modeled, config.max_output_bytes, config.cache_auth_key, config.cancel_event)
             except (OSError, ValueError) as error:
                 report["warnings"].append("Simulation result could not be cached: "+str(error))
         return finish(status)

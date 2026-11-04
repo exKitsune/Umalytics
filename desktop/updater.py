@@ -155,11 +155,13 @@ def verify_manifest(raw, signature, public_key):
 
 class UpdateController:
     def __init__(self, data_dir, desktop_exe, resource_root, game_active=lambda: False,
-                 *, opener=None, launch=None):
+                 *, opener=None, launch=None, collector_ready=lambda: False):
         self.data_dir = Path(data_dir).resolve()
         self.desktop_exe = Path(desktop_exe).resolve() if desktop_exe else None
         self.resource_root = Path(resource_root)
         self.game_active = game_active
+        self.collector_ready = collector_ready
+        self.reopen_check_at = 0.0
         self.opener = opener or release_opener()
         self.launch = launch or subprocess.Popen
         self.lock = threading.RLock()
@@ -256,9 +258,32 @@ class UpdateController:
         marker = self.data_dir / 'cache/collector-reopen.json'
         if not marker.is_file() or linked(marker):
             return False
-        # Only the verified native update/rollback completion clears this.
-        # Merely observing a new game process does not prove collector readiness.
-        return True
+        # A failed helper or a manual executable replacement can orphan this
+        # flag. Reconcile only the current, running collector, never just a new
+        # game process. The helper lock and journal keep rollback authoritative.
+        now = time.monotonic()
+        if now < self.reopen_check_at:
+            return True
+        self.reopen_check_at = now + 5
+        if (self.closed.is_set() or self.busy or self.phase in ('waiting-for-game', 'restarting')
+                or not self.collector_sha256 or not self.collector_ready()
+                or not self.desktop_exe):
+            return True
+        folder = self.data_dir / 'cache/update'
+        try:
+            if linked(marker.parent) or linked(folder):
+                return True
+            folder.mkdir(exist_ok=True)
+            with staging_lock(folder):
+                if (folder.joinpath('backup').exists()
+                        or not self.can_keep_collector(self.desktop_exe)):
+                    return True
+                marker.unlink(missing_ok=True)
+            return False
+        except (OSError, ValueError):
+            # A locked helper, unresolved rollback, or filesystem failure must
+            # not be mistaken for successful verification.
+            return True
 
     def _schedule(self):
         while not self.closed.is_set():

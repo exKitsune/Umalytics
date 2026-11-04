@@ -156,7 +156,7 @@ class AnalysisCache:
         return self.path.stat().st_size + sum(entry['_stored_bytes'] for entry in rows if '_path' in entry) + sum(p.stat().st_size for p in self.blob_files())
 
     def update(self, body):
-        with self.lock, self.connect() as db:
+        with self.lock, CACHE_LOCK, self.connect() as db:
             action = body.get('action')
             if action == 'put':
                 key = self.identifier(body.get('key'))

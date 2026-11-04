@@ -42,9 +42,9 @@
   export let onMode:(mode:'simulator'|'umas')=>void;
   export let onNavigate:(view:'setup'|'results',jobId?:string)=>void=()=>{};
   let navigationVersion=0,lastNavigation='';
-  export function cancelNavigation(){navigationVersion++;}
+  export function cancelNavigation(){navigationVersion++;opening=null;}
   export async function navigateTo(next:'setup'|'results',jobId?:string){
-    const version=++navigationVersion;
+    cancelNavigation();const version=navigationVersion;
     if(jobId&&job?.id!==jobId){const loaded=await api<Job>(`simulator/job?id=${encodeURIComponent(jobId)}`);if(version!==navigationVersion)return;job=loaded;if(!setup.participants.length&&!restoredSession)setup=editable(structuredClone(loaded.setup));void loadImpacts();}
     if(version===navigationVersion)view=next;
   }
@@ -126,30 +126,30 @@
   function removeSlot(index:number){setup.participants=normalizePopularity(setup.participants.filter((_,i)=>i!==index).map((p,i)=>({...p,gate:i+1}))); }
   function changeGate(index:number,gate:number){if(setup.shuffleGates)return;const previous=setup.participants[index].gate,other=setup.participants.findIndex((p,i)=>i!==index&&p.gate===gate);if(other>=0)setup.participants[other].gate=previous;setup.participants[index].gate=gate;setup=setup;}
   async function run(){busy=true;error='';try{job=await api<Job>('simulator/run',{setup},token);impactJobs=[];automatic=null;view='results';if(!setup.keepSeed)setup.seed=randomSeed();await poll();}catch(e){error=String(e);}finally{busy=false;}}
-  async function loadImpacts(){if(!job)return;const source=job,id=source.id;automatic=null;const saved=await api<Job[]>(`simulator/impacts?id=${encodeURIComponent(id)}`);if(job?.id!==id)return;impactJobs=saved;
-    if(token&&source.phase==='complete'&&source.total>1&&!source.impactSourceId&&!source.setup.variations){const state=await api<AutomaticSkills>('simulator/auto-impacts',{jobId:id},token);if(job?.id===id)automatic=state;}
+  async function loadImpacts(){if(!job)return;const source=job,id=source.id,version=navigationVersion;automatic=null;const saved=await api<Job[]>(`simulator/impacts?id=${encodeURIComponent(id)}`);if(version!==navigationVersion||job?.id!==id)return;impactJobs=saved;
+    if(token&&source.phase==='complete'&&source.total>1&&!source.impactSourceId&&!source.setup.variations){const state=await api<AutomaticSkills>('simulator/auto-impacts',{jobId:id},token);if(version===navigationVersion&&job?.id===id)automatic=state;}
   }
-  async function refreshAutomatic(){if(!job||!automatic)return;const id=job.id,state=await api<AutomaticSkills>(`simulator/auto-impacts?id=${encodeURIComponent(id)}`);if(job?.id!==id||!state)return;automatic=state;
+  async function refreshAutomatic(){if(!job||!automatic)return;const id=job.id,version=navigationVersion,state=await api<AutomaticSkills>(`simulator/auto-impacts?id=${encodeURIComponent(id)}`);if(version!==navigationVersion||job?.id!==id||!state)return;automatic=state;
     for(const meta of state.jobs){const previous=impactJobs.find(j=>j.id===meta.id);if(previous?.completed===meta.completed&&previous.phase===meta.phase)continue;
-      const next=previous?await refreshJob(previous):await api<Job>(`simulator/job?id=${encodeURIComponent(meta.id)}&impact=1`);if(job?.id!==id)return;impactJobs=[...impactJobs.filter(j=>j.id!==next.id),next];}
+      const next=previous?await refreshJob(previous):await api<Job>(`simulator/job?id=${encodeURIComponent(meta.id)}&impact=1`);if(version!==navigationVersion||job?.id!==id)return;impactJobs=[...impactJobs.filter(j=>j.id!==next.id),next];}
   }
   async function toggleAutomatic(enabled:boolean){if(!job)return;try{const id=job.id,state=await api<AutomaticSkills>('simulator/auto-impacts',{jobId:id,enabled},token);if(job?.id===id)automatic=state;}catch(e){error=String(e);}}
   async function measureImpact(request:ImpactRequest){if(!job||active||busy)return;busy=true;error='';try{const source=job;const input=impactSetup(source.setup,request);impactJob=await api<Job>('simulator/run',{setup:input,impactSourceId:source.id},token);if(job?.id===source.id)impactJobs=[...impactJobs,impactJob];await poll();}catch(e){error=String(e);}finally{busy=false;}}
   async function refreshJob(previous:Job){const next=await api<Job>(`simulator/job?id=${encodeURIComponent(previous.id)}&after=${previous.runCursor??0}${previous.impactSourceId?'&impact=1':''}`);return mergeJobProgress(previous,next);}
-  async function poll(){if(polling||stopped)return;polling=true;try{
-    if(job&&running(job)){const id=job.id;const next=await refreshJob(job);if(job?.id===id){job=next;if(mode==='simulator'&&next.total===1&&next.phase==='complete'&&autoOpened!==id){autoOpened=id;await openRun(0);}if(next.phase==='complete'&&next.total>1)await loadImpacts();if((next as any).openError)error=(next as any).openError;}}
-    if(impactJob&&running(impactJob)){const id=impactJob.id;const next=await refreshJob(impactJob);impactJob=next;if(job?.id===next.impactSourceId)impactJobs=[...impactJobs.filter(j=>j.id!==id),next];if(next.error)error=next.error;}
-    history=await api<typeof history>('simulator/jobs');
+  async function poll(){if(polling||stopped)return;const version=navigationVersion;polling=true;try{
+    if(job&&running(job)){const id=job.id;const next=await refreshJob(job);if(version!==navigationVersion)return;if(job?.id===id){job=next;if(mode==='simulator'&&next.total===1&&next.phase==='complete'&&autoOpened!==id){autoOpened=id;await openRun(0);}if(next.phase==='complete'&&next.total>1)await loadImpacts();if((next as any).openError)error=(next as any).openError;}}
+    if(impactJob&&running(impactJob)){const id=impactJob.id;const next=await refreshJob(impactJob);if(version!==navigationVersion||impactJob?.id!==id)return;impactJob=next;if(job?.id===next.impactSourceId)impactJobs=[...impactJobs.filter(j=>j.id!==id),next];if(next.error)error=next.error;}
+    const list=await api<typeof history>('simulator/jobs');if(version!==navigationVersion||stopped)return;history=list;
     await refreshAutomatic();
-  }catch(e){error=String(e);}finally{polling=false;}}
-  async function historyJob(id:string){error='';job=await api<Job>(`simulator/job?id=${encodeURIComponent(id)}`);autoOpened=id;view='results';impactJobs=[];await loadImpacts();}
+  }catch(e){if(version===navigationVersion&&!stopped)error=String(e);}finally{polling=false;}}
+  async function historyJob(id:string){cancelNavigation();const version=navigationVersion;error='';try{const loaded=await api<Job>(`simulator/job?id=${encodeURIComponent(id)}`);if(stopped||version!==navigationVersion)return;job=loaded;autoOpened=id;view='results';impactJobs=[];impactJob=null;automatic=null;await loadImpacts();}catch(e){if(!stopped&&version===navigationVersion)error=String(e);}}
   async function openRun(index:number){if(!job||opening!==null)return;opening=index;error='';const id=job.id,version=++navigationVersion;try{
     await api('simulator/open',{jobId:id,index},token);
     let ready=false;
     while(!stopped&&version===navigationVersion&&!ready){const status=await api<Job&{readyRuns:number[];openError?:string}>(`simulator/job?id=${encodeURIComponent(id)}&status=1`);if(status.openError)throw new Error(status.openError);ready=status.readyRuns.includes(index);if(!ready)await new Promise(resolve=>setTimeout(resolve,500));}
     if(stopped||version!==navigationVersion)return;
     const {value,refs}=await loadSimulationDashboard(id,index);if(version===navigationVersion)onOpen(value,refs);
-  }catch(e){error=String(e);}finally{opening=null;}}
+  }catch(e){if(!stopped&&version===navigationVersion)error=String(e);}finally{if(version===navigationVersion)opening=null;}}
   async function cancel(){if(progressJob)await api('simulator/cancel',{jobId:progressJob.id},token);await poll();}
   async function download(name:string,data:unknown):Promise<boolean>{
     const bundle=data as {kind?:string;umas?:UmaBuild[];folders?:Library['folders']};
@@ -163,7 +163,7 @@
   }
   async function importFile(file:File|undefined){if(!file)return;try{if(file.size>8*1024*1024)throw new Error('Simulator imports must be under 8 MB.');const value=JSON.parse(await file.text());const imported=importUmas(value,reference);if(imported){await organize({collection:'umas',action:'import',records:imported.umas,folders:imported.folders});notify(imported.umas.length===1?'Uma imported.':`${imported.umas.length} Umas imported.`);}else if(value.kind==='umalytics-setup'){const imported={...value.setup,id:uid()};await save('setups',imported);setup=editable(imported);view='setup';onMode('simulator');}else throw new Error('Choose an exported Uma or simulator setup. Import captured race JSON through the race library.');}catch(e){error=String(e);}finally{if(importInput)importInput.value='';}}
   async function saveSetup(name:string,id:string){const value={...setup,name,id};await save('setups',value);setup=value;setupId=id;}
-  onMount(()=>{void (async()=>{try{await refreshLibrary();history=await api<typeof history>('simulator/jobs');const running=history.find(j=>j.id===restoredSession?.jobId)??history.find(j=>!j.autoImpact&&['running','queued'].includes(j.phase));if(running&&!job){if(running.impactSourceId){impactJob=await api<Job>(`simulator/job?id=${running.id}`);job=await api<Job>(`simulator/job?id=${running.impactSourceId}`);await loadImpacts();}else job=await api<Job>(`simulator/job?id=${running.id}`);}initialized=true;}catch(e){error=String(e);}})();const timer=setInterval(()=>{if(active||opening!==null||(automatic&&(!['complete','error','paused'].includes(automatic.phase)||automatic.activeJob)))void poll();},1000);return()=>{stopped=true;clearInterval(timer);clearTimeout(addedTimer);clearTimeout(actionTimer);};});
+  onMount(()=>{void (async()=>{try{await refreshLibrary();history=await api<typeof history>('simulator/jobs');const running=history.find(j=>j.id===restoredSession?.jobId)??history.find(j=>!j.autoImpact&&['running','queued'].includes(j.phase));if(running&&!job){if(running.impactSourceId){impactJob=await api<Job>(`simulator/job?id=${running.id}`);job=await api<Job>(`simulator/job?id=${running.impactSourceId}`);await loadImpacts();}else job=await api<Job>(`simulator/job?id=${running.id}`);}initialized=true;}catch(e){error=String(e);}})();const timer=setInterval(()=>{if(active||opening!==null||(automatic&&(!['complete','error','paused'].includes(automatic.phase)||automatic.activeJob)))void poll();},1000);return()=>{stopped=true;cancelNavigation();clearInterval(timer);clearTimeout(addedTimer);clearTimeout(actionTimer);};});
 </script>
 <div class="sim-workspace" hidden={mode==='races'}>
   <input class="file-input" bind:this={importInput} type="file" accept=".json" onchange={e=>importFile(e.currentTarget.files?.[0])}/>

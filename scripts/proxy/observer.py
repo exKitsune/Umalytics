@@ -123,7 +123,7 @@ class RaceObserver:
         started = time.monotonic()
         while True:
             await asyncio.sleep(1)
-            self._write_status()
+            self._write_status(force=True)
             if (self.duration and time.monotonic() - started >= self.duration
                     or self.stop_path and Path(self.stop_path).exists()):
                 ctx.master.shutdown()
@@ -139,7 +139,7 @@ class RaceObserver:
             now = time.monotonic()
             data = dict(self.status, stage=self.stage,
                         development_capture=int(bool(self.development_capture and self.development_capture.enabled())))
-            if data == self.last_status:
+            if data == self.last_status and not force:
                 return
             if not self.status_udp_port and not force and now - self.last_write < 0.25:
                 return
@@ -402,9 +402,23 @@ class RaceObserver:
         if self.monitor:
             self.monitor.cancel()
         self.contexts.clear()
-        self.pool.shutdown(wait=True, cancel_futures=True)
-        if self.development_capture:
-            self.development_capture.close()
+        # Every accepted response must finish exporting before normal shutdown.
+        # The event loop is closing, so keep drain heartbeats on a separate thread.
+        self.status['state'] = 'draining'
+        self._write_status(force=True)
+        drained = threading.Event()
+        def heartbeat():
+            while not drained.wait(1):
+                self._write_status(force=True)
+        heartbeat_thread = threading.Thread(target=heartbeat, name='capture-drain', daemon=True)
+        heartbeat_thread.start()
+        try:
+            self.pool.shutdown(wait=True)
+            if self.development_capture:
+                self.development_capture.close()
+        finally:
+            drained.set()
+            heartbeat_thread.join()
         self.status['state'] = 'stopped'
         self._write_status(force=True)
         self.status_socket.close()

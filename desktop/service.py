@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+from copy import deepcopy
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -34,6 +35,8 @@ MAX_LIST = 32 * 1024 * 1024
 CATEGORIES = ('career', 'team-trials', 'practice', 'champions-meeting', 'league-of-heroes', 'other')
 RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+COLLECTOR_HEARTBEAT_TIMEOUT = 5
+COLLECTOR_START_TIMEOUT = 30
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -213,6 +216,9 @@ class Service:
         self.export_lock = threading.Lock()
         self.status_lock = threading.Lock()
         self.collector_status = {}
+        self.collector_status_at = self.collector_started_at = 0.0
+        self.certificate_retry = threading.Event()
+        self.certificate_retry.set()
         self.status_token = secrets.token_urlsafe(32)
         self.status_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.status_socket.bind(('127.0.0.1', 0))
@@ -248,7 +254,8 @@ class Service:
             catalog_base.setdefault(field, {})
         self.catalog = CatalogData(data_dir / 'cache' / 'catalog', catalog_base, closed=self.closed, installed=self.game_race_data.read)
         from updater import UpdateController
-        self.updater = UpdateController(data_dir, desktop_exe, RESOURCE_ROOT, game_active=self.game_active)
+        self.updater = UpdateController(data_dir, desktop_exe, RESOURCE_ROOT, game_active=self.game_active,
+                                        collector_ready=lambda: capture_ready({'proxy': self.proxy_status()}))
         self.runtime_build_sha256 = hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest() if getattr(sys, 'frozen', False) else None
         self.updater.collector_sha256 = self.runtime_build_sha256
         manifest = self.assets.get('/data/update-manifest.json')
@@ -345,18 +352,20 @@ class Service:
         if not isinstance(categories, dict) or set(categories) - set(CATEGORIES) or any(not isinstance(v, bool) for v in categories.values()):
             raise ValueError('Invalid collection categories.')
         preferences = self.validate_preferences(patch.get('preferences', {}))
+        candidate = deepcopy(self.settings)
         if 'collectionEnabled' in patch:
-            self.settings['collectionEnabled'] = patch['collectionEnabled']
+            candidate['collectionEnabled'] = patch['collectionEnabled']
         if 'anonymizeExports' in patch:
-            self.settings['anonymizeExports'] = patch['anonymizeExports']
-        self.settings['categories'].update(categories)
-        self.settings['preferences'].update(preferences)
+            candidate['anonymizeExports'] = patch['anonymizeExports']
+        candidate['categories'].update(categories)
+        candidate['preferences'].update(preferences)
         if 'exportDirectory' in patch:
-            self.settings.pop('exportDirectory', None)
+            candidate.pop('exportDirectory', None)
             if patch['exportDirectory'] not in (None, ''):
-                self.settings['exportDirectory'] = str(self.validate_export_directory(patch['exportDirectory']))
+                candidate['exportDirectory'] = str(self.validate_export_directory(patch['exportDirectory']))
         if persist:
-            atomic_json(self.settings_path, self.settings)
+            atomic_json(self.settings_path, candidate)
+        self.settings = candidate
         return self.public_settings()
 
     def public_settings(self):
@@ -423,8 +432,10 @@ class Service:
 
     def update_preferences(self, patch):
         clean = self.validate_preferences(patch)
-        self.settings['preferences'].update(clean)
-        atomic_json(self.settings_path, self.settings)
+        candidate = deepcopy(self.settings)
+        candidate['preferences'].update(clean)
+        atomic_json(self.settings_path, candidate)
+        self.settings = candidate
         return dict(self.settings['preferences'])
 
     def import_race(self, body):
@@ -511,6 +522,7 @@ class Service:
             if status.get('identityMode') != 'hostname-only':
                 raise ValueError('Restart Umalytics to finish retiring the old capture certificate.')
             if status['trusted']:
+                self.certificate_retry.set()
                 return status
             if os.name != 'nt':
                 raise ValueError('Windows CurrentUser certificate store is required.')
@@ -522,6 +534,7 @@ class Service:
             der = x509.load_pem_x509_certificate((self.ca_dir / 'umalytics-ca-cert.pem').read_bytes()).public_bytes(serialization.Encoding.DER)
             if hashlib.sha256(der).hexdigest().upper() != expected_hash or not current_user_trust(der, install=True):
                 raise ValueError('Windows could not install the reviewed certificate.')
+            self.certificate_retry.set()
             return self.certificate(force=True)
 
     def prepare_certificate(self):
@@ -529,6 +542,7 @@ class Service:
             from capture_store import load_store
             load_store(self.ca_dir)
             (self.ca_dir / 'disabled').unlink(missing_ok=True)
+            self.certificate_retry.set()
             return self.certificate(force=True)
 
     def uninstall_certificate(self, expected_hash):
@@ -596,7 +610,9 @@ class Service:
         return {'path': str(folder), 'revealed': reveal_folder(folder)}
 
     def receive_status(self):
-        while not self.closed.is_set():
+        # Shutdown still needs authenticated drain heartbeats until the owned
+        # collector has finished saving and exited.
+        while not self.closed.is_set() or self.proxy is not None:
             try:
                 raw, address = self.status_socket.recvfrom(16384)
                 if address[0] != '127.0.0.1':
@@ -611,10 +627,13 @@ class Service:
                 clean = {key: value for key, value in status.items()
                          if isinstance(key, str) and len(key) < 64
                          and (type(value) is int and 0 <= value <= 2**63
-                              or key == 'state' and value in ('starting', 'running', 'stopped')
+                              or key == 'state' and value in ('starting', 'running', 'draining', 'stopped')
                               or key == 'stage' and value in ('probe', 'inspect')
                               or key == 'lastGameTrafficAt' and (value is None or isinstance(value, str) and len(value) < 64))}
                 with self.status_lock:
+                    if not secrets.compare_digest(str(message.get('token', '')), self.status_token):
+                        continue
+                    self.collector_status_at = time.monotonic()
                     captured = clean.get('races_written', 0) != self.collector_status.get('races_written', 0)
                     self.collector_status = clean
                 if captured and hasattr(self, 'analysis_service'):
@@ -622,7 +641,7 @@ class Service:
             except socket.timeout:
                 pass
             except (OSError, ValueError, TypeError):
-                if self.closed.is_set():
+                if self.closed.is_set() and self.proxy is None:
                     return
 
     def proxy_status(self):
@@ -634,6 +653,11 @@ class Service:
             with self.status_lock:
                 status.update(self.collector_status)
                 status['state'] = self.collector_status.get('state', 'starting')
+                last = self.collector_status_at
+                age = time.monotonic() - (last or self.collector_started_at)
+                timeout = COLLECTOR_HEARTBEAT_TIMEOUT if last else COLLECTOR_START_TIMEOUT
+                if age > timeout:
+                    status['state'] = 'stalled'
         status['listening'] = status['running'] and status['state'] == 'running'
         status['activeGameConnections'] = status.get('activeGameConnections', 0) if status['listening'] else 0
         status['gameConnected'] = status['activeGameConnections'] > 0
@@ -681,27 +705,54 @@ class Service:
             self.diagnostics.event('collector_stop_requested', child_pid=self.proxy.pid)
             self.stop_path.touch()
             try:
-                self.proxy.wait(timeout=8)
+                while True:
+                    try:
+                        self.proxy.wait(timeout=8)
+                        break
+                    except subprocess.TimeoutExpired:
+                        # Fresh drain heartbeats mean accepted responses are
+                        # still saving. Do not kill their writer on a timer.
+                        if self.proxy_status()['state'] != 'draining':
+                            raise
             except subprocess.TimeoutExpired:
                 self.diagnostics.event('collector_stop_timeout', child_pid=self.proxy.pid)
-                self.proxy.terminate()
+                if os.name == 'nt':
+                    # A frozen collector has a bootloader parent. Stop only the
+                    # tree rooted at our retained Popen child, never by name or
+                    # by a listener discovered elsewhere on the machine.
+                    try:
+                        subprocess.run(['taskkill', '/PID', str(self.proxy.pid), '/T', '/F'],
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL, creationflags=NO_WINDOW, timeout=5)
+                    except (OSError, subprocess.TimeoutExpired) as error:
+                        self.diagnostics.exception('collector_tree_stop_failed', error)
+                if self.proxy.poll() is None:
+                    self.proxy.terminate()
                 self.proxy.wait(timeout=5)
         if self.proxy:
             self.diagnostics.event('collector_stopped', child_pid=self.proxy.pid, code=self.proxy.poll())
         self.proxy = None
 
     def supervise(self):
-        try:
-            self.ensure_certificate()
-        except Exception as error:
-            self.diagnostics.exception('certificate_setup_failed', error)
-            self.proxy_state = 'certificate_error'
-            return
+        identity_ready = False
         retry_after = 0
         first = True
         while not self.closed.wait(0 if first else 1):
             first = False
             with self.lock:
+                if not identity_ready:
+                    if not self.certificate_retry.is_set():
+                        continue
+                    self.certificate_retry.clear()
+                    try:
+                        self.ensure_certificate()
+                        identity_ready = True
+                    except Exception as error:
+                        self.diagnostics.exception('certificate_setup_failed', error)
+                        self.proxy_state = 'certificate_error'
+                        # Retry after explicit repair, without repeating trust
+                        # prompts or ending supervision permanently.
+                        continue
                 if (self.ca_dir / 'disabled').exists():
                     self.stop_proxy()
                     self.proxy_state = 'certificate_removed'
@@ -713,7 +764,7 @@ class Service:
                     continue
                 desired_stage = 'inspect' if trusted else 'probe'
                 if self.proxy and self.proxy.poll() is None:
-                    if getattr(self, 'proxy_stage', None) != desired_stage:
+                    if getattr(self, 'proxy_stage', None) != desired_stage or self.proxy_status()['state'] == 'stalled':
                         self.stop_proxy()
                         retry_after = 0
                     else:
@@ -728,6 +779,8 @@ class Service:
                 self.status_path.unlink(missing_ok=True)
                 with self.status_lock:
                     self.collector_status = {}
+                    self.collector_status_at = 0.0
+                    self.collector_started_at = time.monotonic()
                     self.status_token = secrets.token_urlsafe(32)
                 env = dict(os.environ, UMATRACE_STATUS_TOKEN=self.status_token)
                 try:
@@ -963,10 +1016,13 @@ class Service:
         if isinstance(data, list):
             if index is None or index < 0 or index >= len(data):
                 raise ValueError('Race not found.')
-            if len(data) == 1:
+            if not isinstance(data[index], dict):
+                raise ValueError('Race not found.')
+            # Preserve every surviving ~index identity, hash, tag, and route.
+            data[index] = None
+            if not any(isinstance(entry, dict) for entry in data):
                 path.unlink()
             else:
-                del data[index]
                 temporary = path.with_suffix('.json.tmp')
                 temporary.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
                 temporary.replace(path)
@@ -1212,9 +1268,9 @@ def make_handler(service):
                 elif self.path == '/api/analysis-cache':
                     from analysis_cache import AnalysisCache
                     with service.lock:
+                        if body.get('action') in ('purge', 'revision', 'remove', 'policy') and getattr(service, 'analysis_service', None):
+                            service.analysis_service.changed()
                         self.send(200, AnalysisCache(service.data_dir).update(body))
-                    if getattr(service, 'analysis_service', None):
-                        service.analysis_service.changed()
                 elif self.path == '/api/settings':
                     with service.lock:
                         result = service.update_settings(body)
@@ -1474,7 +1530,7 @@ def main():
         service.library_watcher.join(timeout=1)
         service.analysis_service.close()
         service.simulation.close()
-        worker.join(timeout=15)
+        worker.join()  # stop_proxy bounds failures but lets fresh drains finish.
         service.status_socket.close()
         server.server_close()
         log.event('service_stopped')

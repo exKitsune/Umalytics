@@ -49,10 +49,18 @@ class WorkerPool:
                         self.session = _Session(config, key)
                     session = self.session
                 session.requests.put_nowait(payload)
-                try:
-                    response = session.replies.get(timeout=max(.001, config.timeout_seconds - (time.monotonic() - started)))
-                except queue.Empty:
-                    raise _WorkerFailure('TIMEOUT', 'Simulator exceeded its configured time limit')
+                deadline = started + config.timeout_seconds
+                while True:
+                    if config.cancel_event is not None and config.cancel_event.is_set():
+                        raise _WorkerFailure('CANCELLED', 'Analysis was interrupted')
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise _WorkerFailure('TIMEOUT', 'Simulator exceeded its configured time limit')
+                    try:
+                        response = session.replies.get(timeout=min(.05, remaining))
+                        break
+                    except queue.Empty:
+                        continue
                 if isinstance(response, Exception):
                     raise response
                 metadata, frames = response
@@ -93,6 +101,23 @@ class WorkerPool:
                 if isinstance(error, _WorkerFailure):
                     raise
                 raise _WorkerFailure('INVALID_OUTPUT', 'Reusable simulator protocol failed', {'reason': str(error)}) from error
+
+    def set_background(self, background):
+        # Promote only this pool's owned process; never change another service.
+        with self.state_lock:
+            if self.session and self.session.process.poll() is None:
+                process = self.session.process
+                if os.name == 'nt':
+                    import ctypes
+                    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+                    kernel.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+                    kernel.SetPriorityClass.restype = ctypes.c_int
+                    kernel.SetPriorityClass(int(process._handle), 0x4000 if background else 0x20)
+                elif hasattr(os, 'setpriority'):
+                    try:
+                        os.setpriority(os.PRIO_PROCESS, process.pid, 10 if background else 0)
+                    except OSError:
+                        pass
 
     def close(self):
         # Do not wait for a currently running request's lock or timeout.

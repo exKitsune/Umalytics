@@ -92,6 +92,10 @@ test('cached dashboard exports retain original simulator inputs through reimport
   for(const field of ['rawAliases','distanceFeedbackPrevented','provenance','serviceRoundTrip','cachedDashboardExport','observationalSampler'])assert.equal(report[field],'passed');
 });
 
+test('foreground analysis interrupts background workers and purge rejects old publications',async()=>{
+  await run('python',['tests/analysis-lifecycle-workflow.py'],{cwd:root,windowsHide:true,timeout:60000});
+});
+
 test('service analyzes newest races without a window and reuses authenticated dashboards',async()=>{
   const result=await run('python',[join(root,'tests/service-analysis-workflow.py')],{cwd:root,windowsHide:true,timeout:60000});
   assert.match(result.stdout,/Service analysis:.*passed/);
