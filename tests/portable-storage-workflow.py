@@ -9,7 +9,6 @@ import gzip
 import json
 import os
 from pathlib import Path
-import runpy
 import shutil
 import socket
 import subprocess
@@ -409,5 +408,3 @@ with tempfile.TemporaryDirectory(prefix='portable-storage-', dir=ROOT / '.cache'
         workflows(Path(workspace))
         reveal.assert_called_once_with(Path(workspace) / 'portable/Umalytics-data/json-out/portable-export.json')
 print('Portable storage/service workflows passed: migration, offline notices, import/preferences restart, reference recovery/release upgrade, live collector CA preservation.')
-runpy.run_path(str(ROOT / 'tests/capture-inspection-workflow.py'), run_name='__main__')
-runpy.run_path(str(ROOT / 'tests/service-fixture-lifetime-workflow.py'), run_name='__main__')

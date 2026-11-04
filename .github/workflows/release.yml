@@ -21,7 +21,7 @@ jobs:
   web:
     name: Build desktop frontend
     if: github.ref == 'refs/heads/master' && github.repository == 'exKitsune/Umalytics'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -75,9 +75,34 @@ jobs:
           key: ${{ steps.npm-cache.outputs.cache-primary-key }}
 
   validate:
-    name: Full platform-neutral validation
+    name: Fast source and compatibility checks
     if: github.ref == 'refs/heads/master' && github.repository == 'exKitsune/Umalytics'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.20.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: '.python-version'
+      - name: Audit public inputs and reference manifest
+        run: node scripts/check-release.mjs --group inputs --staged
+      - name: Validate independent simulator and inference compatibility gates
+        run: node scripts/check-release.mjs --group compatibility
+      - name: Upload check results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-results-${{ github.run_id }}
+          path: .cache/release-checks/
+          retention-days: 7
+
+  system:
+    name: Platform-neutral functional workflows
+    needs: validate
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -96,12 +121,15 @@ jobs:
       - name: Install test dependencies
         id: node-deps
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Audit public inputs and reference manifest
-        run: node scripts/check-release.mjs --group inputs --staged
       - name: Run every platform-neutral system workflow once
         run: node scripts/check-release.mjs --group system
-      - name: Validate independent simulator and inference compatibility gates
-        run: node scripts/check-release.mjs --group compatibility
+      - name: Upload check results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-results-${{ github.run_id }}
+          path: .cache/release-checks/
+          retention-days: 7
       - name: Save npm downloads even after test failure
         if: always() && steps.node-deps.outcome == 'success' && steps.npm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -111,7 +139,7 @@ jobs:
 
   windows:
     name: Windows build and native validation
-    needs: web
+    needs: [web, validate]
     runs-on: windows-2022
     timeout-minutes: 60
     defaults:
@@ -326,6 +354,13 @@ jobs:
           compression-level: 0
           retention-days: 14
           if-no-files-found: error
+      - name: Upload check results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-results-${{ github.run_id }}
+          path: .cache/release-checks/
+          retention-days: 7
       - name: Save Python environment even after later test failure
         if: always() && steps.python-deps.outcome == 'success' && steps.python-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -363,7 +398,7 @@ jobs:
 
   publish:
     name: Sign and publish tested desktop
-    needs: [validate, windows]
+    needs: [system, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

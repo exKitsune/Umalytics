@@ -1,7 +1,7 @@
 // The same source checks run locally and in Actions. Packaging smoke tests
 // still run against the actual release executable in the Windows job.
 import {spawnSync} from 'node:child_process';
-import {existsSync,readFileSync,realpathSync} from 'node:fs';
+import {existsSync,mkdirSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
 import {dirname,join} from 'node:path';
 
 let group,python=process.env.UMALYTICS_CHECK_PYTHON??'python',staged=false;
@@ -29,17 +29,22 @@ const groups={
   inputs:[py('scripts/audit-public-files.py',...(staged?['--staged']:[])),...files(['public-inventory-workflow']),py('desktop/generate_manifest.py','--check'),...files(['history-retirement-workflow','simulator-checkout-workflow','simulator-source-workflow','source-package-workflow'])],
   system:[npm('test')],
   compatibility:[py('-m','unittest','discover','-s','tests/globalsim','-p','test_*.py'),[process.execPath,['tests/globalsim/test_contracts.mjs','--python',python]],...files(['launcher-identity-workflow'])],
-  'windows-service':files(['app-components-workflow','frontend-bundle-workflow','updater/test_release_flow','portable-storage-workflow']),
+  'windows-service':files(['app-components-workflow','frontend-bundle-workflow','updater/test_release_flow','portable-storage-workflow','service-fixture-lifetime-workflow']),
   'windows-handoff':files(['frozen-handoff-workflow']),
-  'windows-capture':files(['state-lifecycle-workflow','proxy-envelope-workflow','local-catalog-workflow','debug-controls-workflow','debug-writer-workflow','saved-data-workflow','root-constraints-workflow','capture-identity-workflow','capture-inspection-workflow']),
+  'windows-capture':files(['state-lifecycle-workflow','analysis-lifecycle-workflow','proxy-envelope-workflow','local-catalog-workflow','debug-controls-workflow','debug-writer-workflow','saved-data-workflow','root-constraints-workflow','capture-identity-workflow','capture-inspection-workflow']),
 };
 if(group&&!Object.hasOwn(groups,group))throw new Error(`Unknown check group: ${group}`);
-const selected=group?[group]:Object.keys(groups).filter(name=>process.platform==='win32'||!name.startsWith('windows-'));
+const selected=group?[group]:['inputs','compatibility','frontend','system',...Object.keys(groups).filter(name=>process.platform==='win32'&&name.startsWith('windows-'))];
 for(const name of selected){
+  const report={group:name,node:process.version,python,platform:process.platform,checks:[]};
+  mkdirSync('.cache/release-checks',{recursive:true});
   if(name.startsWith('windows-')&&process.platform!=='win32')throw new Error(`${name} requires Windows.`);
   for(const [command,args] of groups[name]){
     console.log(`[release checks: ${name}] ${args.join(' ')}`);
+    const started=Date.now();
     const result=spawnSync(command,args,{stdio:'inherit',windowsHide:true,shell:false});
+    report.checks.push({command,args,status:result.status,signal:result.signal,error:result.error?.message,durationMs:Date.now()-started});
+    writeFileSync(`.cache/release-checks/${name}.json`,JSON.stringify(report,null,2)+'\n');
     if(result.error)throw result.error;
     if(result.status!==0){console.error(`Release checks failed in ${name}: ${args.join(' ')}`);process.exit(result.status??1);}
   }

@@ -199,6 +199,18 @@ checks, and the Windows service/capture workflows when running on Windows.
 Use `-- --python <executable>` if the build dependencies are in a virtualenv.
 Each group stops on the first failure and names the failed command.
 
+`npm test` alone is not the release gate. Run the full command above, including
+compatibility and Windows checks, against the exact changes being published.
+Per-command outcomes and timings are saved in `.cache/release-checks/`.
+
+Actions runs source and compatibility checks first, without installing npm
+dependencies. Windows packaging and the functional workflows start only after
+those checks pass. The frontend builds in parallel. Linux build and test jobs use Ubuntu 24.04
+instead of following changes to `ubuntu-latest`. Failed validation jobs upload
+their check results for seven days; test failures are not retried or ignored.
+The HTTPS inspection and service-lifetime workflows each run once, as explicit
+checks rather than hidden children of the portable-storage workflow.
+
 A frontend build alone does not test HTTP routes, Windows permissions, updater
 process lifetimes, or simulator compatibility. Packaged and native smoke tests
 still run against the release executable in Actions before publication.

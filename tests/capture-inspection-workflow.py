@@ -147,8 +147,15 @@ response = requestheaders
                     break
                 response += block
             assert b' 200 ' in response.split(b'\r\n', 1)[0] and response.endswith(payload)
+        stats = {}
         for _ in range(100):
-            stats = json.loads(status.read_bytes())
+            try:
+                stats = json.loads(status.read_bytes())
+            except (OSError, ValueError):
+                # A Windows reader can overlap the observer's atomic replace.
+                # Retry only this status read, not the capture or its assertions.
+                time.sleep(.05)
+                continue
             outputs = list((data / 'races').glob('*.json'))
             if (stats['api_http_responses'] == 1
                     and stats['races_written'] == int(not ignored_history) and len(outputs) == int(not ignored_history)

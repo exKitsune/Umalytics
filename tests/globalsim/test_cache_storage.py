@@ -91,9 +91,12 @@ class CompressedStorageTests(unittest.TestCase):
         self.assertLess(len(packed), len(json.dumps(summary)))
 
     def test_new_dashboard_replaces_old_context_for_same_original_capture(self):
-        worker = BackgroundAnalysis.__new__(BackgroundAnalysis)
-        worker.service = SimpleNamespace(lock=threading.RLock(), simulation=SimpleNamespace(cache_auth_key=lambda:self.secret))
-        worker.cache = AnalysisCache(self.root)
+        service = SimpleNamespace(data_dir=self.root, lock=threading.RLock(),
+                                  simulation=SimpleNamespace(cache_auth_key=lambda:self.secret))
+        # Exercise the real initialization; this root has no worker artifacts,
+        # so no background thread or production installation is involved.
+        worker = BackgroundAnalysis(service, self.root)
+        self.addCleanup(worker.close)
         worker.save('a'*64, {'entrySha256':'c'*64}, b'first', 'old-engine-key', '2026', 'e'*64)
         worker.save('b'*64, {'entrySha256':'c'*64}, b'new', 'new-engine-key', '2026', 'f'*64)
         worker.save('d'*64, {'entrySha256':'d'*64}, b'other', 'other-capture', '2026', 'f'*64)
