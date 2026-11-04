@@ -1,4 +1,5 @@
 import type { Race, Runner, RunnerAptitudes } from './types';
+import {fromRace} from '../sandbox/model';
 import { getCourse, runnerName, runnerOutfit, type ReferenceData } from './reference';
 
 export const UMALATOR_URL = 'https://umalator.app/umalator-global/';
@@ -84,7 +85,9 @@ export function buildUmalatorExport(runner: Runner, race: Race, reference: Refer
     guts: runner.stats!.guts!, wisdom: runner.stats!.wisdom!,
     strategy: strategy.name, distanceAptitude: distanceAptitude!, surfaceAptitude: surfaceAptitude!,
     strategyAptitude: strategyAptitude!, mood: mood! - 3, skills, forcedSkillPositions: {} };
-  return { payload, json: JSON.stringify(payload, null, 2), missing, warnings };
+  const uma=fromRace({...race,runners:[runner]},reference!).setup.participants[0].uma;
+  uma.exportContext=payload;
+  return { payload, json: JSON.stringify({...payload,kind:'umalytics-uma',schemaVersion:1,uma,folders:[]}, null, 2), missing, warnings };
 }
 export function jsonDownloadName(...parts: string[]): string {
   const stem = parts.map(part => {

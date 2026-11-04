@@ -62,6 +62,10 @@ test('independent app components preserve capture and serve updated frontend ass
 test('screenshot imports merge one Uma and reject UI text and ambiguous skill tiers',async()=>{
   await run(process.execPath,['--import','tsx','tests/ocr-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
 });
+test('Uma exports preserve full builds and import native runner JSON across storage restart',async()=>{
+  await run(process.execPath,['--import','tsx','tests/uma-transfer-workflow.ts'],{cwd:root,windowsHide:true,timeout:30000});
+});
+
 test('saved Uma aptitudes remain separate from race participant overrides',async()=>{
   await run(process.execPath,['--import','tsx','tests/build-aptitudes-workflow.ts'],{cwd:root,windowsHide:true,timeout:15000});
 });

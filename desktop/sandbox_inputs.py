@@ -1,6 +1,7 @@
 """Explicit custom-race inputs. These never authorize a recorded replay match."""
 from copy import deepcopy
 import random
+import re
 from globalsim_bridge.adapter import WEATHER, GROUND, SEASON, TIME, GRADE, STYLE
 
 APTITUDE_KEYS = ('turf', 'dirt', 'short', 'mile', 'middle', 'long', 'front', 'pace', 'late', 'end')
@@ -50,6 +51,34 @@ def skills(value):
         raise ValueError('Duplicate skill in build.')
     return result
 
+def export_context(value):
+    if not isinstance(value, dict):
+        raise ValueError('Invalid Uma export context.')
+    result = {key: integer(value.get(key), key, 1, 2000) for key in ('speed', 'stamina', 'power', 'guts', 'wisdom')}
+    result['outfitId'] = text(value.get('outfitId'), 'Export outfit', 20)
+    if not result['outfitId'].isdigit() or not 1 <= int(result['outfitId']) <= 2**31 - 1:
+        raise ValueError('Invalid export outfit.')
+    if value.get('strategy') not in ('Nige', 'Senkou', 'Sasi', 'Oikomi', 'Oonige'):
+        raise ValueError('Invalid export running style.')
+    result['strategy'] = value['strategy']
+    for key in ('distanceAptitude', 'surfaceAptitude', 'strategyAptitude'):
+        if value.get(key) not in tuple('GFEDCBAS'):
+            raise ValueError('Invalid export aptitude.')
+        result[key] = value[key]
+    result['mood'] = integer(value.get('mood'), 'Export mood', -2, 2)
+    result['starCount'] = integer(value.get('starCount', 3), 'Export stars', 1, 5)
+    result['uniqueLv'] = integer(value.get('uniqueLv', 1), 'Export unique level', 1, 6)
+    skill_ids = value.get('skills')
+    if not isinstance(skill_ids, list) or len(skill_ids) > 256 or any(not isinstance(v, str) or not re.fullmatch(r'[0-9]+(?:-[A-Za-z0-9_]+)?', v) or len(v) > 80 for v in skill_ids):
+        raise ValueError('Invalid export skills.')
+    result['skills'] = skill_ids
+    forced = value.get('forcedSkillPositions', {})
+    if not isinstance(forced, dict) or len(forced) > 256 or any(not isinstance(k, str) or len(k) > 80 or not isinstance(v, str) or len(v) > 256 for k, v in forced.items()):
+        raise ValueError('Invalid forced skill positions.')
+    result['forcedSkillPositions'] = dict(forced)
+    return result
+
+
 def build(value):
     if not isinstance(value, dict):
         raise ValueError('Uma build required.')
@@ -65,6 +94,8 @@ def build(value):
         'careerWins': integer(value.get('careerWins', 0), 'Career wins', 0, 1000)}
     if 'aptitudes' in value:
         result['aptitudes'] = aptitudes(value['aptitudes'])
+    if 'exportContext' in value:
+        result['exportContext'] = export_context(value['exportContext'])
     return result
 
 def conditions(value):

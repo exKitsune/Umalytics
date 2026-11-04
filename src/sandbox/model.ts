@@ -1,10 +1,11 @@
 import type {Race,Runner,RunnerStats,RunnerSkill} from '../data/types';
+import type {UmalatorUma} from '../data/umalator';
 import {runnerName,type ReferenceData} from '../data/reference';
 import {normalizePopularity,normalizeTeams} from './editor';
 import {buildAptitudes,syncParticipantAptitudes,type UmaAptitudes,type RaceAptitude} from './aptitudes';
 
 export type Aptitude='G'|'F'|'E'|'D'|'C'|'B'|'A'|'S';
-export interface UmaBuild {id:string;name:string;memo:string;charaId:number;cardId:number;stats:RunnerStats;aptitudes?:UmaAptitudes;skills:RunnerSkill[];fans:number;careerWins:number;folderId?:string;tags?:string[];favorite?:boolean;archived?:boolean;createdAt?:string;updatedAt?:string;variantOf?:string}
+export interface UmaBuild {exportContext?:UmalatorUma;id:string;name:string;memo:string;charaId:number;cardId:number;stats:RunnerStats;aptitudes?:UmaAptitudes;skills:RunnerSkill[];fans:number;careerWins:number;folderId?:string;tags?:string[];favorite?:boolean;archived?:boolean;createdAt?:string;updatedAt?:string;variantOf?:string}
 export interface UmaFolder {id:string;name:string;color:string;icon:string}
 export interface Participant {id:string;trainer?:string|null;uma:UmaBuild;surface:Aptitude;distance:Aptitude;strategyAptitude:Aptitude;aptitudeOverrides?:Partial<Record<RaceAptitude,Aptitude>>;strategy:number;mood:number;randomizeMood:boolean;gate:number;team:number|null;popularity:number}
 export interface Setup {teams?:{id:number;name:string}[];autoPopularity?:boolean;schemaVersion:1;id:string;name:string;courseId:number;weather:number;ground:number;season:number;time:number;grade:number;seed:number;keepSeed:boolean;shuffleGates:boolean;moodOverride?:{mode:'fixed';mood:number}|{mode:'random'};count:number;participants:Participant[];variations?:{participantId:string;builds:UmaBuild[]}}

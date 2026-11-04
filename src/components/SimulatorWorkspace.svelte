@@ -4,7 +4,9 @@
   import {readWorkspaceSession,checkpointWorkspace} from '../sandbox/session';
   const restoredSession=readWorkspaceSession().simulator;
   import {mergeJobProgress} from '../sandbox/progress';
-  import {api} from '../api';
+  import {api,saveDesktopExport} from '../api';
+  import {jsonDownloadName} from '../data/umalator';
+  import {exportUma,importUmas} from '../sandbox/uma-transfer';
   import {loadSimulationDashboard} from '../sandbox/dashboard';
   import {type ReferenceData} from '../data/reference';
 
@@ -74,6 +76,8 @@
   onDestroy(()=>{clearTimeout(popularityTimer);popularityVersion++;});
   let screenshotImport=false,screenshotImportId='';
   let screenshotImporter:{clear:()=>void}|undefined;
+  let actionNotice='',actionTimer:ReturnType<typeof setTimeout>|undefined;
+  function notify(text:string){dismissAdded();clearTimeout(actionTimer);actionNotice=text;actionTimer=setTimeout(()=>actionNotice='',5000);}
   let addedRacer=0,addedTimer:ReturnType<typeof setTimeout>|undefined;
   const racerOrdinal=(n:number)=>`${n}${n%100>=11&&n%100<=13?'th':({1:'st',2:'nd',3:'rd'} as Record<number,string>)[n%10]??'th'}`;
   function dismissAdded(){addedRacer=0;clearTimeout(addedTimer);}
@@ -147,10 +151,19 @@
     const {value,refs}=await loadSimulationDashboard(id,index);if(version===navigationVersion)onOpen(value,refs);
   }catch(e){error=String(e);}finally{opening=null;}}
   async function cancel(){if(progressJob)await api('simulator/cancel',{jobId:progressJob.id},token);await poll();}
-  function download(name:string,data:unknown){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name.replace(/[^\w .-]/g,'_')+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-  async function importFile(file:File|undefined){if(!file)return;try{if(file.size>8*1024*1024)throw new Error('Simulator imports must be under 8 MB.');const value=JSON.parse(await file.text());if(value.kind==='umalytics-uma'){await organize({collection:'umas',action:'import',records:[value.uma]});}else if(value.kind==='umalytics-uma-library'&&value.schemaVersion===1){await organize({collection:'umas',action:'import',records:value.umas,folders:value.folders??[]});}else if(value.kind==='umalytics-setup'){const imported={...value.setup,id:uid()};await save('setups',imported);setup=editable(imported);view='setup';onMode('simulator');}else throw new Error('Choose an exported Uma or simulator setup. Import captured race JSON through the race library.');}catch(e){error=String(e);}finally{if(importInput)importInput.value='';}}
+  async function download(name:string,data:unknown):Promise<boolean>{
+    const bundle=data as {kind?:string;umas?:UmaBuild[];folders?:Library['folders']};
+    if(bundle.kind==='umalytics-uma-library'&&bundle.umas&&bundle.umas.length>0){for(const uma of bundle.umas){if(!await download(uma.name,exportUma(uma,bundle.folders??[],reference)))return false;}if(bundle.umas.length>1)notify(`${bundle.umas.length} Umas exported.`);return true;}
+    const filename=jsonDownloadName(name),content=JSON.stringify(data,null,2),label=['umalytics-uma-library','umalytics-uma'].includes((data as {kind?:string})?.kind??'')?'Uma':(data as {kind?:string})?.kind==='umalytics-simulation-results'?'Results':'Setup';
+    try{
+      if(token){const saved=await saveDesktopExport(filename,content,token);const folder=saved.path.replace(/[\\/][^\\/]+$/,'');notify(`${label} exported to ${/[\\/]Downloads$/i.test(folder)?'Downloads folder':folder}.`);}
+      else{const url=URL.createObjectURL(new Blob([content],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify(`${label} download started.`);}
+      return true;
+    }catch(e){error=String(e);return false;}
+  }
+  async function importFile(file:File|undefined){if(!file)return;try{if(file.size>8*1024*1024)throw new Error('Simulator imports must be under 8 MB.');const value=JSON.parse(await file.text());const imported=importUmas(value,reference);if(imported){await organize({collection:'umas',action:'import',records:imported.umas,folders:imported.folders});notify(imported.umas.length===1?'Uma imported.':`${imported.umas.length} Umas imported.`);}else if(value.kind==='umalytics-setup'){const imported={...value.setup,id:uid()};await save('setups',imported);setup=editable(imported);view='setup';onMode('simulator');}else throw new Error('Choose an exported Uma or simulator setup. Import captured race JSON through the race library.');}catch(e){error=String(e);}finally{if(importInput)importInput.value='';}}
   async function saveSetup(name:string,id:string){const value={...setup,name,id};await save('setups',value);setup=value;setupId=id;}
-  onMount(()=>{void (async()=>{try{await refreshLibrary();history=await api<typeof history>('simulator/jobs');const running=history.find(j=>j.id===restoredSession?.jobId)??history.find(j=>!j.autoImpact&&['running','queued'].includes(j.phase));if(running&&!job){if(running.impactSourceId){impactJob=await api<Job>(`simulator/job?id=${running.id}`);job=await api<Job>(`simulator/job?id=${running.impactSourceId}`);await loadImpacts();}else job=await api<Job>(`simulator/job?id=${running.id}`);}initialized=true;}catch(e){error=String(e);}})();const timer=setInterval(()=>{if(active||opening!==null||(automatic&&(!['complete','error','paused'].includes(automatic.phase)||automatic.activeJob)))void poll();},1000);return()=>{stopped=true;clearInterval(timer);clearTimeout(addedTimer);};});
+  onMount(()=>{void (async()=>{try{await refreshLibrary();history=await api<typeof history>('simulator/jobs');const running=history.find(j=>j.id===restoredSession?.jobId)??history.find(j=>!j.autoImpact&&['running','queued'].includes(j.phase));if(running&&!job){if(running.impactSourceId){impactJob=await api<Job>(`simulator/job?id=${running.id}`);job=await api<Job>(`simulator/job?id=${running.impactSourceId}`);await loadImpacts();}else job=await api<Job>(`simulator/job?id=${running.id}`);}initialized=true;}catch(e){error=String(e);}})();const timer=setInterval(()=>{if(active||opening!==null||(automatic&&(!['complete','error','paused'].includes(automatic.phase)||automatic.activeJob)))void poll();},1000);return()=>{stopped=true;clearInterval(timer);clearTimeout(addedTimer);clearTimeout(actionTimer);};});
 </script>
 <div class="sim-workspace" hidden={mode==='races'}>
   <input class="file-input" bind:this={importInput} type="file" accept=".json" onchange={e=>importFile(e.currentTarget.files?.[0])}/>
@@ -159,7 +172,7 @@
   {#if notice}<div class="notice" role="status"><span>{notice}</span><button onclick={()=>notice=''}>×</button></div>{/if}
   {#if !initialized}<p class="muted">Opening local simulator library…</p>{/if}
   {#if mode==='umas'}
-    <UmaLibrary {library} {reference} bind:view={libraryView} onEdit={uma=>edit(null,uma)} onMutate={organize} onExport={download} canAdd={setup.participants.length<18} onChoose={addFromLibrary}/>
+    <UmaLibrary {library} {reference} bind:view={libraryView} onEdit={uma=>edit(null,uma)} onMutate={organize} onExport={download} onNotify={notify} canAdd={setup.participants.length<18} onChoose={addFromLibrary}/>
   {:else}
     <div class="sim-tabs"><button class:active={view==='setup'} onclick={()=>view='setup'}>Race setup</button><button class:active={view==='results'} disabled={!job} onclick={()=>view='results'}>Results{job?` · ${job.completed??0}/${job.total}`:''}</button>{#if active}<span class="muted">Simulating in the service…</span>{/if}</div>
     {#if active||job?.phase==='failed'||job?.phase==='cancelled'||job?.phase==='interrupted'}<div class="job-progress"><progress max={progressJob?.total??1} value={progressJob?.completed??0}></progress><span>{progressJob?.impactSourceId?'Win impact · ':''}{progressJob?.completed??0} / {progressJob?.total} · {progressJob?.phase}</span>{#if active}<button onclick={cancel} title={progressJob?.impactSourceId?"Finishes the races already running; starts no more.":undefined}>Cancel</button>{/if}{#if job?.error}<p role="alert">{job.error}</p>{/if}</div>{/if}
@@ -195,7 +208,7 @@
     {#if visibleHistory.length}<details class="sim-history"><summary>Simulation history · {visibleHistory.length}</summary><div class="history-list">{#each visibleHistory as h}<button onclick={()=>historyJob(h.id)}><strong>{(h as any).name??'Simulation'}</strong><small>{new Date(h.createdAt).toLocaleString()}</small><span>{h.completed}/{h.total} · {h.phase}</span></button>{/each}</div></details>{/if}
   {/if}
 </div>
-{#if addedRacer&&mode==='umas'}<div class="added-toast" role="status" aria-atomic="true"><span class="added-check" aria-hidden="true">✓</span><span>Uma added to race as <strong>{racerOrdinal(addedRacer)} racer</strong></span><button aria-label="Dismiss Uma added message" onclick={dismissAdded}>×</button></div>{/if}
+{#if actionNotice}<div class="added-toast" role="status" aria-atomic="true"><span class="added-check" aria-hidden="true">✓</span><span>{actionNotice}</span><button aria-label="Dismiss notification" onclick={()=>{actionNotice='';clearTimeout(actionTimer);}}>×</button></div>{:else if addedRacer&&mode==='umas'}<div class="added-toast" role="status" aria-atomic="true"><span class="added-check" aria-hidden="true">✓</span><span>Uma added to race as <strong>{racerOrdinal(addedRacer)} racer</strong></span><button aria-label="Dismiss Uma added message" onclick={dismissAdded}>×</button></div>{/if}
 <UmaScreenshotImport bind:this={screenshotImporter} {reference} visible={screenshotImport} onClose={()=>screenshotImport=false} onImport={uma=>{screenshotImport=false;edit(null,uma);screenshotImportId=uma.id;}}/>
 {#if editing}<UmaEditor value={editing} {reference} {library} onApply={apply} onDraft={checkpointEditor} onSave={saveUma} onTemplate={saveTemplate} onClose={()=>editing=null} applyLabel={mode==='umas'?'Save & close':'Use build'}/>{/if}
 {#if saveSetupAs}<SaveAsDialog kind="Setup" current={setup} records={library.setups} onSave={saveSetup} onClose={()=>saveSetupAs=false}/>{/if}

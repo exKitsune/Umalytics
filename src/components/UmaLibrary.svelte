@@ -17,7 +17,9 @@
   export let onChoose:(uma:UmaBuild)=>void;
   export let canAdd=true;
   export let onMutate:(body:unknown)=>Promise<void>=async()=>{};
-  export let onExport:(name:string,value:unknown)=>void=()=>{};
+  export let onExport:(name:string,value:unknown)=>void|Promise<unknown>=()=>{};
+  export let onNotify:(message:string)=>void=()=>{};
+  function closeMenu(event:MouseEvent){const menu=(event.currentTarget as HTMLElement).closest('details');if(menu)menu.open=false;}
   let filter=emptyFilter(),selected:string[]=[],working=false,failure='',moveTo='',tagInput='',tagAction:'addTags'|'removeTags'='addTags';
   let folderDraft:UmaFolder|null=null,deleteUma:UmaBuild|null=null,deleteFolder:UmaFolder|null=null,dragging:string[]=[];
   $: filter.view=view;
@@ -46,7 +48,7 @@
   function startDrag(e:DragEvent,uma:UmaBuild){if(picker||working)return;e.dataTransfer?.setData('application/x-umalytics-umas',JSON.stringify(selected.includes(uma.id)?selected:[uma.id]));if(e.dataTransfer)e.dataTransfer.effectAllowed='move';dragging=selected.includes(uma.id)?selected:[uma.id];}
   function dragOver(e:DragEvent){if(dragging.length){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='move';}}
   async function drop(e:DragEvent,folderId:string){if(!dragging.length)return;e.preventDefault();const ids=dragging;dragging=[];await bulk({folderId},ids);}
-  async function duplicate(uma:UmaBuild){const copy=duplicateUma(uma);if(await mutate({collection:'umas',record:copy}))onEdit(copy);}
+  async function duplicate(uma:UmaBuild){const copy=duplicateUma(uma);if(await mutate({collection:'umas',record:copy})){onNotify('Uma duplicated.');onEdit(copy);}}
   function clearFilters(){filter={...emptyFilter(),view};}
 </script>
 <div class="library-layout" class:picker aria-busy={working}>
@@ -80,7 +82,7 @@
           {#if folder||uma.tags?.length}<div class="tags">{#if folder}<span class="folder-tag" style={`--folder-color:${folder.color}`}><LibraryIcon name={folder.icon} size={12}/>{folder.name}</span>{/if}{#each uma.tags??[] as tag}<button onclick={()=>filter.tag=tag}>{tag}</button>{/each}</div>{/if}
           <div class="mini-stats">{#each stats as key,i}<span style={`--stat:${statColors[key]}`} title={statLabels[i]}><img src={`./career/support-type-${i}.png`} alt={statLabels[i]}/><strong>{uma.stats[key]??'—'}</strong></span>{/each}</div>
           <div class="card-details"><small>{uma.skills.length} skills · {row.cost.total.toLocaleString()} SP{row.cost.unknown?' + ?':''}</small>{#if uma.variantOf}<small title={library.umas.find(u=>u.id===uma.variantOf)?.name??'Original build'}>Variant</small>{/if}</div>
-          <div class="card-actions">{#if picker}<button class="primary" onclick={()=>onChoose(uma)}>Load Uma</button>{:else}<button onclick={()=>onEdit(uma)}>Edit</button><button disabled={!canAdd} onclick={()=>onChoose(uma)}>Add to race</button><details class="card-more"><summary aria-label={`More actions for ${uma.name}`} title="More actions">•••</summary><div><button disabled={working} onclick={()=>duplicate(uma)}><LibraryIcon name="copy" size={15}/><span>Duplicate as variant</span></button><button onclick={()=>onExport(uma.name,exportUmas(library,[uma.id]))}><LibraryIcon name="export" size={15}/><span>Export</span></button><button disabled={working} onclick={()=>bulk({archived:!uma.archived},[uma.id])}><LibraryIcon name="archive" size={15}/><span>{uma.archived?'Restore':'Archive'}</span></button></div></details>{/if}</div>
+          <div class="card-actions">{#if picker}<button class="primary" onclick={()=>onChoose(uma)}>Load Uma</button>{:else}<button onclick={()=>onEdit(uma)}>Edit</button><button disabled={!canAdd} onclick={()=>onChoose(uma)}>Add to race</button><details class="card-more"><summary aria-label={`More actions for ${uma.name}`} title="More actions">•••</summary><div><button disabled={working} onclick={e=>{closeMenu(e);void duplicate(uma);}}><LibraryIcon name="copy" size={15}/><span>Duplicate as variant</span></button><button disabled={working} onclick={e=>{closeMenu(e);void onExport(uma.name,exportUmas(library,[uma.id]));}}><LibraryIcon name="export" size={15}/><span>Export</span></button><button disabled={working} onclick={async e=>{closeMenu(e);const archived=!uma.archived;if(await bulk({archived},[uma.id]))onNotify(archived?'Uma archived.':'Uma restored.');}}><LibraryIcon name="archive" size={15}/><span>{uma.archived?'Restore':'Archive'}</span></button></div></details>{/if}</div>
         </article>
       {/each}
     </div>
