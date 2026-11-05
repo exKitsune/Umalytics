@@ -4,10 +4,23 @@ import { resolve, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { explainFieldRankCondition } from '../src/data/condition-mechanics';
+import {conditionLabel,conditionRows} from '../src/data/condition-label';
 const run = promisify(execFile), root = resolve(import.meta.dirname, '..'), folder = resolve(process.argv[2]);
 await mkdir(folder, { recursive: true });
 const reference = join(folder, 'reference'); await mkdir(reference);
 const metadata = JSON.parse(await readFile(join(root, 'public/data/metadata.json'), 'utf8'));
+for(const [id,label] of [[200992,'2nd–5th of 9 runners.'],[100511,'3rd–4th of 9 runners.'],[900511,'3rd–4th of 9 runners.']] as const){
+  for(const alternative of metadata.skills[id].branches[0].condition.split('@')){
+    const rows=conditionRows(alternative),rank=rows.filter(row=>row.startsWith('order'));
+    assert.equal(rank.length,1,'A conjunction displays one intersected rank range');
+    assert.equal(conditionLabel(rank[0],null,9),label);
+    assert.deepEqual(rows.flatMap(row=>row.split('&')).sort(),alternative.split('&').sort(),'Every underlying predicate survives grouping');
+  }
+}
+assert.equal(conditionLabel('order>=2&order_rate<=50',null,18),'2nd–9th of 18 runners.');
+assert.equal(conditionLabel('order>=3&order_rate<=40',null,12),'3rd–5th of 12 runners.');
+assert.equal(conditionLabel('order>=6&order_rate<=50',null,9),'No position in this 9-runner field satisfies the rule.');
+assert.equal(conditionLabel('order>=2&order<=5&order!=3',null,9),'2nd or 4th–5th of 9 runners.');
 for (const name of ['courses.json', 'reference-source.json', 'simulator-skill-ids.json']) await writeFile(join(reference, name), await readFile(join(root, 'public/data', name)));
 const rules = ['phase==1&order==5', 'phase==1&order_rate<=50', 'phase==1&order_rate>50', 'phase==1&order_rate>=50',
   'phase==1&order_rate==50', 'phase==1&order_rate!=50', 'phase_random==1&order_rate<=50', 'phase==1&order<=2',

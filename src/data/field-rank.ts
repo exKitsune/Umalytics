@@ -57,6 +57,18 @@ function placeList(places: number[]): string {
 /** The percentage is converted to a rounded rank cutoff before comparison.
  * E.g. >50 in a nine-runner race means sixth or farther back. */
 export function explainFieldRankCondition(expression: string, fieldSize?: number): string | null {
+  const atoms = expression.split('&').map(atom => atom.trim());
+  if (atoms.length > 1) {
+    const rules = atoms.map(atom => atom.match(/^(order|order_rate)(==|!=|>=|<=|>|<)(-?\d+(?:\.\d+)?)$/));
+    if (rules.some(rule => !rule)) return null;
+    if (fieldSize == null || !Number.isInteger(fieldSize) || fieldSize < 1)
+      return atoms.map(atom => explainFieldRankCondition(atom)).join(' ');
+    const places = Array.from({length: fieldSize}, (_, i) => i + 1).filter(rank => rules.every(rule => {
+      const [, key, op, raw] = rule!;
+      return compareRankRange([rank, rank], op, rankThreshold(key, Number(raw), fieldSize));
+    }));
+    return places.length ? `${placeList(places)} of ${fieldSize} runners.` : `No position in this ${fieldSize}-runner field satisfies the rule.`;
+  }
   const m = expression.trim().match(/^(order|order_rate)(==|!=|>=|<=|>|<)(-?\d+(?:\.\d+)?)$/);
   if (!m) return null;
   const [, key, op, raw] = m, argument = Number(raw);

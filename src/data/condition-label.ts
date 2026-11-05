@@ -1,5 +1,13 @@
 import type {ReferenceData} from './reference';
 import {explainConditionPredicate,explainFieldRankCondition} from './condition-mechanics';
+/** Intersect rank bounds within one AND branch; never combine OR alternatives. */
+export function conditionRows(alternative:string):string[] {
+  const atoms=alternative.split('&').map(atom=>atom.trim()).filter(Boolean);
+  const rank=atoms.filter(atom=>/^(order|order_rate)(==|!=|>=|<=|>|<)-?\d+(?:\.\d+)?$/.test(atom));
+  if(rank.length<2)return atoms;
+  const first=atoms.indexOf(rank[0]);
+  return atoms.flatMap((atom,index)=>index===first?[rank.join('&')]:rank.includes(atom)?[]:[atom]);
+}
   export function conditionLabel(atom:string,reference:ReferenceData|null=null,fieldSize?:number){
     const rank=explainFieldRankCondition(atom,fieldSize);if(rank)return rank;
     const match=atom.trim().match(/^(\w+)(==|!=|>=|<=|>|<)(-?\d+(?:\.\d+)?)$/);

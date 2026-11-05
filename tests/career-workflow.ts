@@ -29,6 +29,20 @@ assert.equal(careerForHorse(horse,{trained_chara_array:[{...captured,owner_viewe
 assert.equal(careerForHorse(horse,{trained_chara_array:[captured,{...captured}]}),undefined,'Ambiguous identity must not pick one');
 assert.equal(careerForHorse({card_id:100101},{trained_chara_array:[captured]}),undefined,'Card alone does not identify a trained career');
 assert.equal(careerForHorse({...horse,trainer_name:'Test trainer',trained_chara_data:captured},{})!.trainerName,'Test trainer');
+const incompleteHistory={...captured,win_saddle_id_array:[],succession_chara_array:[
+  {position_id:10,card_id:100201,win_saddle_id_array:[]},
+  {position_id:11,card_id:100301,win_saddle_id_array:[12,16]},
+  {position_id:12,card_id:100401},
+]};
+const raceHistory=careerForHorse({...horse,trained_chara_data:incompleteHistory},{})!;
+assert.deepEqual(raceHistory.saddles,[],'An explicitly empty own history remains empty');
+assert.equal(raceHistory.legacies[0].saddles,null,'Empty race ancestor histories are unavailable, not zero wins');
+assert.deepEqual(raceHistory.legacies[1].saddles,[12,16],'Retain populated ancestor histories');
+assert.equal(raceHistory.legacies[2].saddles,null);
+assert.equal(grandparentAffinity(raceHistory.legacies[0],raceHistory.legacies[1]).race,null,'Unavailable history cannot produce a zero affinity bonus');
+assert.deepEqual(parseCareer(incompleteHistory)!.legacies[0].saddles,[],'A complete profile can explicitly report no wins');
+assert.deepEqual(parseCareer(raceHistory),raceHistory,'Unavailable race history survives normalized reimport');
+assert.equal(careerForHorse(horse,{trained_chara_array:[incompleteHistory]})!.legacies[0].saddles,null,'Source-array and nested race careers follow the same rule');
 assert.equal(rating(12099)?.label,'A');assert.equal(rating(12100)?.label,'A+');assert.equal(rating(19600)?.label,'UG');assert.equal(rating(28800)?.label,'UE');
 assert.equal(rating(null,14)?.label,'A+');assert.equal(rating(null,null),null);
 assert.equal(skillCost(200012).cost,90);assert.equal(skillCost(200011).cost,200);assert.equal(skillCost(200013).cost,0);
