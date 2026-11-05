@@ -156,21 +156,13 @@ def geometry_from_packaged_http():
     with opener.open(url + '/data/course-geometry.json', timeout=10) as response:
         raw = response.read()
     geometry = json.loads(raw)
-    assert geometry['schemaVersion'] == 1 and len(geometry['courses']) == 119
+    expected = (root / 'public/data/course-geometry.json').read_bytes()
+    assert hashlib.sha256(raw).digest() == hashlib.sha256(expected).digest(), 'Packaged course geometry differs from the release source'
+    assert geometry['schemaVersion'] == 1 and geometry['courses']
     for binding in geometry['courses'].values():
         assert binding['path'] in geometry['paths']
         if binding.get('loop'):
             assert binding['loop'] in geometry['paths']
-    binding = geometry['courses']['10606']
-    path = geometry['paths'][binding['path']]
-    assert path['distance'] == 2400 and len(path['points']) == 1001
-    first, last = path['points'][0], path['points'][-1]
-    assert abs(first[0] - 95.264) < .002 and abs(first[2] - 193.040) < .002
-    assert abs(last[0] + 217.306) < .002 and abs(last[2] - 180.100) < .002
-    length_xz = sum(((b[0]-a[0])**2 + (b[2]-a[2])**2)**.5 for a, b in zip(path['points'], path['points'][1:]))
-    assert abs(length_xz - 2400) < .1
-    loop = geometry['paths'][binding['loop']]
-    assert len(loop['points']) == 1001 and loop['distance'] == 2095
     return raw
 assert all(port_available(port) for port in (14317, 14327)), 'Existing service/proxy owns packaged test ports; left untouched.'
 with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') as folder:
@@ -455,7 +447,7 @@ with tempfile.TemporaryDirectory(prefix='desktop-smoke-', dir=root / '.cache') a
                           'unchangedSettingsWrites': 'none', 'desktopExportReveal': 'not requested (headless)' if args.headless else 'passed',
                           'actualLauncherStub': 'passed' if args.collector_probe else 'not requested',
                           'referenceAssets': 'passed', 'repositoryUpdate': 'passed' if args.update_reference else 'not requested',
-                          'courseGeometryBindings': '119 passed', 'tokyoGeometry': 'passed', 'invalidGeometryCache': 'rejected',
+                          'courseGeometryBindings': f"{len(json.loads(bundled_geometry)['courses'])} passed", 'releaseGeometryBytes':'matched', 'invalidGeometryCache': 'rejected',
                           'syntheticLibrary': 'passed', 'teamTrialsHistory': 'passed', 'singleInstance': 'passed',
                           'compactCourseConditions': 'passed',
                           'settings': 'passed', 'restartPersistence': 'passed', 'certificateTrustChanged': False, 'actualGameLaunched': False}))

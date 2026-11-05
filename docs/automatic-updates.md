@@ -1,25 +1,37 @@
 # Signed Windows desktop releases
 
 One workflow, `.github/workflows/release.yml`, runs on each push to `master` and
-publishes both Pages and Windows releases. Keeping this workflow file preserves
+publishes Windows releases. Keeping this workflow file preserves
 its increasing release run number. Node.js 22.20.0, Python 3.15.2 and Rust 1.90.0
 are pinned; Rust builds use `Cargo.lock` with `--locked`.
 
-The web build and full platform-neutral validation run concurrently on Linux.
-All 30 Node system workflows run once, with bounded concurrency of two. Set
+The frontend build runs alongside fast source/compatibility checks. After the
+fast checks pass, the functional workflows and Windows build run independently.
+Functional workflows use bounded concurrency of two. Set
 `UMALYTICS_TEST_CONCURRENCY=1` for serial debugging, or up to four for an explicit
-local benchmark. Windows consumes the exact web bundle from that workflow run;
-it retains the source updater/storage tests, all native helper replacement and
-rollback cases, and both packaged and native smoke tests. Those two smoke tests
-run concurrently in separate portable installations on independent ports.
+local benchmark. Windows uses the exact frontend bundle from this run.
 
 | Job | Prerequisites and result |
 | --- | --- |
-| Web | Type-checks and builds the shared SPA once; includes three frontend license inputs |
-| Validation | Audits public files and exact reference bytes; runs every Node system workflow |
-| Windows | Starts after Web; builds and tests the single EXE without installing Node or rebuilding the SPA |
-| Pages | Starts after Web and Validation; deploys the shared SPA without another build or test run |
-| Publish | Starts after Validation and Windows; stamps matching metadata, signs the tested EXE and publishes it |
+| Frontend | Type-checks and builds the SPA and analysis workers |
+| Fast checks | Audits source/reference inputs and simulator compatibility |
+| Functional workflows | Starts after fast checks; runs application workflows |
+| Windows | Starts after frontend and fast checks; builds and tests the EXE |
+| Publish | Requires functional workflows and Windows; signs the tested EXE |
+
+Packaged collector and engine checks run together. The native UI/lifecycle smoke
+runs afterward so its browser startup does not compete with those processes.
+It opens a normal application window on the GitHub runner and verifies the app
+shell, Settings control, and readable desktop preferences. A fresh profile
+must leave the legacy migration flag unset and create no legacy race database.
+Separate browser cases cover stalled legacy detection, failed imports, safe
+retries, and importing real legacy races/preferences. Later cases still verify
+background/tray launches and Steam-owned shutdown.
+
+The native test enables an ephemeral loopback debugger only in its disposable
+WebView profile. The application does not enable remote debugging. Failures save
+startup state, JavaScript errors, native event names, and a screenshot alongside
+the other check results. Only synthetic test data is used.
 
 The last complete baseline pipeline, which published `v0.2.5`, took about 14
 minutes: validation took 368 seconds, the desktop build 320 seconds, native

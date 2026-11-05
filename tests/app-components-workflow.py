@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
-import time
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'desktop'))
 from app_components import append_components, read_components
@@ -105,8 +105,11 @@ with tempfile.TemporaryDirectory(prefix='umalytics-components-') as directory:
     ready[0] = False
     assert controller.status()['reopenGameRequired']
     ready[0] = True
-    time.sleep(5.05)
-    assert not controller.status()['reopenGameRequired'], 'Polling must recover automatically once ready'
+    deadline = controller.reopen_check_at
+    with patch('updater.time.monotonic', return_value=deadline - .01):
+        assert controller.status()['reopenGameRequired'], 'Do not poll before the retry deadline'
+    with patch('updater.time.monotonic', return_value=deadline + .01):
+        assert not controller.status()['reopenGameRequired'], 'Polling must recover automatically once ready'
     assert not UpdateController(data, old, resources.parent).status()['reopenGameRequired']
     frontend = DesktopFrontend(data)
     base = data / 'runtime/frontend'

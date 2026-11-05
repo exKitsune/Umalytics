@@ -129,6 +129,29 @@ export async function savedRaces(): Promise<LibraryEntry[]> {
     req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
   });
 }
+/** Inspect an existing legacy library without creating one on fresh installs. */
+export async function legacySavedRaces():Promise<LibraryEntry[]> {
+  if(typeof indexedDB==='undefined')return [];
+  if(indexedDB.databases){
+    const known=await indexedDB.databases();
+    if(!known.some(db=>db.name==='umatrace-library'))return [];
+  }
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open('umatrace-library');
+    let absent=false;
+    request.onupgradeneeded=()=>{absent=true;request.transaction!.abort();};
+    request.onerror=()=>absent?resolve([]):reject(request.error);
+    request.onblocked=()=>reject(new Error('The older browser library is busy.'));
+    request.onsuccess=()=>{
+      const database=request.result;
+      if(!database.objectStoreNames.contains('races')){database.close();resolve([]);return;}
+      const tx=database.transaction('races','readonly'),read=tx.objectStore('races').getAll();
+      read.onsuccess=()=>resolve(read.result);
+      read.onerror=()=>reject(read.error);
+      tx.oncomplete=tx.onabort=()=>database.close();
+    };
+  });
+}
 export async function deleteSavedRace(id: string): Promise<void> {
   const database = await db();
   await new Promise<void>((resolve, reject) => {

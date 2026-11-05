@@ -304,12 +304,11 @@ jobs:
             if (-not $version) { throw 'WebView2 was not registered after installation.' }
           }
           Write-Output "WebView2 runtime: $version"
-      - name: Smoke test packaged runtime and native executable in parallel
+      - name: Smoke test packaged runtime and engine
         run: |
           $python = Join-Path $PWD '.cache/proxy-venv/Scripts/python.exe'
           $specs = @(
             @{ Name = 'packaged'; Arguments = @('desktop/smoke_packaged.py', '.cache/desktop-service/UmaTraceService.exe', '--headless') },
-            @{ Name = 'native'; Arguments = @('desktop/smoke_native.py', '.cache/dist/Umalytics.exe', '--headless') },
             @{ Name = 'engines'; Arguments = @('tests/simulation-packaged-workflow.py', '.cache/desktop-service/UmaTraceService.exe', '--output', '.cache/packaged-engine-validation.json') }
           )
           $tests = foreach ($spec in $specs) {
@@ -331,6 +330,10 @@ jobs:
             if ($test.Process.ExitCode -ne 0) { $failed += "$($test.Name): exit $($test.Process.ExitCode)" }
           }
           if ($failed.Count) { throw ($failed -join '; ') }
+      - name: Test native frontend and application lifecycle
+        run: |
+          .cache/proxy-venv/Scripts/python.exe desktop/smoke_native.py .cache/dist/Umalytics.exe --headless
+          if ($LASTEXITCODE -ne 0) { throw 'Native frontend/lifecycle checks failed; see native-smoke-report.json.' }
       - name: Package matching corresponding source
         run: |
           .cache/proxy-venv/Scripts/python.exe scripts/package-source.py
@@ -359,7 +362,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-results-${{ github.run_id }}
-          path: .cache/release-checks/
+          path: |
+            .cache/release-checks/
+            .cache/smoke-*.log
+            .cache/native-smoke-report.json
+            .cache/native-smoke-report.png
           retention-days: 7
       - name: Save Python environment even after later test failure
         if: always() && steps.python-deps.outcome == 'success' && steps.python-cache.outputs.cache-hit != 'true'

@@ -4,6 +4,7 @@ This starts the real embedded runtime and a harmless launcher fixture. It never
 installs certificate trust, changes startup/Steam settings, or launches the game.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -14,11 +15,14 @@ import subprocess
 import tempfile
 import time
 from urllib.request import ProxyHandler, Request, build_opener
+from smoke_webview import frontend_state, owned_page
+from smoke_browser_storage import verify_legacy_storage
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('executable', type=Path)
 parser.add_argument('--headless', action='store_true', help='Skip Explorer selection assertions on CI desktops.')
+parser.add_argument('--report', type=Path, default=Path('.cache/native-smoke-report.json'))
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 url = 'http://127.0.0.1:4317'
@@ -106,7 +110,8 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
     executable = install / 'Umalytics.exe'
     legacy = install / 'Umalytics-data'
     local = install / 'local-appdata'
-    environment = dict(os.environ, LOCALAPPDATA=str(local))
+    environment = dict(os.environ, LOCALAPPDATA=str(local),
+                       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=0 --disable-gpu')
     data = local / 'Umalytics'
     shutil.copy2(args.executable.resolve(), executable)
     (legacy / 'webview').mkdir(parents=True)
@@ -115,9 +120,13 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
     started = False
     resident = None
     timings = {}
+    debugger = None
+    report = {'stage': 'service-startup', 'passed': False}
     try:
         boot_started = time.perf_counter()
-        resident = subprocess.Popen([str(executable), '--background'], creationflags=no_window, env=environment)
+        # Test a normal UI launch explicitly. A hidden collection tray is not
+        # required to complete foreground browser-library work on a CI desktop.
+        resident = subprocess.Popen([str(executable)], creationflags=no_window, env=environment)
         started = True
         for _ in range(240):
             assert resident.poll() is None, 'Background launch exited without a resident tray.'
@@ -145,13 +154,32 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
         assert health['certificate']['exists'] and not health['certificate']['trusted']
         assert not (data / 'webview').exists()
         assert (data / 'cache/webview/legacy-profile-marker.txt').read_text() == 'legacy browser profile preserved'
+        report['stage'] = 'frontend-startup'
         for _ in range(120):
-            if get('/api/preferences')['browserMigrationComplete']:
+            if debugger is None:
+                debugger = owned_page(data / 'cache/webview', url)
+                if debugger:
+                    debugger.call('Runtime.enable')
+            if debugger:
+                report['frontend'] = frontend_state(debugger)
+                report['javascriptErrors'] = debugger.errors
+                assert not debugger.errors, 'Native frontend raised a JavaScript exception: ' + json.dumps(debugger.errors)
+            report['preferencesReadable'] = 'theme' in get('/api/preferences')
+            if report.get('frontend', {}).get('appShell') and report['frontend'].get('settings') and report['preferencesReadable']:
                 break
             assert resident.poll() is None, 'Native window closed before loading its frontend.'
             time.sleep(.25)
         else:
-            raise AssertionError('The native WebView did not finish loading the file-backed library.')
+            raise AssertionError('Native frontend readiness failed: ' + json.dumps(report))
+        assert not get('/api/preferences')['browserMigrationComplete'], 'A fresh profile must not perform migration.'
+        databases = debugger.call('Runtime.evaluate', {'expression': 'indexedDB.databases().then(rows=>rows.map(row=>row.name))', 'awaitPromise': True, 'returnByValue': True})
+        assert 'umatrace-library' not in databases['result']['value'], 'Startup created an empty legacy library.'
+        report['freshInstallMigration'] = 'not needed'
+        report['stage'] = 'legacy-browser-storage'
+        report['legacyBrowserStorage'] = verify_legacy_storage(debugger, get,
+            lambda patch: post('/api/preferences', patch, own_health(data)),
+            json.loads((root / 'tests/fixtures/race.json').read_bytes()))
+        report['stage'] = 'native-integration'
         runtime = list((data / 'runtime').glob('*.exe'))
         assert len(runtime) == 1
         assert runtime[0].name == 'UmalyticsCollector.exe'
@@ -241,6 +269,7 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
             started = True
             raise AssertionError('Steam-owned launch left collection running after the game fixture exited.')
         wait_for_owned_runtime(data)
+        report.update(passed=True, stage='complete', startupTimings=timings)
         print(json.dumps({'startupTimings':timings, 'nativeExecutable':'passed', 'appDataInstallation':'passed', 'adjacentDataMigration':'passed',
                           'embeddedRuntimeHash':'passed', 'nativeLauncherFixture':'passed',
                           'desktopExportExplorerSelection':'skipped (headless)' if args.headless else 'passed', 'courseSummary':'passed',
@@ -250,6 +279,25 @@ with tempfile.TemporaryDirectory(prefix='native-smoke-', dir=root / '.cache') as
                           'steamOwnedSessionShutdown':'passed',
                           'certificateTrustChanged':False, 'actualGameLaunched':False}))
     finally:
+        # Preserve only isolated fixture diagnostics before deleting its data.
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        report['nativeEvents'] = []
+        for path in (data / 'logs').glob('desktop-*.jsonl'):
+            for line in path.read_text(errors='replace').splitlines()[-30:]:
+                try:
+                    item = json.loads(line)
+                    report['nativeEvents'].append({'event':item.get('event'), 'timestampUnixMs':item.get('timestampUnixMs')})
+                except ValueError:
+                    pass
+        if debugger:
+            if not report['passed']:
+                try:
+                    picture = debugger.call('Page.captureScreenshot', {'format': 'png'})
+                    args.report.with_suffix('.png').write_bytes(base64.b64decode(picture['data']))
+                except (OSError, ValueError, KeyError, TimeoutError):
+                    pass
+            debugger.close()
+        args.report.write_text(json.dumps(report, indent=2), encoding='utf-8')
         if export_path and not args.headless:
             explorer_selection(export_path, close=True)
         if started:

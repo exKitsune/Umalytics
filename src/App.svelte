@@ -75,7 +75,7 @@
   import { loadReferenceData, loadInstalledRaceLookup, getCourse, runnerName, runnerOutfit, skillName, type ReferenceData } from './data/reference';
   import { buildUmalatorExport, jsonDownloadName, umaDownloadName } from './data/umalator';
   import { categories, captureFacet, facetInfo, libraryFacets, runnerColors, saveRace, savedRaces, deleteSavedRace, createLibraryCaptionHydrator, type LibraryEntry } from './library';
-  import { api, saveDesktopExport, revealDesktop, defaultSettings, type Health, type CollectionSettings, type CertificateStatus } from './api';
+  import { api, saveDesktopExport, revealDesktop, defaultSettings, type Health, type CollectionSettings, type CertificateStatus, type Preferences } from './api';
   import { browserPreferences, migrateBrowserStorage, saveDesktopRace, raceSourceForExport, THEME_KEY } from './desktop-storage';
   import AnalysisDetails from './components/AnalysisDetails.svelte';
   import AppUpdates from './components/AppUpdates.svelte';
@@ -118,7 +118,8 @@
   const browserSettings=browserPreferences();
   let desktopSession=location.port==='4317'||'__TAURI_INTERNALS__' in window||(['127.0.0.1','localhost'].includes(location.hostname)&&new URLSearchParams(location.search).get('desktop')==='1');
   let storageReady=!desktopSession;
-  let migrationRunning=false;
+  let preferencesLoading=false,preferencesAttemptAt=0;
+  let migrationRunning=false,migrationChecked=false;
   let migrationAttemptAt=0;
   let migrationError='';
   let reference: ReferenceData|null = null;
@@ -366,7 +367,28 @@
   }
   async function loadHistory(){historyLoading=true;try{while(nextOffset!==null&&!disposed){const offset=nextOffset;if(!await loadPage(offset))return;await new Promise(resolve=>setTimeout(resolve,30));}historyLoaded=true;}catch(e){error=`History could not be loaded: ${e}`;}finally{historyLoading=false;}}
   let healthPolling=false;
-  async function prepareDesktopStorage(){if(storageReady||migrationRunning||importing||!health?.csrfToken||Date.now()-migrationAttemptAt<5000)return;migrationRunning=true;migrationAttemptAt=Date.now();try{const preferences=await migrateBrowserStorage(health.csrfToken);theme=preferences.theme;fontScale=normalizeFontScale(preferences.fontScale);raceTags=preferences.raceTags??{};library=library.filter(entry=>!entry.id.startsWith('local-')||entry.remoteId);storageReady=true;migrationError='';}catch{migrationError='Your browser library is still being moved to Umalytics. Originals are saved; retrying shortly.';}finally{migrationRunning=false;}}
+  function applyDesktopPreferences(preferences:Preferences){theme=preferences.theme;fontScale=normalizeFontScale(preferences.fontScale);raceTags=preferences.raceTags??{};}
+  async function importLegacyBrowserData(){
+    if(migrationChecked||migrationRunning||importing||!health?.csrfToken||Date.now()-migrationAttemptAt<5000)return;
+    migrationRunning=true;migrationAttemptAt=Date.now();
+    try{
+      const preferences=await migrateBrowserStorage(health.csrfToken);
+      if(preferences&&!disposed){applyDesktopPreferences(preferences);library=library.filter(entry=>!entry.id.startsWith('local-')||entry.remoteId);await loadPage();}
+      migrationChecked=true;migrationError='';
+    }catch{migrationError='Older browser data could not be imported. Originals are saved; retrying shortly.';}
+    finally{migrationRunning=false;}
+  }
+  async function prepareDesktopStorage(){
+    if(!health?.csrfToken)return;
+    if(!storageReady){
+      if(preferencesLoading||Date.now()-preferencesAttemptAt<5000)return;
+      preferencesLoading=true;preferencesAttemptAt=Date.now();
+      try{const preferences=await api<Preferences>('preferences');if(disposed)return;applyDesktopPreferences(preferences);storageReady=true;migrationError='';}
+      catch{migrationError='Desktop preferences are unavailable. Retrying shortly.';return;}
+      finally{preferencesLoading=false;}
+    }
+    void importLegacyBrowserData();
+  }
   async function pollHealth(){if(dataDeleted)return;debugNow=Date.now();if(!['localhost','127.0.0.1'].includes(location.hostname)||healthPolling)return;healthPolling=true;try{health=await api<Health>('health');healthReconnecting=false;certificate=health.certificate??null;if(health.mode==='desktop'){if(!desktopSession)storageReady=false;desktopSession=true;await prepareDesktopStorage();}}catch{healthReconnecting=true;}finally{healthPolling=false;}}
   async function poll() {
     if(dataDeleted)return;

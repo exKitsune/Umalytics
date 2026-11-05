@@ -1,5 +1,5 @@
 import { api, type ImportReceipt, type Preferences } from './api';
-import { deleteSavedRace, raceLibraryEntry, savedRaces, type LibraryEntry } from './library';
+import { deleteSavedRace, raceLibraryEntry, legacySavedRaces, type LibraryEntry } from './library';
 import { toPortableRace } from './data/share';
 import { parseRaceJson } from './data/import';
 import type { Race } from './data/types';
@@ -48,17 +48,16 @@ export async function saveDesktopRace(race:Race,csrfToken:string):Promise<Librar
 }
 
 /** Each acknowledged race is removed separately; interrupted migrations can safely resume. */
-export async function migrateBrowserStorage(csrfToken:string):Promise<Preferences> {
+export async function migrateBrowserStorage(csrfToken:string):Promise<Preferences|null> {
+  const entries=await legacySavedRaces();
+  const themeRaw=localStorage.getItem(THEME_KEY),courseRaw=localStorage.getItem(COURSE_KEY),fontRaw=localStorage.getItem(FONT_SCALE_KEY),tagsRaw=localStorage.getItem('umalytics-race-tags');
+  if(!entries.length&&[themeRaw,courseRaw,fontRaw,tagsRaw].every(value=>value===null))return null;
   const native=await api<Preferences>('preferences');
-  let entries:LibraryEntry[];
-  try {entries=await savedRaces();}catch(e){if(native.browserMigrationComplete)return native;throw e;}
   for(const entry of entries) {
     await importEntry(entry,csrfToken);
     await deleteSavedRace(entry.id);
   }
   const legacy=browserPreferences();
-  let themeRaw:string|null,courseRaw:string|null,fontRaw:string|null;
-  try {themeRaw=localStorage.getItem(THEME_KEY);courseRaw=localStorage.getItem(COURSE_KEY);fontRaw=localStorage.getItem(FONT_SCALE_KEY);}catch(e){if(native.browserMigrationComplete)return native;throw e;}
   if(courseRaw!==null){const parsed=JSON.parse(courseRaw);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)||Object.values(parsed).some(id=>typeof id!=='number'||!Number.isSafeInteger(id)||id<=0))throw new Error('Browser course choices could not be read. The original preference is still saved.');}
   const patch={
     theme:native.browserMigrationComplete||themeRaw===null?native.theme:legacy.theme,
