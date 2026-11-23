@@ -440,7 +440,14 @@ ${date(entry.race?.racedAt??entry.racedAt??entry.receivedAt)}`} style={`--catego
     {#if migrationError}<div class="notice" role="status">{migrationError}</div>{/if}
     {#if error||message}<div class="notice" class:error={!!error} role="status"><span>{error||message}</span><button aria-label="Dismiss message" onclick={()=>{message='';error=''}}>×</button></div>{/if}
     {#if workspaceMode==='races'&&race&&analysis&&(!analysisState.busy||analysisState.background)&&analysis.source!=='simulation'}
-      <div class="analysis-fallback-banner" role="status"><div><strong>{analysis.source==='recorded'?'Analysis unavailable · recorded data only':'Inferred analysis · simulation did not match'}</strong><span>{analysis.source==='recorded'?'Unsupported analysis fields are left blank.':'Modeled values are estimates and may be inaccurate.'}</span></div><a class="button" href="https://github.com/exKitsune/Umalytics/issues" target="_blank" rel="noreferrer">Report issue ↗</a></div>
+      <div class="analysis-fallback-banner" role="status"><div>
+        <strong>
+          {#if analysis.source==='recorded'}Analysis unavailable · recorded data only
+          {:else if analysisGate?.simulation?.status==='mismatch'}Inferred analysis · simulation did not match
+          {:else}Inferred analysis · simulation unavailable{/if}
+        </strong>
+        <span>{analysis.source==='recorded'?'Unsupported analysis fields are left blank.':'Modeled values are estimates and may be inaccurate.'}</span>
+      </div><a class="button" href="https://github.com/exKitsune/Umalytics/issues" target="_blank" rel="noreferrer">Report issue ↗</a></div>
     {/if}
     {#if simulatorReference}<SimulatorWorkspace bind:this={simulatorWorkspace} mode={workspaceMode==='simulation'?'races':workspaceMode} reference={simulatorReference} token={health?.csrfToken} incoming={simulatorInput} onOpen={openSimulated} onMode={switchWorkspace} onNavigate={simulatorNavigated}/>{/if}
     {#if workspaceMode==='races'||workspaceMode==='simulation'}

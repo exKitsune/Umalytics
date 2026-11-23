@@ -1,7 +1,7 @@
 """Explicit custom-race inputs. These never authorize a recorded replay match."""
 from copy import deepcopy
 import random
-from globalsim_bridge.adapter import WEATHER, GROUND, SEASON, TIME, GRADE, STYLE
+from globalsim_bridge.adapter import DIRT_GRADE_TRACK_IDS, WEATHER, GROUND, SEASON, TIME, GRADE, STYLE
 
 APTITUDE_KEYS = ('turf', 'dirt', 'short', 'mile', 'middle', 'long', 'front', 'pace', 'late', 'end')
 
@@ -207,11 +207,6 @@ def skill_issue(definitions, skill_id):
     if not definition:
         return 'Missing from the installed simulator skill definitions.'
     return None
-
-
-# GameTora: exchange races at Ooi, Kawasaki, Funabashi and Morioka.
-# This is a venue condition, not a dirt-surface or G1/G2/G3 grade test.
-DIRT_GRADE_TRACK_IDS = frozenset((10101, 10103, 10104, 10105))
 
 
 def run_draws(value, index=0, seed_schedule=None):
