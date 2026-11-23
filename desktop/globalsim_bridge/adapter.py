@@ -28,7 +28,7 @@ from .reference_snapshot import freeze
 
 from .profiles import CURRENT_PROFILE, upstream_commit
 
-ADAPTER_VERSION = "umalytics-globalsim-initial-v2"
+ADAPTER_VERSION = "umalytics-globalsim-initial-v3"
 GLOBALSIM_COMMIT = upstream_commit(CURRENT_PROFILE)
 # The public master projections are byte-identical at the newer collector
 # commit. Keep the original data audit identity separate from collector code.
@@ -56,6 +56,9 @@ STYLE = {1: ("Nige", "nige"), 2: ("Senkou", "senko"),
          3: ("Sasi", "sashi"), 4: ("Oikomi", "oikomi"), 5: ("Oonige", "nige")}
 DISTANCE = {1: "short", 2: "mile", 3: "middle", 4: "long"}
 SURFACE = {1: "turf", 2: "dirt"}
+# GlobalSim's exchange-race venues: Ooi, Kawasaki, Funabashi and Morioka.
+# Verified against race.is_dirtgrade for every instance in the Global master.
+DIRT_GRADE_TRACK_IDS = frozenset((10101, 10103, 10104, 10105))
 STATS = {"speed": "speed", "stamina": "stamina", "power": "pow", "guts": "guts", "wisdom": "wiz"}
 SUPPORTED_CATEGORIES = {"practice", "team-trials", "champions-meeting"}
 PORTABLE_RACE_TYPES = {"RoomMatch": "practice", "TeamStadium": "team-trials",
@@ -572,10 +575,13 @@ def prepare_capture(capture: dict, references: ReferenceData,
             if any("is_dirtgrade" in (branch.get("condition") or "") or
                    "is_dirtgrade" in (branch.get("precondition") or "")
                    for branch in references.skill_data[s["skillId"]].get("alternatives", []))})
+        spec = deepcopy(references.settings)
         if dirt_skills:
             audit["dirtGradeRelevantSkills"] = dirt_skills
-            raise InputError("Equipped skills require an unsupported isDirtGrade context mapping", "unsupported")
-        spec = deepcopy(references.settings)
+            track_id = _integer(course.get("raceTrackId"), "course.raceTrackId", 1, 2**31 - 1)
+            spec["isDirtGrade"] = track_id in DIRT_GRADE_TRACK_IDS
+            audit["dirtGradeContext"] = {"source": "engine.course_data.raceTrackId",
+                                         "raceTrackId": track_id, "isDirtGrade": spec["isDirtGrade"]}
         spec.update({"seed": seed, "courseId": course_id,
             "weather": _enum(raw.get("weather"), "weather", WEATHER),
             "groundCondition": _enum(raw.get("ground_condition"), "ground_condition", GROUND),
@@ -602,7 +608,7 @@ def prepare_capture(capture: dict, references: ReferenceData,
             "explicitNonCaptureSettings": {
                 "profile": f"pinned {references.profile}; startup/later-stamina additions disabled",
                 "playerHorseIndex": "0 selects gate-one output telemetry only, not account ownership",
-                "isDirtGrade": "upstream track default; no equipped skill depends on it",
+                "isDirtGrade": "pinned course venue" if dirt_skills else "upstream track default; no equipped skill depends on it",
             }})
         return spec, audit
     except InputError as error:

@@ -304,10 +304,30 @@ class AdapterBoundaryTests(unittest.TestCase):
         _, audit = self.assert_status("unsupported", raw)
         self.assertEqual(audit["missingSkills"], [{"frameOrder": 2, "skillId": "999"}])
 
-    def test_dirt_grade_dependent_skill_requires_supported_context_mapping(self):
+    def test_exchange_race_skills_use_the_resolved_venue(self):
+        course = self.refs.course_data["101"]
+        course["surface"] = 2
+        self.refs.app_courses["101"]["surface"] = 2
+        for horse in self.raw["race_horse_data_array"]:
+            horse["proper_ground_dirt"] = 7
+        for field in ("condition", "precondition"):
+            self.refs.skill_data["11"]["alternatives"] = [{field: "is_dirtgrade==1"}]
+            for track, expected in ((10006, False), (10101, True), (10103, True), (10104, True), (10105, True)):
+                with self.subTest(field=field, track=track):
+                    course["raceTrackId"] = track
+                    for raw in (self.raw, portable(self.raw)):
+                        spec, audit = self.assert_status("ready", raw)
+                        self.assertIs(spec["isDirtGrade"], expected)
+                        self.assertEqual(audit["dirtGradeRelevantSkills"], ["11"])
+                        self.assertEqual(audit["dirtGradeContext"]["raceTrackId"], track)
+                        self.assertIn("11", [s["skillId"] for s in spec["horses"][0]["skills"]])
+
+    def test_exchange_race_skill_requires_a_valid_venue(self):
         self.refs.skill_data["11"]["alternatives"][0]["condition"] = "is_dirtgrade==1"
-        _, audit = self.assert_status("unsupported")
-        self.assertEqual(audit["dirtGradeRelevantSkills"], ["11"])
+        _, audit = self.assert_status("needs_input")
+        self.assertEqual(audit["missingInputs"], ["course.raceTrackId"])
+        self.refs.course_data["101"]["raceTrackId"] = True
+        self.assert_status("invalid")
 
     def test_conflicting_or_unavailable_course_references_prevent_execution(self):
         self.refs.app_courses["101"]["distance"] = 2000
