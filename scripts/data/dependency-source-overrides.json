@@ -18,5 +18,10 @@
     "url": "https://codeload.github.com/mitmproxy/mitmproxy-rs/tar.gz/a1ce1d9bfd35d3a593ace483015c9cbcd40ddff8",
     "sha256": "3fb1d5e11be44d8a4ff7e60c3693b165a56cd2216aaccb8998804b59760b05a3",
     "upstreamCommit": "a1ce1d9bfd35d3a593ace483015c9cbcd40ddff8"
+  },
+  "mitmproxy-windows==0.12.16": {
+    "url": "https://codeload.github.com/mitmproxy/mitmproxy-rs/tar.gz/029c0b30bcd4d27875eeaa6c08f54dc1c919fc01",
+    "sha256": "1e81912de9ca6e9017b5779680b9dbfdd596fc91b691f6bedb0b9e3039f5ee63",
+    "upstreamCommit": "029c0b30bcd4d27875eeaa6c08f54dc1c919fc01"
   }
 }
