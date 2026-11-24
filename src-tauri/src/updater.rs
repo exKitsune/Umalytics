@@ -301,9 +301,16 @@ fn desktop_confirmed(plan:&Plan,pid:u32)->bool{
     read_small(&path,1024).ok().and_then(|raw|serde_json::from_slice::<Value>(&raw).ok())
         .is_some_and(|value|exact_keys(&value,&["pid","token"])&&value["pid"].as_u64()==Some(pid as u64)&&value["token"]==plan.token)
 }
-fn wait_service_exit(endpoint:&ServiceEndpoint)->Result<(),String>{
-    let deadline=Instant::now()+Duration::from_secs(25);
-    while Instant::now()<deadline{if endpoint.health().is_none(){return Ok(());}thread::sleep(Duration::from_millis(200));}bad("The collector did not stop. The old files were left unchanged.")
+fn wait_service_exit(endpoint: &ServiceEndpoint) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(25);
+    while Instant::now() < deadline {
+        // Health can go offline before the service releases its startup lock.
+        if std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, endpoint.port)).is_ok() {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    bad("The collector did not stop. The old files were left unchanged.")
 }
 fn stop_owned(plan:&Plan,endpoint:&ServiceEndpoint)->Result<(),String>{
     let health=endpoint.health().ok_or("The collector is unavailable for a safe restart.")?;

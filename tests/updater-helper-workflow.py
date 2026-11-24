@@ -158,6 +158,9 @@ def owned_service(payload, install, port):
 
         def do_GET(self):
             if self.path == '/api/health':
+                if state['phase'] == 'stopping':
+                    self.send_json({'error': 'Stopping'}, 503)
+                    return
                 reported_version = payload['version']
                 if payload.get('hot'):
                     parts = read_components(install / 'Umalytics.exe')
@@ -200,7 +203,15 @@ def owned_service(payload, install, port):
                     return
                 with (install / 'events.txt').open('a') as output:
                     output.write(self.path + '\n')
+                state['phase'] = 'stopping'
                 self.send_json({'ok': True})
+                if payload.get('slowShutdown'):
+                    # The real service sends its reply before draining workers.
+                    # Its HTTP port remains reserved throughout the drain.
+                    time.sleep(3)
+                    update = data / 'cache/update'
+                    if (update / 'Umalytics.exe').is_file() and not (update / 'backup').exists():
+                        (install / 'drained-before-swap').touch()
                 threading.Thread(target=server.shutdown, daemon=True).start()
             else:
                 self.send_json({'error': 'Unknown path'}, 404)
@@ -333,6 +344,8 @@ def main(harness, cross_drive_root=None, startup_only=False):
                 initial_payload['gameActive'] = True
             if name == 'refused-stop':
                 initial_payload['refuseStop'] = True
+            if name == 'slow-collector-shutdown':
+                initial_payload['slowShutdown'] = True
             initial = subprocess.Popen([sys.executable, __file__, '--owned-service', json.dumps(initial_payload),
                                         str(install), str(port)], creationflags=FLAGS,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
@@ -403,6 +416,8 @@ def main(harness, cross_drive_root=None, startup_only=False):
                     (install / 'old-exit').touch()
                     wrapper.wait(timeout=5)
                 assert report['ok'] == expected, (name, report)
+                if name == 'slow-collector-shutdown':
+                    assert (install / 'drained-before-swap').is_file(), 'Update began replacing files during shutdown'
                 if expected or recovery:
                     assert not prompt.exists(), 'Verified completion left the collector prompt behind'
                 expected_version = '0.2.0' if recovery or not expected else '0.2.1'
@@ -510,6 +525,7 @@ def main(harness, cross_drive_root=None, startup_only=False):
                     for output in outputs:
                         output.close()
 
+        scenario('slow-collector-shutdown')
         scenario('success')
         scenario('hot-active-game')
         scenario('hot-desktop-exited-rollback', {'desktopExit': True}, expected=False)

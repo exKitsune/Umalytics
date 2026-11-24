@@ -1,4 +1,4 @@
-use std::{fs, io::{Read, Write}, net::TcpStream, path::Path, thread, time::Duration};
+use std::{fs, io::{BufRead, BufReader, Read, Write}, net::TcpStream, path::Path, thread, time::Duration};
 
 pub struct ServiceEndpoint { pub port: u16 }
 
@@ -15,11 +15,7 @@ impl ServiceEndpoint {
         headers.push_str("\r\n");
         stream.write_all(headers.as_bytes()).ok()?;
         stream.write_all(payload.as_bytes()).ok()?;
-        let mut raw = String::new();
-        stream.take(1024 * 1024).read_to_string(&mut raw).ok()?;
-        let (head, json) = raw.split_once("\r\n\r\n")?;
-        if !head.starts_with("HTTP/1.1 200") { return None; }
-        serde_json::from_str(json).ok()
+        read_json_response(stream)
     }
 
     pub fn health(&self) -> Option<serde_json::Value> {
@@ -148,10 +144,67 @@ impl ServiceEndpoint {
     }
 }
 
+fn read_json_response(stream: impl Read) -> Option<serde_json::Value> {
+    const MAX_RESPONSE: usize = 1024 * 1024;
+    let mut reader = BufReader::new(stream.take(MAX_RESPONSE as u64 + 1));
+    let mut headers = String::new();
+    while !headers.ends_with("\r\n\r\n") {
+        if reader.read_line(&mut headers).ok()? == 0 || headers.len() > MAX_RESPONSE {
+            return None;
+        }
+    }
+    let mut lines = headers.lines();
+    if !lines.next()?.split_ascii_whitespace().take(2).eq(["HTTP/1.1", "200"]) {
+        return None;
+    }
+    let mut lengths = lines.filter_map(|line| line.split_once(':'))
+        .filter(|(name, _)| name.eq_ignore_ascii_case("Content-Length"));
+    let limit = MAX_RESPONSE - headers.len();
+    let mut body = Vec::new();
+    if let Some((_, value)) = lengths.next() {
+        let length = value.trim().parse::<usize>().ok()?;
+        if length > limit || lengths.next().is_some() { return None; }
+        // The service can keep the exit request open while it drains workers.
+        body.resize(length, 0);
+        reader.read_exact(&mut body).ok()?;
+    } else {
+        reader.read_to_end(&mut body).ok()?;
+        if body.len() > limit { return None; }
+    }
+    serde_json::from_slice(&body).ok()
+}
+
 fn same_path(saved: &str, expected: &Path) -> bool {
     let (Ok(saved), Ok(expected)) = (fs::canonicalize(saved), fs::canonicalize(expected)) else { return false; };
     #[cfg(windows)]
     { saved.to_string_lossy().eq_ignore_ascii_case(&expected.to_string_lossy()) }
     #[cfg(not(windows))]
     { saved == expected }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_json_response;
+
+    #[test]
+    fn reads_declared_and_close_delimited_replies() {
+        for response in [
+            "HTTP/1.1 200 OK\r\ncontent-length: 4\r\n\r\ntrueextra bytes",
+            "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\ntrue",
+        ] {
+            assert_eq!(read_json_response(response.as_bytes()), Some(serde_json::json!(true)));
+        }
+    }
+
+    #[test]
+    fn rejects_refused_incomplete_or_invalid_replies() {
+        for response in [
+            "HTTP/1.1 409 Conflict\r\nContent-Length: 4\r\n\r\ntrue",
+            "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\ntrue",
+            "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nContent-Length: 8\r\n\r\ntrue",
+            "HTTP/1.1 200 OK\r\nContent-Length: 1048577\r\n\r\ntrue",
+        ] {
+            assert!(read_json_response(response.as_bytes()).is_none());
+        }
+    }
 }
